@@ -9,6 +9,9 @@
 /* Begin PBXBuildFile section */
 		C55BC2332654D46000674275 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = C55BC2322654D46000674275 /* main.swift */; };
 		C55BC23B2654D4F500674275 /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = C55BC23A2654D4F500674275 /* ArgumentParser */; };
+		C55BC2442654DF6F00674275 /* Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = C55BC2432654DF6F00674275 /* Model.swift */; };
+		C55BC2462654DFE000674275 /* NotionAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = C55BC2452654DFE000674275 /* NotionAPI.swift */; };
+		C55BC2482654E07300674275 /* URLSession+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = C55BC2472654E07300674275 /* URLSession+Extensions.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -26,6 +29,9 @@
 /* Begin PBXFileReference section */
 		C55BC22F2654D46000674275 /* hunch */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = hunch; sourceTree = BUILT_PRODUCTS_DIR; };
 		C55BC2322654D46000674275 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		C55BC2432654DF6F00674275 /* Model.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model.swift; sourceTree = "<group>"; };
+		C55BC2452654DFE000674275 /* NotionAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotionAPI.swift; sourceTree = "<group>"; };
+		C55BC2472654E07300674275 /* URLSession+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLSession+Extensions.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -60,6 +66,9 @@
 			isa = PBXGroup;
 			children = (
 				C55BC2322654D46000674275 /* main.swift */,
+				C55BC2432654DF6F00674275 /* Model.swift */,
+				C55BC2452654DFE000674275 /* NotionAPI.swift */,
+				C55BC2472654E07300674275 /* URLSession+Extensions.swift */,
 			);
 			path = hunch;
 			sourceTree = "<group>";
@@ -127,7 +136,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C55BC2482654E07300674275 /* URLSession+Extensions.swift in Sources */,
 				C55BC2332654D46000674275 /* main.swift in Sources */,
+				C55BC2442654DF6F00674275 /* Model.swift in Sources */,
+				C55BC2462654DFE000674275 /* NotionAPI.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

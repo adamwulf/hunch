@@ -16,19 +16,17 @@ struct Hunch: ParsableCommand {
     func run() {
         print(token)
 
-        guard let url = URL(string: "https://api.notion.com/v1/databases") else { fatalError() }
-        let session = URLSession(configuration: .ephemeral)
-        var req = URLRequest(url: url)
-        req.addValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+        NotionAPI.shared.token = token
+        NotionAPI.shared.fetchDatabases { result in
+            switch result {
+            case .success(let dbs):
+                print(dbs)
+            case .failure(let error):
+                print(error)
+            }
 
-
-        let task = session.dataTask(with: req) { data, response, error in
-            guard let data = data else { return }
-            print(String(data: data, encoding: .utf8)!)
             exit()
         }
-
-        task.resume()
         CFRunLoopRun()
     }
 
