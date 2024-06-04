@@ -9,6 +9,15 @@
 import Foundation
 
 class NotionAPI {
+    enum LogLevel {
+        case verbose
+        case debug
+        case info
+        case warning
+        case error
+    }
+
+    public static var logHandler: ((_ level: LogLevel, _ message: String, _ context: [String: Any]) -> Void)?
     public static let shared = NotionAPI()
     public var token: String? = nil
     private init(){}
@@ -43,7 +52,7 @@ class NotionAPI {
 
     public enum NotionAPIServiceError: Error {
         case missingToken
-        case apiError
+        case apiError(_ error: Error)
         case invalidEndpoint
         case invalidResponse
         case noData
@@ -74,11 +83,8 @@ class NotionAPI {
         request.httpMethod = method
 
         urlSession.dataTask(with: request){ (result) in
-            print(result)
             switch result {
             case .success(let (response, data)):
-                print(String(data: data, encoding: .utf8)!)
-
                 guard let statusCode = (response as? HTTPURLResponse)?.statusCode, 200..<299 ~= statusCode else {
                     completion(.failure(.invalidResponse))
                     return
@@ -90,8 +96,7 @@ class NotionAPI {
                     completion(.failure(.decodeError(error)))
                 }
             case .failure(let error):
-                print(error)
-                completion(.failure(.apiError))
+                completion(.failure(.apiError(error)))
             }
         }.resume()
     }

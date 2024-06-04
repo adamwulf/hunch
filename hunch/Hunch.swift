@@ -7,6 +7,7 @@
 
 import Foundation
 import ArgumentParser
+import SwiftToolbox
 
 @main
 struct Hunch: ParsableCommand {
