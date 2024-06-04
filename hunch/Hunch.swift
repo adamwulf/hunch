@@ -60,12 +60,6 @@ struct Fetch: ParsableCommand {
 //            }
 //            group.leave()
 //        }
-        CFRunLoopRun()
-
         group.wait()
-    }
-
-    func exit() {
-        CFRunLoopStop(CFRunLoopGetMain())
     }
 }
