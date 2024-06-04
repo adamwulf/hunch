@@ -18,6 +18,10 @@ struct Hunch: ParsableCommand {
     )
 }
 
+func log(_ logLevel: NotionAPI.LogLevel, _ message: String, context: [String: Any]? = nil) {
+    print("\(logLevel.stringValue) \(message) \(String.logfmt(context ?? [:]))")
+}
+
 struct Fetch: ParsableCommand {
     static var configuration = CommandConfiguration(
         commandName: "fetch",
@@ -35,34 +39,49 @@ struct Fetch: ParsableCommand {
         let group = DispatchGroup() // initialize
 
         NotionAPI.logHandler = { (_ logLevel: NotionAPI.LogLevel, _ message: String, _ context: [String: Any]?) in
-            print("\(logLevel.stringValue) \(message) \(String.logfmt(context ?? [:]))")
+//            print("\(logLevel.stringValue) \(message) \(String.logfmt(context ?? [:]))")
         }
 
         NotionAPI.shared.token = token
-//        group.enter()
-//        NotionAPI.shared.fetchDatabases { result in
-//            switch result {
-//            case .success(let dbs):
-//                for db in dbs.results {
-//                    print(db.plainTextTitle)
-//                }
-//            case .failure(let error):
-//                print(error)
-//            }
-//            group.leave()
-//        }
         group.enter()
-        NotionAPI.shared.fetchPages { result in
+
+        log(.debug, "notion_api", context: ["action": "fetch_db"])
+        NotionAPI.shared.fetchDatabases { result in
             switch result {
-            case .success(let pages):
-                for page in pages.results {
-                    print(page.plainTextTitle)
+            case .success(let dbs):
+                for db in dbs.results {
+                    group.enter()
+                    log(.debug, "notion_api", context: ["action": "fetch_entries", "db": db.plainTextTitle])
+                    NotionAPI.shared.fetchDatabaseEntries(in: db) { result in
+                        switch result {
+                        case .success(let pages):
+                            for page in pages.results {
+                                print(page.plainTextTitle)
+                            }
+                        case .failure(let error):
+                            print(error)
+                        }
+                        group.leave()
+                    }
+                    print(db.plainTextTitle)
                 }
             case .failure(let error):
                 print(error)
             }
             group.leave()
         }
+//        group.enter()
+//        NotionAPI.shared.fetchPages { result in
+//            switch result {
+//            case .success(let pages):
+//                for page in pages.results {
+//                    print(page.plainTextTitle)
+//                }
+//            case .failure(let error):
+//                print(error)
+//            }
+//            group.leave()
+//        }
         group.wait()
     }
 }

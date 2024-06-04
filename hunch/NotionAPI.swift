@@ -55,6 +55,7 @@ class NotionAPI {
         case apiError(_ error: Error)
         case invalidEndpoint
         case invalidResponse
+        case invalidResponseStatus(_ status: Int)
         case noData
         case decodeError(_ error: Error)
         case encodeError(_ error: Error)
@@ -88,11 +89,15 @@ class NotionAPI {
         urlSession.dataTask(with: request){ (result) in
             switch result {
             case .success(let (response, data)):
-                guard let statusCode = (response as? HTTPURLResponse)?.statusCode, 200..<299 ~= statusCode else {
+                guard let httpResponse = response as? HTTPURLResponse else {
                     completion(.failure(.invalidResponse))
                     return
                 }
-                Self.logHandler?(.debug, "notion_api", ["status": statusCode])
+                guard 200..<299 ~= httpResponse.statusCode else {
+                    completion(.failure(.invalidResponseStatus(httpResponse.statusCode)))
+                    return
+                }
+                Self.logHandler?(.debug, "notion_api", ["status": httpResponse.statusCode])
                 Self.logHandler?(.debug, String(data: data, encoding: .utf8)!, nil)
                 do {
                     let values = try self.jsonDecoder.decode(T.self, from: data)
@@ -110,8 +115,13 @@ class NotionAPI {
         fetchResources(url: baseURL.appendingPathComponent("databases"), completion: completion)
     }
 
+    func fetchDatabaseEntries(in database: Database, completion: @escaping (Result<PageList, NotionAPIServiceError>) -> Void) {
+        let url = baseURL.appendingPathComponent("databases").appendingPathComponent(database.id).appendingPathComponent("query")
+        fetchResources(method: "POST", url: url, body: nil, completion: completion)
+    }
+
     func fetchPages(completion: @escaping (Result<PageList, NotionAPIServiceError>) -> Void) {
-        let bodyJSON: [String: Any] = ["filter": ["value": "page", "property": "object"]]
+        let bodyJSON: [String: Any] = [:]
         do {
             let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
             fetchResources(method: "POST", url: baseURL.appendingPathComponent("search"), body: bodyData, completion: completion)
