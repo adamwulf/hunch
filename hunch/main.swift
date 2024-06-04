@@ -8,31 +8,66 @@
 import Foundation
 import ArgumentParser
 
-print("Hello, World!")
-
+@main
 struct Hunch: ParsableCommand {
-    @Argument() var token: String
+    static var configuration = CommandConfiguration(
+        commandName: "duck",
+        version: "Developer Duck",
+        subcommands: [Fetch.self]
+    )
+}
+
+struct Fetch: ParsableCommand {
+    static var configuration = CommandConfiguration(
+        commandName: "fetch",
+        abstract: "Fetch pages or databases from Notion"
+    )
+
+    var token: String {
+        guard let key = ProcessInfo.processInfo.environment["NOTION_KEY"] else {
+            fatalError("NOTION_KEY must be defined in environment")
+        }
+        return key
+    }
 
     func run() {
         print(token)
 
+        let group = DispatchGroup() // initialize
+
         NotionAPI.shared.token = token
+        group.enter()
         NotionAPI.shared.fetchDatabases { result in
             switch result {
             case .success(let dbs):
                 print(dbs)
+                for db in dbs.results {
+                    print(db.title.map({ $0.plainText }))
+                }
             case .failure(let error):
                 print(error)
             }
-
-            exit()
+            group.leave()
         }
+//        group.enter()
+//        NotionAPI.shared.fetchPages { result in
+//            switch result {
+//            case .success(let pages):
+//                print(pages)
+//                for page in pages.results {
+//                    print(page.id)
+//                }
+//            case .failure(let error):
+//                print(error)
+//            }
+//            group.leave()
+//        }
         CFRunLoopRun()
+
+        group.wait()
     }
 
     func exit() {
         CFRunLoopStop(CFRunLoopGetMain())
     }
 }
-
-Hunch.main()

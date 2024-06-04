@@ -43,7 +43,9 @@ class NotionAPI {
         case encodeError
     }
 
-    private func fetchResources<T: Decodable>(url: URL, completion: @escaping (Result<T, NotionAPIServiceError>) -> Void) {
+    private func fetchResources<T: Decodable>(method: String = "GET",
+                                              url: URL,
+                                              completion: @escaping (Result<T, NotionAPIServiceError>) -> Void) {
         guard let token = token else {
             completion(.failure(.missingToken))
             return
@@ -61,9 +63,10 @@ class NotionAPI {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("2021-05-13", forHTTPHeaderField: "Notion-Version")
-        request.httpMethod = "GET"
+        request.httpMethod = method
 
         urlSession.dataTask(with: request){ (result) in
+            print(result)
             switch result {
             case .success(let (response, data)):
                 print(String(data: data, encoding: .utf8)!)
@@ -88,4 +91,8 @@ class NotionAPI {
     func fetchDatabases(completion: @escaping (Result<DatabaseList, NotionAPIServiceError>) -> Void) {
         fetchResources(url: baseURL.appendingPathComponent("databases"), completion: completion)
     }
+
+//    func fetchPages(completion: @escaping (Result<PageList, NotionAPIServiceError>) -> Void) {
+//        fetchResources(method: "POST", url: baseURL.appendingPathComponent("search"), completion: completion)
+//    }
 }
