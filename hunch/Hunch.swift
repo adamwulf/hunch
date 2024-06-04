@@ -12,8 +12,8 @@ import SwiftToolbox
 @main
 struct Hunch: ParsableCommand {
     static var configuration = CommandConfiguration(
-        commandName: "duck",
-        version: "Developer Duck",
+        commandName: "hunch",
+        version: "Hunch",
         subcommands: [Fetch.self]
     )
 }
