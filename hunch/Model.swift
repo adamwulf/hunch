@@ -8,6 +8,19 @@
 
 import Foundation
 
+struct BlockList: Codable {
+    let object = "list"
+    let results: [Block]
+    let nextCursor: String?
+    let hasMore: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case results
+        case nextCursor = "next_cursor"
+        case hasMore = "has_more"
+    }
+}
+
 struct PageList: Codable {
     let object = "list"
     let results: [Page]
@@ -32,6 +45,10 @@ struct DatabaseList: Codable {
         case nextCursor = "next_cursor"
         case hasMore = "has_more"
     }
+}
+
+struct Block: Codable {
+    var id: String
 }
 
 struct Page: Codable {

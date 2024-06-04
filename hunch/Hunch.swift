@@ -58,6 +58,18 @@ struct Fetch: ParsableCommand {
                             for page in pages.results {
                                 print(page.plainTextTitle)
                             }
+                            if let firstPage = pages.results.first {
+                                group.enter()
+                                NotionAPI.shared.fetchPageContent(in: firstPage) { result in
+                                    switch result {
+                                    case .success(let blocks):
+                                        print(blocks)
+                                    case .failure(let error):
+                                        print(error)
+                                    }
+                                    group.leave()
+                                }
+                            }
                         case .failure(let error):
                             print(error)
                         }

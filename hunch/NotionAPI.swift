@@ -120,6 +120,11 @@ class NotionAPI {
         fetchResources(method: "POST", url: url, body: nil, completion: completion)
     }
 
+    func fetchPageContent(in page: Page, completion: @escaping (Result<BlockList, NotionAPIServiceError>) -> Void) {
+        let url = baseURL.appendingPathComponent("blocks").appendingPathComponent(page.id).appendingPathComponent("children")
+        fetchResources(method: "GET", url: url, body: nil, completion: completion)
+    }
+
     func fetchPages(completion: @escaping (Result<PageList, NotionAPIServiceError>) -> Void) {
         let bodyJSON: [String: Any] = [:]
         do {
