@@ -37,8 +37,8 @@ struct DatabaseList: Codable {
 struct Page: Codable {
     let object = "page"
     var id: String
-    let created: String
-    var lastEdited: String
+    let created: Date
+    var lastEdited: Date
     var properties: [String: Property]
     var icon: Icon?
     var archived: Bool
@@ -55,16 +55,11 @@ struct Page: Codable {
     }
 }
 
-struct Icon: Codable {
-    var type: String
-    var emoji: String
-}
-
 struct Database: Codable{
     let object = "database"
     var id: String
-    let created: String
-    var lastEdited: String
+    let created: Date
+    var lastEdited: Date
     var title: [RichText]
     var properties: [String: Property]
 
@@ -75,6 +70,11 @@ struct Database: Codable{
         case title
         case properties
     }
+}
+
+struct Icon: Codable {
+    var type: String
+    var emoji: String
 }
 
 struct Link: Codable {

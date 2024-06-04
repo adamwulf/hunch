@@ -17,12 +17,20 @@ class NotionAPI {
     private let baseURL = URL(string: "https://api.notion.com/v1")!
 
     private let jsonDecoder: JSONDecoder = {
-        let jsonDecorder = JSONDecoder()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        var jsonDecorder = JSONDecoder()
+        jsonDecorder.dateDecodingStrategy = .formatted(formatter)
         return jsonDecorder
     }()
 
     private let jsonEncoder: JSONEncoder = {
-        let jsonEncoder = JSONEncoder()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        var jsonEncoder = JSONEncoder()
+        jsonEncoder.dateEncodingStrategy = .formatted(formatter)
         return jsonEncoder
     }()
 
