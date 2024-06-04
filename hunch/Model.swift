@@ -8,6 +8,19 @@
 
 import Foundation
 
+struct PageList: Codable {
+    let object = "list"
+    let results: [Page]
+    let nextCursor: String?
+    let hasMore: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case results
+        case nextCursor = "next_cursor"
+        case hasMore = "has_more"
+    }
+}
+
 struct DatabaseList: Codable {
     let object = "list"
     let results: [Database]
@@ -19,6 +32,32 @@ struct DatabaseList: Codable {
         case nextCursor = "next_cursor"
         case hasMore = "has_more"
     }
+}
+
+struct Page: Codable {
+    let object = "page"
+    var id: String
+    let created: String
+    var lastEdited: String
+    var properties: [String: Property]
+    var icon: Icon?
+    var archived: Bool
+    var deleted: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case created = "created_time"
+        case lastEdited = "last_edited_time"
+        case properties
+        case icon
+        case archived
+        case deleted = "in_trash"
+    }
+}
+
+struct Icon: Codable {
+    var type: String
+    var emoji: String
 }
 
 struct Database: Codable{
@@ -47,10 +86,6 @@ struct Link: Codable {
     }
 }
 
-struct Reference: Codable {
-    let id: String
-}
-
 struct NotionDate: Codable {
     let start: String
     let end: String?
@@ -74,6 +109,10 @@ struct User: Codable {
         case name
         case avatarURL = "avatar_url"
     }
+}
+
+struct Reference: Codable {
+    var id: String
 }
 
 struct RichText: Codable {
@@ -156,6 +195,7 @@ struct Property: Codable {
         case date
         case people
         case file
+        case files
         case checkbox
         case url
         case email
@@ -171,14 +211,4 @@ struct Property: Codable {
 
     var id: String
     var type: Kind
-}
-
-public struct Page: Decodable, Identifiable {
-    public let object: String
-    public let id: String
-    public let createdTime: Date
-    public let lastEditedTime: Date
-//    public let parent: Parent
-    public let archived: Bool
-    public let properties: [String : String]
 }

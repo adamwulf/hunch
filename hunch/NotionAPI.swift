@@ -39,7 +39,7 @@ class NotionAPI {
         case invalidEndpoint
         case invalidResponse
         case noData
-        case decodeError
+        case decodeError(_ error: Error)
         case encodeError
     }
 
@@ -79,7 +79,7 @@ class NotionAPI {
                     let values = try self.jsonDecoder.decode(T.self, from: data)
                     completion(.success(values))
                 } catch {
-                    completion(.failure(.decodeError))
+                    completion(.failure(.decodeError(error)))
                 }
             case .failure(let error):
                 print(error)
@@ -92,7 +92,7 @@ class NotionAPI {
         fetchResources(url: baseURL.appendingPathComponent("databases"), completion: completion)
     }
 
-//    func fetchPages(completion: @escaping (Result<PageList, NotionAPIServiceError>) -> Void) {
-//        fetchResources(method: "POST", url: baseURL.appendingPathComponent("search"), completion: completion)
-//    }
+    func fetchPages(completion: @escaping (Result<PageList, NotionAPIServiceError>) -> Void) {
+        fetchResources(method: "POST", url: baseURL.appendingPathComponent("search"), completion: completion)
+    }
 }

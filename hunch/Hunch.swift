@@ -34,32 +34,31 @@ struct Fetch: ParsableCommand {
         let group = DispatchGroup() // initialize
 
         NotionAPI.shared.token = token
-        group.enter()
-        NotionAPI.shared.fetchDatabases { result in
-            switch result {
-            case .success(let dbs):
-                print(dbs)
-                for db in dbs.results {
-                    print(db.title.map({ $0.plainText }))
-                }
-            case .failure(let error):
-                print(error)
-            }
-            group.leave()
-        }
 //        group.enter()
-//        NotionAPI.shared.fetchPages { result in
+//        NotionAPI.shared.fetchDatabases { result in
 //            switch result {
-//            case .success(let pages):
-//                print(pages)
-//                for page in pages.results {
-//                    print(page.id)
+//            case .success(let dbs):
+//                print(dbs)
+//                for db in dbs.results {
+//                    print(db.title.map({ $0.plainText }))
 //                }
 //            case .failure(let error):
 //                print(error)
 //            }
 //            group.leave()
 //        }
+        group.enter()
+        NotionAPI.shared.fetchPages { result in
+            switch result {
+            case .success(let pages):
+                for page in pages.results {
+                    print(page)
+                }
+            case .failure(let error):
+                print(error)
+            }
+            group.leave()
+        }
         group.wait()
     }
 }
