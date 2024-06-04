@@ -31,8 +31,6 @@ struct Fetch: ParsableCommand {
     }
 
     func run() {
-        print(token)
-
         let group = DispatchGroup() // initialize
 
         NotionAPI.shared.token = token
