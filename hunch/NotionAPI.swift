@@ -17,7 +17,7 @@ class NotionAPI {
         case error
     }
 
-    public static var logHandler: ((_ level: LogLevel, _ message: String, _ context: [String: Any]) -> Void)?
+    public static var logHandler: ((_ level: LogLevel, _ message: String, _ context: [String: Any]?) -> Void)?
     public static let shared = NotionAPI()
     public var token: String? = nil
     private init(){}
@@ -57,11 +57,12 @@ class NotionAPI {
         case invalidResponse
         case noData
         case decodeError(_ error: Error)
-        case encodeError
+        case encodeError(_ error: Error)
     }
 
     private func fetchResources<T: Decodable>(method: String = "GET",
                                               url: URL,
+                                              body: Data? = nil,
                                               completion: @escaping (Result<T, NotionAPIServiceError>) -> Void) {
         guard let token = token else {
             completion(.failure(.missingToken))
@@ -80,7 +81,9 @@ class NotionAPI {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("2021-05-13", forHTTPHeaderField: "Notion-Version")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpMethod = method
+        request.httpBody = body
 
         urlSession.dataTask(with: request){ (result) in
             switch result {
@@ -89,6 +92,8 @@ class NotionAPI {
                     completion(.failure(.invalidResponse))
                     return
                 }
+                Self.logHandler?(.debug, "notion_api", ["status": statusCode])
+                Self.logHandler?(.debug, String(data: data, encoding: .utf8)!, nil)
                 do {
                     let values = try self.jsonDecoder.decode(T.self, from: data)
                     completion(.success(values))
@@ -106,6 +111,12 @@ class NotionAPI {
     }
 
     func fetchPages(completion: @escaping (Result<PageList, NotionAPIServiceError>) -> Void) {
-        fetchResources(method: "POST", url: baseURL.appendingPathComponent("search"), completion: completion)
+        let bodyJSON: [String: Any] = ["filter": ["value": "page", "property": "object"]]
+        do {
+            let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
+            fetchResources(method: "POST", url: baseURL.appendingPathComponent("search"), body: bodyData, completion: completion)
+        } catch {
+            completion(.failure(.encodeError(error)))
+        }
     }
 }

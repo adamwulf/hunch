@@ -13,6 +13,7 @@
 		C55BC2462654DFE000674275 /* NotionAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = C55BC2452654DFE000674275 /* NotionAPI.swift */; };
 		C55BC2482654E07300674275 /* URLSession+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = C55BC2472654E07300674275 /* URLSession+Extensions.swift */; };
 		C5F8C9E62C0FA5EB004F2B68 /* SwiftToolbox in Frameworks */ = {isa = PBXBuildFile; productRef = C5F8C9E52C0FA5EB004F2B68 /* SwiftToolbox */; };
+		C5F8C9E92C0FAB51004F2B68 /* NotionAPI+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5F8C9E82C0FAB51004F2B68 /* NotionAPI+Extensions.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -33,6 +34,7 @@
 		C55BC2432654DF6F00674275 /* Model.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model.swift; sourceTree = "<group>"; };
 		C55BC2452654DFE000674275 /* NotionAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotionAPI.swift; sourceTree = "<group>"; };
 		C55BC2472654E07300674275 /* URLSession+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLSession+Extensions.swift"; sourceTree = "<group>"; };
+		C5F8C9E82C0FAB51004F2B68 /* NotionAPI+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NotionAPI+Extensions.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,10 +69,11 @@
 		C55BC2312654D46000674275 /* hunch */ = {
 			isa = PBXGroup;
 			children = (
-				C55BC2322654D46000674275 /* Hunch.swift */,
 				C55BC2432654DF6F00674275 /* Model.swift */,
 				C55BC2452654DFE000674275 /* NotionAPI.swift */,
+				C55BC2322654D46000674275 /* Hunch.swift */,
 				C55BC2472654E07300674275 /* URLSession+Extensions.swift */,
+				C5F8C9E82C0FAB51004F2B68 /* NotionAPI+Extensions.swift */,
 			);
 			path = hunch;
 			sourceTree = "<group>";
@@ -144,6 +147,7 @@
 				C55BC2482654E07300674275 /* URLSession+Extensions.swift in Sources */,
 				C55BC2332654D46000674275 /* Hunch.swift in Sources */,
 				C55BC2442654DF6F00674275 /* Model.swift in Sources */,
+				C5F8C9E92C0FAB51004F2B68 /* NotionAPI+Extensions.swift in Sources */,
 				C55BC2462654DFE000674275 /* NotionAPI.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
