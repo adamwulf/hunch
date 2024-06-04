@@ -35,6 +35,7 @@
 		C55BC2452654DFE000674275 /* NotionAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotionAPI.swift; sourceTree = "<group>"; };
 		C55BC2472654E07300674275 /* URLSession+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLSession+Extensions.swift"; sourceTree = "<group>"; };
 		C5F8C9E82C0FAB51004F2B68 /* NotionAPI+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NotionAPI+Extensions.swift"; sourceTree = "<group>"; };
+		C5F8C9EA2C0FBD18004F2B68 /* Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon.png; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,6 +70,7 @@
 		C55BC2312654D46000674275 /* hunch */ = {
 			isa = PBXGroup;
 			children = (
+				C5F8C9EA2C0FBD18004F2B68 /* Icon.png */,
 				C55BC2432654DF6F00674275 /* Model.swift */,
 				C55BC2452654DFE000674275 /* NotionAPI.swift */,
 				C55BC2322654D46000674275 /* Hunch.swift */,
