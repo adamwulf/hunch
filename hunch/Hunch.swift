@@ -16,6 +16,17 @@ struct Hunch: ParsableCommand {
         version: "Hunch",
         subcommands: [Fetch.self]
     )
+
+    init() {
+        NotionAPI.logHandler = { (_ logLevel: NotionAPI.LogLevel, _ message: String, _ context: [String: Any]?) in
+            print("\(logLevel.stringValue) \(message) \(String.logfmt(context ?? [:]))")
+        }
+
+        guard let key = ProcessInfo.processInfo.environment["NOTION_KEY"] else {
+            fatalError("NOTION_KEY must be defined in environment")
+        }
+        NotionAPI.shared.token = key
+    }
 }
 
 func log(_ logLevel: NotionAPI.LogLevel, _ message: String, context: [String: Any]? = nil) {
@@ -28,21 +39,9 @@ struct Fetch: ParsableCommand {
         abstract: "Fetch pages or databases from Notion"
     )
 
-    var token: String {
-        guard let key = ProcessInfo.processInfo.environment["NOTION_KEY"] else {
-            fatalError("NOTION_KEY must be defined in environment")
-        }
-        return key
-    }
-
     func run() {
         let group = DispatchGroup() // initialize
 
-        NotionAPI.logHandler = { (_ logLevel: NotionAPI.LogLevel, _ message: String, _ context: [String: Any]?) in
-//            print("\(logLevel.stringValue) \(message) \(String.logfmt(context ?? [:]))")
-        }
-
-        NotionAPI.shared.token = token
         group.enter()
 
         log(.debug, "notion_api", context: ["action": "fetch_db"])
