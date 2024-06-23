@@ -39,9 +39,17 @@ struct Fetch: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "The maxiumum number of results to return")
     var limit: Int?
 
+    @Option(name: .shortAndLong, help: "The format of the output")
+    var format: Format = .id
+
     enum Entity: String, ExpressibleByArgument {
         case database
         case page
+    }
+
+    enum Format: String, ExpressibleByArgument {
+        case jsonl
+        case id
     }
 
     func run() async {
@@ -50,41 +58,63 @@ struct Fetch: AsyncParsableCommand {
         let limit = limit ?? .max
         var count = 0
         var cursor: String?
-        var hasResults = true
+        var ret: [NotionItem] = []
 
-        switch entity {
-        case .database:
-            while hasResults {
-                let result = await NotionAPI.shared.fetchDatabases(cursor: cursor)
-                switch result {
-                case .success(let dbs):
-                    for db in dbs.results {
-                        print("\(db.id)")
-                        count += 1
-                        guard count < limit else { return }
-                    }
-                    hasResults = dbs.hasMore
-                    cursor = dbs.nextCursor
-                case .failure(let error):
-                    print("error: \(error.localizedDescription)")
+        func fetchItems(with cursor: String?) async -> Result<(next: String?, items: [NotionItem]), NotionAPI.NotionAPIServiceError> {
+            switch entity {
+            case .database:
+                switch await NotionAPI.shared.fetchDatabases(cursor: cursor) {
+                case .success(let dbs): return .success(dbs.simpleList)
+                case .failure(let error): return .failure(error)
+                }
+            case .page:
+                switch await NotionAPI.shared.fetchPages(cursor: cursor) {
+                case .success(let dbs): return .success(dbs.simpleList)
+                case .failure(let error): return .failure(error)
                 }
             }
-        case .page:
-            while hasResults {
-                let result = await NotionAPI.shared.fetchPages(cursor: cursor)
-                switch result {
-                case .success(let pages):
-                    for page in pages.results {
-                        print("\(page.id)")
-                        count += 1
-                        guard count < limit else { return }
-                    }
-                    hasResults = pages.hasMore
-                    cursor = pages.nextCursor
-                case .failure(let error):
-                    print("error: \(error.localizedDescription)")
-                    hasResults = false
+        }
+
+        var isFirstTry = true
+        while isFirstTry || cursor != nil {
+            isFirstTry = false
+            let result = await fetchItems(with: cursor)
+            switch result {
+            case .success(let dbs):
+                for db in dbs.items {
+                    ret.append(db)
+                    count += 1
+                    guard count < limit else { break }
                 }
+                cursor = dbs.next
+                guard count < limit else { break }
+            case .failure(let error):
+                print("error: \(error.localizedDescription)")
+                return
+            }
+            guard count < limit else { break }
+        }
+
+        output(list: ret, format: format)
+    }
+
+    func output(list: [NotionItem], format: Format) {
+        switch format {
+        case .id:
+            for item in list {
+                print(item.id)
+            }
+        case .jsonl:
+            do {
+                let ret = try list.map({ ["object": $0.object, "id": $0.id ] }).compactMap({
+                    let data = try JSONSerialization.data(withJSONObject: $0, options: .sortedKeys)
+                    return String(data: data, encoding: .utf8)
+                })
+                for line in ret {
+                    print(line)
+                }
+            } catch {
+                print("error: \(error.localizedDescription)")
             }
         }
     }

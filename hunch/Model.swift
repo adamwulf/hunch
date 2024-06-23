@@ -32,6 +32,10 @@ struct PageList: Codable {
         case nextCursor = "next_cursor"
         case hasMore = "has_more"
     }
+
+    var simpleList: (next: String?, items: [Page]) {
+        return (next: hasMore ? nextCursor : nil, items: results)
+    }
 }
 
 struct DatabaseList: Codable {
@@ -45,13 +49,30 @@ struct DatabaseList: Codable {
         case nextCursor = "next_cursor"
         case hasMore = "has_more"
     }
+
+    var simpleList: (next: String?, items: [Database]) {
+        return (next: hasMore ? nextCursor : nil, items: results)
+    }
 }
 
 struct Block: Codable {
     var id: String
 }
 
-struct Page: Codable {
+protocol NotionItem: Codable {
+    var object: String { get }
+    var id: String { get }
+    var created: Date { get }
+    var lastEdited: Date { get }
+    var properties: [String: Property] { get }
+    var icon: Icon? { get }
+    var archived: Bool { get }
+    var deleted: Bool { get }
+    var title: [RichText] { get }
+    var plainTextTitle: String { get }
+}
+
+struct Page: Codable, NotionItem {
     let object = "page"
     var id: String
     let created: Date
@@ -61,12 +82,17 @@ struct Page: Codable {
     var archived: Bool
     var deleted: Bool
 
-    var plainTextTitle: String {
+    var title: [RichText] {
         guard
             let title = properties.values.first(where: { $0.kind == .title }),
             case .title(_, let value) = title
-        else { return "" }
-        return value.reduce("", { $0 + $1.plainText })
+        else { return [] }
+        return value
+    }
+
+    var plainTextTitle: String {
+        let emoji = icon?.emoji.map({ $0 + " " }) ?? ""
+        return emoji + title.reduce("", { $0 + $1.plainText })
     }
 
     enum CodingKeys: String, CodingKey {
@@ -80,7 +106,7 @@ struct Page: Codable {
     }
 }
 
-struct Database: Codable {
+struct Database: Codable, NotionItem {
     let object = "database"
     var id: String
     let created: Date
@@ -88,6 +114,8 @@ struct Database: Codable {
     var icon: Icon?
     var title: [RichText]
     var properties: [String: Property]
+    var archived: Bool
+    var deleted: Bool
 
     var plainTextTitle: String {
         let emoji = icon?.emoji.map({ $0 + " " }) ?? ""
@@ -101,6 +129,8 @@ struct Database: Codable {
         case icon
         case title
         case properties
+        case archived
+        case deleted = "in_trash"
     }
 }
 
