@@ -36,6 +36,9 @@ struct Fetch: AsyncParsableCommand {
 
     @Argument var entityId: String?
 
+    @Option(name: .shortAndLong, help: "The maxiumum number of results to return")
+    var limit: Int?
+
     enum Entity: String, ExpressibleByArgument {
         case database
         case page
@@ -56,14 +59,25 @@ struct Fetch: AsyncParsableCommand {
                 print("error: \(error.localizedDescription)")
             }
         case .page:
-            let result = await NotionAPI.shared.fetchPages()
-            switch result {
-            case .success(let pages):
-                for page in pages.results {
-                    print("\(page.id)")
+            let limit = limit ?? .max
+            var count = 0
+            var cursor: String?
+            var hasResults = true
+            while hasResults {
+                let result = await NotionAPI.shared.fetchPages(cursor: cursor)
+                switch result {
+                case .success(let pages):
+                    for page in pages.results {
+                        print("\(page.id)")
+                        count += 1
+                        guard count < limit else { return }
+                    }
+                    hasResults = pages.hasMore
+                    cursor = pages.nextCursor
+                case .failure(let error):
+                    print("error: \(error.localizedDescription)")
+                    hasResults = false
                 }
-            case .failure(let error):
-                print("error: \(error.localizedDescription)")
             }
         }
     }

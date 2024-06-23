@@ -56,16 +56,19 @@ class NotionAPI {
 
     private func fetchResources<T: Decodable>(method: String = "GET",
                                               url: URL,
+                                              query: [String: String] = [:],
                                               body: Data? = nil,
                                               completion: @escaping (Result<T, NotionAPIServiceError>) -> Void) {
         guard let token = token else {
             completion(.failure(.missingToken))
             return
         }
-        guard let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
+        guard var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
             completion(.failure(.invalidEndpoint))
             return
         }
+
+        urlComponents.queryItems = query.map({ URLQueryItem(name: $0.key, value: $0.value) })
 
         guard let url = urlComponents.url else {
             completion(.failure(.invalidEndpoint))
@@ -112,12 +115,15 @@ class NotionAPI {
         }
     }
 
-    func fetchPages() async -> Result<PageList, NotionAPIServiceError> {
+    func fetchPages(cursor: String?) async -> Result<PageList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             let bodyJSON: [String: Any] = [:]
             do {
                 let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
-                fetchResources(method: "POST", url: baseURL.appendingPathComponent("search"), body: bodyData) { result in
+                fetchResources(method: "POST",
+                               url: baseURL.appendingPathComponent("search"),
+                               query: ["start_cursor": cursor].compactMapValues({ $0 }),
+                               body: bodyData) { result in
                     continuation.resume(returning: result)
                 }
             } catch {
