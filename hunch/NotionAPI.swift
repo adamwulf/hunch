@@ -19,8 +19,8 @@ class NotionAPI {
 
     public static var logHandler: ((_ level: LogLevel, _ message: String, _ context: [String: Any]?) -> Void)?
     public static let shared = NotionAPI()
-    public var token: String? = nil
-    private init(){}
+    public var token: String?
+    private init() {}
 
     private let urlSession = URLSession(configuration: .ephemeral)
     private let baseURL = URL(string: "https://api.notion.com/v1")!
@@ -86,7 +86,7 @@ class NotionAPI {
         request.httpMethod = method
         request.httpBody = body
 
-        urlSession.dataTask(with: request){ (result) in
+        urlSession.dataTask(with: request) { (result) in
             switch result {
             case .success(let (response, data)):
                 guard let httpResponse = response as? HTTPURLResponse else {

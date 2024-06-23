@@ -62,7 +62,7 @@ struct Page: Codable {
     var deleted: Bool
 
     var plainTextTitle: String {
-        guard 
+        guard
             let title = properties.values.first(where: { $0.kind == .title }),
             case .title(_, let value) = title
         else { return "" }
@@ -80,7 +80,7 @@ struct Page: Codable {
     }
 }
 
-struct Database: Codable{
+struct Database: Codable {
     let object = "database"
     var id: String
     let created: Date
@@ -184,7 +184,6 @@ struct RichText: Codable {
             case date
         }
     }
-
 
     let plainText: String
     var href: String?

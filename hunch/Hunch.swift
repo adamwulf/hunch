@@ -59,7 +59,7 @@ struct Fetch: ParsableCommand {
             NotionAPI.shared.fetchDatabases { result in
                 switch result {
                 case .success(let dbs):
-                    print("\(dbs.object)");
+                    print("\(dbs.object)")
                     for db in dbs.results {
                         print("\(db.id)")
                     }
@@ -69,7 +69,7 @@ struct Fetch: ParsableCommand {
                 group.leave()
             }
         case .page:
-            NotionAPI.shared.fetchPages { result in
+            NotionAPI.shared.fetchPages { _ in
                 group.leave()
             }
         }
@@ -77,11 +77,8 @@ struct Fetch: ParsableCommand {
     }
 }
 
-
-
-
 //
-//NotionAPI.shared.fetchDatabases { result in
+// NotionAPI.shared.fetchDatabases { result in
 //    switch result {
 //    case .success(let dbs):
 //        for db in dbs.results {
@@ -116,7 +113,7 @@ struct Fetch: ParsableCommand {
 //        print(error)
 //    }
 //    group.leave()
-//}
+// }
 ////        group.enter()
 ////        NotionAPI.shared.fetchPages { result in
 ////            switch result {
@@ -129,4 +126,4 @@ struct Fetch: ParsableCommand {
 ////            }
 ////            group.leave()
 ////        }
-//group.wait()
+// group.wait()
