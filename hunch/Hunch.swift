@@ -32,16 +32,6 @@ struct Fetch: AsyncParsableCommand {
         abstract: "Fetch pages or databases from Notion"
     )
 
-    @Argument var entity: Entity
-
-    @Argument var entityId: String?
-
-    @Option(name: .shortAndLong, help: "The maxiumum number of results to return")
-    var limit: Int?
-
-    @Option(name: .shortAndLong, help: "The format of the output")
-    var format: Format = .id
-
     enum Entity: String, ExpressibleByArgument {
         case database
         case page
@@ -51,6 +41,16 @@ struct Fetch: AsyncParsableCommand {
         case jsonl
         case id
     }
+
+    @Argument(help: "Whether to fetch databases or pages") var entity: Entity
+
+    @Argument(help: "The Notion id of the object") var entityId: String?
+
+    @Option(name: .shortAndLong, help: "The maxiumum number of results to return")
+    var limit: Int?
+
+    @Option(name: .shortAndLong, help: "The format of the output")
+    var format: Format = .id
 
     func run() async {
         log(.debug, "notion_api", context: ["action": "fetch_db"])
