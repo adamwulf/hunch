@@ -47,22 +47,29 @@ struct Fetch: AsyncParsableCommand {
     func run() async {
         log(.debug, "notion_api", context: ["action": "fetch_db"])
 
+        let limit = limit ?? .max
+        var count = 0
+        var cursor: String?
+        var hasResults = true
+
         switch entity {
         case .database:
-            let result = await NotionAPI.shared.fetchDatabases()
-            switch result {
-            case .success(let dbs):
-                for db in dbs.results {
-                    print("\(db.id)")
+            while hasResults {
+                let result = await NotionAPI.shared.fetchDatabases(cursor: cursor)
+                switch result {
+                case .success(let dbs):
+                    for db in dbs.results {
+                        print("\(db.id)")
+                        count += 1
+                        guard count < limit else { return }
+                    }
+                    hasResults = dbs.hasMore
+                    cursor = dbs.nextCursor
+                case .failure(let error):
+                    print("error: \(error.localizedDescription)")
                 }
-            case .failure(let error):
-                print("error: \(error.localizedDescription)")
             }
         case .page:
-            let limit = limit ?? .max
-            var count = 0
-            var cursor: String?
-            var hasResults = true
             while hasResults {
                 let result = await NotionAPI.shared.fetchPages(cursor: cursor)
                 switch result {

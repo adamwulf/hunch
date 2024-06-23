@@ -107,9 +107,11 @@ class NotionAPI {
         }.resume()
     }
 
-    func fetchDatabases() async -> Result<DatabaseList, NotionAPIServiceError> {
+    func fetchDatabases(cursor: String?) async -> Result<DatabaseList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
-            fetchResources(url: baseURL.appendingPathComponent("databases"), completion: { result in
+            fetchResources(url: baseURL.appendingPathComponent("databases"),
+                           query: ["start_cursor": cursor].compactMapValues({ $0 }),
+                           completion: { result in
                 continuation.resume(returning: result)
             })
         }
