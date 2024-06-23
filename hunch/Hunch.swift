@@ -53,12 +53,17 @@ struct Fetch: AsyncParsableCommand {
                     print("\(db.id)")
                 }
             case .failure(let error):
-                print("\(error.localizedDescription)")
+                print("error: \(error.localizedDescription)")
             }
-
         case .page:
-            NotionAPI.shared.fetchPages { _ in
-
+            let result = await NotionAPI.shared.fetchPages()
+            switch result {
+            case .success(let pages):
+                for page in pages.results {
+                    print("\(page.id)")
+                }
+            case .failure(let error):
+                print("error: \(error.localizedDescription)")
             }
         }
     }

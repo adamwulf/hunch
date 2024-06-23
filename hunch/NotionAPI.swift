@@ -112,8 +112,18 @@ class NotionAPI {
         }
     }
 
-    private func fetchDatabases(completion: @escaping (Result<DatabaseList, NotionAPIServiceError>) -> Void) {
-        fetchResources(url: baseURL.appendingPathComponent("databases"), completion: completion)
+    func fetchPages() async -> Result<PageList, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let bodyJSON: [String: Any] = [:]
+            do {
+                let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
+                fetchResources(method: "POST", url: baseURL.appendingPathComponent("search"), body: bodyData) { result in
+                    continuation.resume(returning: result)
+                }
+            } catch {
+                continuation.resume(returning: .failure(.encodeError(error)))
+            }
+        }
     }
 
     func fetchDatabaseEntries(in database: Database, completion: @escaping (Result<PageList, NotionAPIServiceError>) -> Void) {
@@ -126,13 +136,4 @@ class NotionAPI {
         fetchResources(method: "GET", url: url, body: nil, completion: completion)
     }
 
-    func fetchPages(completion: @escaping (Result<PageList, NotionAPIServiceError>) -> Void) {
-        let bodyJSON: [String: Any] = [:]
-        do {
-            let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
-            fetchResources(method: "POST", url: baseURL.appendingPathComponent("search"), body: bodyData, completion: completion)
-        } catch {
-            completion(.failure(.encodeError(error)))
-        }
-    }
 }
