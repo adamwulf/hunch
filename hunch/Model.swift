@@ -403,10 +403,10 @@ enum Property: Codable {
             }
         } catch {
             let path = decoder.codingPath.map({ $0.intValue.map({ "\($0)" }) ?? $0.stringValue }).joined(separator: ",")
-            NotionAPI.logHandler?(.warning, "notion_api", ["status": "decoding_error",
-                                                           "error": error.localizedDescription,
-                                                           "path": path,
-                                                           "key": kind.rawValue])
+            NotionAPI.logHandler?(.error, "notion_api", ["status": "decoding_error",
+                                                         "error": error.localizedDescription,
+                                                         "path": path,
+                                                         "key": kind.rawValue])
             self = .null(id: id, type: kind)
         }
 

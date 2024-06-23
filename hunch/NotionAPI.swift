@@ -7,17 +7,10 @@
 //
 
 import Foundation
+import OSLog
 
 class NotionAPI {
-    enum LogLevel {
-        case verbose
-        case debug
-        case info
-        case warning
-        case error
-    }
-
-    public static var logHandler: ((_ level: LogLevel, _ message: String, _ context: [String: Any]?) -> Void)?
+    public static var logHandler: ((_ level: OSLogType, _ message: String, _ context: [String: Any]?) -> Void)?
     public static let shared = NotionAPI()
     public var token: String?
     private init() {}
@@ -111,7 +104,15 @@ class NotionAPI {
         }.resume()
     }
 
-    func fetchDatabases(completion: @escaping (Result<DatabaseList, NotionAPIServiceError>) -> Void) {
+    func fetchDatabases() async -> Result<DatabaseList, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            fetchResources(url: baseURL.appendingPathComponent("databases"), completion: { result in
+                continuation.resume(returning: result)
+            })
+        }
+    }
+
+    private func fetchDatabases(completion: @escaping (Result<DatabaseList, NotionAPIServiceError>) -> Void) {
         fetchResources(url: baseURL.appendingPathComponent("databases"), completion: completion)
     }
 

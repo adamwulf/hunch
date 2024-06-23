@@ -10,7 +10,7 @@ import ArgumentParser
 import SwiftToolbox
 
 @main
-struct Hunch: ParsableCommand {
+struct Hunch: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
         commandName: "hunch",
         version: "Hunch",
@@ -18,22 +18,15 @@ struct Hunch: ParsableCommand {
     )
 
     init() {
-        NotionAPI.logHandler = { (_ logLevel: NotionAPI.LogLevel, _ message: String, _ context: [String: Any]?) in
-            print("\(logLevel.stringValue) \(message) \(String.logfmt(context ?? [:]))")
-        }
-
         guard let key = ProcessInfo.processInfo.environment["NOTION_KEY"] else {
             fatalError("NOTION_KEY must be defined in environment")
         }
+        Logging.configure()
         NotionAPI.shared.token = key
     }
 }
 
-func log(_ logLevel: NotionAPI.LogLevel, _ message: String, context: [String: Any]? = nil) {
-    print("\(logLevel.stringValue) \(message) \(String.logfmt(context ?? [:]))")
-}
-
-struct Fetch: ParsableCommand {
+struct Fetch: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
         commandName: "fetch",
         abstract: "Fetch pages or databases from Notion"
@@ -48,32 +41,26 @@ struct Fetch: ParsableCommand {
         case page
     }
 
-    func run() {
+    func run() async {
         log(.debug, "notion_api", context: ["action": "fetch_db"])
-
-        let group = DispatchGroup() // initialize
-        group.enter()
 
         switch entity {
         case .database:
-            NotionAPI.shared.fetchDatabases { result in
-                switch result {
-                case .success(let dbs):
-                    print("\(dbs.object)")
-                    for db in dbs.results {
-                        print("\(db.id)")
-                    }
-                case .failure(let error):
-                    print("\(error.localizedDescription)")
+            let result = await NotionAPI.shared.fetchDatabases()
+            switch result {
+            case .success(let dbs):
+                for db in dbs.results {
+                    print("\(db.id)")
                 }
-                group.leave()
+            case .failure(let error):
+                print("\(error.localizedDescription)")
             }
+
         case .page:
             NotionAPI.shared.fetchPages { _ in
-                group.leave()
+
             }
         }
-        group.wait()
     }
 }
 
