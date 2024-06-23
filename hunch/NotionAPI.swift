@@ -7,20 +7,13 @@
 //
 
 import Foundation
+import OSLog
 
 class NotionAPI {
-    enum LogLevel {
-        case verbose
-        case debug
-        case info
-        case warning
-        case error
-    }
-
-    public static var logHandler: ((_ level: LogLevel, _ message: String, _ context: [String: Any]?) -> Void)?
+    public static var logHandler: ((_ level: OSLogType, _ message: String, _ context: [String: Any]?) -> Void)?
     public static let shared = NotionAPI()
-    public var token: String? = nil
-    private init(){}
+    public var token: String?
+    private init() {}
 
     private let urlSession = URLSession(configuration: .ephemeral)
     private let baseURL = URL(string: "https://api.notion.com/v1")!
@@ -63,16 +56,19 @@ class NotionAPI {
 
     private func fetchResources<T: Decodable>(method: String = "GET",
                                               url: URL,
+                                              query: [String: String] = [:],
                                               body: Data? = nil,
                                               completion: @escaping (Result<T, NotionAPIServiceError>) -> Void) {
         guard let token = token else {
             completion(.failure(.missingToken))
             return
         }
-        guard let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
+        guard var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
             completion(.failure(.invalidEndpoint))
             return
         }
+
+        urlComponents.queryItems = query.map({ URLQueryItem(name: $0.key, value: $0.value) })
 
         guard let url = urlComponents.url else {
             completion(.failure(.invalidEndpoint))
@@ -86,7 +82,7 @@ class NotionAPI {
         request.httpMethod = method
         request.httpBody = body
 
-        urlSession.dataTask(with: request){ (result) in
+        urlSession.dataTask(with: request) { (result) in
             switch result {
             case .success(let (response, data)):
                 guard let httpResponse = response as? HTTPURLResponse else {
@@ -111,8 +107,31 @@ class NotionAPI {
         }.resume()
     }
 
-    func fetchDatabases(completion: @escaping (Result<DatabaseList, NotionAPIServiceError>) -> Void) {
-        fetchResources(url: baseURL.appendingPathComponent("databases"), completion: completion)
+    func fetchDatabases(cursor: String?) async -> Result<DatabaseList, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            fetchResources(url: baseURL.appendingPathComponent("databases"),
+                           query: ["start_cursor": cursor].compactMapValues({ $0 }),
+                           completion: { result in
+                continuation.resume(returning: result)
+            })
+        }
+    }
+
+    func fetchPages(cursor: String?) async -> Result<PageList, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let bodyJSON: [String: Any] = [:]
+            do {
+                let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
+                fetchResources(method: "POST",
+                               url: baseURL.appendingPathComponent("search"),
+                               query: ["start_cursor": cursor].compactMapValues({ $0 }),
+                               body: bodyData) { result in
+                    continuation.resume(returning: result)
+                }
+            } catch {
+                continuation.resume(returning: .failure(.encodeError(error)))
+            }
+        }
     }
 
     func fetchDatabaseEntries(in database: Database, completion: @escaping (Result<PageList, NotionAPIServiceError>) -> Void) {
@@ -125,13 +144,4 @@ class NotionAPI {
         fetchResources(method: "GET", url: url, body: nil, completion: completion)
     }
 
-    func fetchPages(completion: @escaping (Result<PageList, NotionAPIServiceError>) -> Void) {
-        let bodyJSON: [String: Any] = [:]
-        do {
-            let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
-            fetchResources(method: "POST", url: baseURL.appendingPathComponent("search"), body: bodyData, completion: completion)
-        } catch {
-            completion(.failure(.encodeError(error)))
-        }
-    }
 }
