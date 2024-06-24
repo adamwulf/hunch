@@ -55,19 +55,36 @@ struct DatabaseList: Codable {
     }
 }
 
-struct Block: NotionItem {
-    var object: String
-    var id: String
-    var parent: Parent?
-    var description: String {
-        return "block: \(object)"
-    }
-}
-
 protocol NotionItem: Codable, CustomStringConvertible {
     var object: String { get }
     var id: String { get }
     var parent: Parent? { get }
+}
+
+struct Block: NotionItem {
+    var object = "block"
+    var id: String
+    var parent: Parent?
+    var type: BlockType
+    let created: Date
+    var lastEdited: Date
+    var hasChildren: Bool
+    var archived: Bool
+    var deleted: Bool
+    var description: String {
+        return "block: \(type)"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case parent
+        case type
+        case created = "created_time"
+        case lastEdited = "last_edited_time"
+        case hasChildren = "has_children"
+        case archived
+        case deleted = "in_trash"
+    }
 }
 
 struct Page: NotionItem {
@@ -134,6 +151,40 @@ struct Database: NotionItem {
         case archived
         case deleted = "in_trash"
     }
+}
+
+enum BlockType: String, Codable {
+    case bookmark
+    case breadcrumb
+    case bulletedListItem = "bulleted_list_item"
+    case callout
+    case childDatabase = "child_database"
+    case childPage = "child_page"
+    case column
+    case columnList = "column_list"
+    case divider
+    case embed
+    case equation
+    case file
+    case heading1 = "heading_1"
+    case heading2 = "heading_2"
+    case heading3 = "heading_3"
+    case image
+    case linkPreview = "link_preview"
+    case linkToPage = "link_to_page"
+    case numberedListItem = "numbered_list_item"
+    case paragraph
+    case pdf
+    case quote
+    case syncedBlock = "synced_block"
+    case table
+    case tableOfContents = "table_of_contents"
+    case tableRow = "table_row"
+    case template
+    case toDo = "to_do"
+    case toggle
+    case unsupported
+    case video
 }
 
 struct Icon: Codable {
