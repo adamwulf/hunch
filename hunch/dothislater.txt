@@ -1,0 +1,52 @@
+
+
+//
+// NotionAPI.shared.fetchDatabases { result in
+//    switch result {
+//    case .success(let dbs):
+//        for db in dbs.results {
+//            group.enter()
+//            log(.debug, "notion_api", context: ["action": "fetch_entries", "db": db.plainTextTitle])
+//            NotionAPI.shared.fetchDatabaseEntries(in: db) { result in
+//                switch result {
+//                case .success(let pages):
+//                    for page in pages.results {
+//                        print(page.plainTextTitle)
+//                    }
+//                    if let firstPage = pages.results.first {
+//                        group.enter()
+//                        NotionAPI.shared.fetchPageContent(in: firstPage) { result in
+//                            switch result {
+//                            case .success(let blocks):
+//                                print(blocks)
+//                            case .failure(let error):
+//                                print(error)
+//                            }
+//                            group.leave()
+//                        }
+//                    }
+//                case .failure(let error):
+//                    print(error)
+//                }
+//                group.leave()
+//            }
+//            print(db.plainTextTitle)
+//        }
+//    case .failure(let error):
+//        print(error)
+//    }
+//    group.leave()
+// }
+////        group.enter()
+////        NotionAPI.shared.fetchPages { result in
+////            switch result {
+////            case .success(let pages):
+////                for page in pages.results {
+////                    print(page.plainTextTitle)
+////                }
+////            case .failure(let error):
+////                print(error)
+////            }
+////            group.leave()
+////        }
+// group.wait()

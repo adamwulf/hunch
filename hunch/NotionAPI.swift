@@ -43,7 +43,7 @@ class NotionAPI {
         case search
     }
 
-    public enum NotionAPIServiceError: Error {
+    public enum NotionAPIServiceError: Error, LocalizedError {
         case missingToken
         case apiError(_ error: Error)
         case invalidEndpoint
@@ -52,6 +52,27 @@ class NotionAPI {
         case noData
         case decodeError(_ error: Error)
         case encodeError(_ error: Error)
+
+        var localizedDescription: String {
+            switch self {
+            case .missingToken:
+                return "missing token"
+            case .apiError(let error):
+                return "api error: \(error.localizedDescription)"
+            case .invalidEndpoint:
+                return "invalid endpoint"
+            case .invalidResponse:
+                return "invalid response"
+            case .invalidResponseStatus(let statusCode):
+                return "invalid response status: \(statusCode)"
+            case .noData:
+                return "no data"
+            case .decodeError(let error):
+                return "decode error: \(error.localizedDescription)"
+            case .encodeError(let error):
+                return "encode error: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func fetchResources<T: Decodable>(method: String = "GET",
@@ -107,26 +128,39 @@ class NotionAPI {
         }.resume()
     }
 
-    func fetchDatabases(cursor: String?) async -> Result<DatabaseList, NotionAPIServiceError> {
+    func fetchDatabases(cursor: String?, parentId: String?) async -> Result<DatabaseList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             fetchResources(url: baseURL.appendingPathComponent("databases"),
-                           query: ["start_cursor": cursor].compactMapValues({ $0 }),
+                           query: ["start_cursor": cursor, "parent": parentId].compactMapValues({ $0 }),
                            completion: { result in
                 continuation.resume(returning: result)
             })
         }
     }
 
-    func fetchPages(cursor: String?) async -> Result<PageList, NotionAPIServiceError> {
+    func fetchPages(cursor: String?, databaseId: String?) async -> Result<PageList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             let bodyJSON: [String: Any] = [:]
             do {
-                let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
-                fetchResources(method: "POST",
-                               url: baseURL.appendingPathComponent("search"),
-                               query: ["start_cursor": cursor].compactMapValues({ $0 }),
-                               body: bodyData) { result in
-                    continuation.resume(returning: result)
+                if let databaseId = databaseId {
+                    let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
+                    let targetURL = baseURL.appendingPathComponent("databases")
+                        .appendingPathComponent(databaseId)
+                        .appendingPathComponent("query")
+                    fetchResources(method: "POST",
+                                   url: targetURL,
+                                   query: ["start_cursor": cursor, "filter_properties": ""].compactMapValues({ $0 }),
+                                   body: bodyData) { result in
+                        continuation.resume(returning: result)
+                    }
+                } else {
+                    let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
+                    fetchResources(method: "POST",
+                                   url: baseURL.appendingPathComponent("search"),
+                                   query: ["start_cursor": cursor].compactMapValues({ $0 }),
+                                   body: bodyData) { result in
+                        continuation.resume(returning: result)
+                    }
                 }
             } catch {
                 continuation.resume(returning: .failure(.encodeError(error)))
@@ -134,14 +168,12 @@ class NotionAPI {
         }
     }
 
-    func fetchDatabaseEntries(in database: Database, completion: @escaping (Result<PageList, NotionAPIServiceError>) -> Void) {
-        let url = baseURL.appendingPathComponent("databases").appendingPathComponent(database.id).appendingPathComponent("query")
-        fetchResources(method: "POST", url: url, body: nil, completion: completion)
+    func fetchPageContent(in pageIdentifier: String) async -> Result<BlockList, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let url = baseURL.appendingPathComponent("blocks").appendingPathComponent(pageIdentifier).appendingPathComponent("children")
+            fetchResources(method: "GET", url: url, body: nil) { result in
+                continuation.resume(returning: result)
+            }
+        }
     }
-
-    func fetchPageContent(in page: Page, completion: @escaping (Result<BlockList, NotionAPIServiceError>) -> Void) {
-        let url = baseURL.appendingPathComponent("blocks").appendingPathComponent(page.id).appendingPathComponent("children")
-        fetchResources(method: "GET", url: url, body: nil, completion: completion)
-    }
-
 }
