@@ -96,6 +96,7 @@ struct Page: NotionItem {
 
     enum CodingKeys: String, CodingKey {
         case id
+        case parent
         case created = "created_time"
         case lastEdited = "last_edited_time"
         case properties
@@ -124,6 +125,7 @@ struct Database: NotionItem {
 
     enum CodingKeys: String, CodingKey {
         case id
+        case parent
         case created = "created_time"
         case lastEdited = "last_edited_time"
         case icon
@@ -565,7 +567,7 @@ struct Rollup: Codable {
 enum Parent: Codable {
     case database(String)
     case page(String)
-    case workspace(Bool)
+    case workspace
     case block(String)
 
     enum CodingKeys: String, CodingKey {
@@ -595,8 +597,7 @@ enum Parent: Codable {
             let pageId = try container.decode(String.self, forKey: .page_id)
             self = .page(pageId)
         case .workspace:
-            let workspace = try container.decode(Bool.self, forKey: .workspace)
-            self = .workspace(workspace)
+            self = .workspace
         case .block:
             let blockId = try container.decode(String.self, forKey: .block_id)
             self = .block(blockId)
@@ -613,12 +614,25 @@ enum Parent: Codable {
         case .page(let pageId):
             try container.encode(ParentType.page, forKey: .type)
             try container.encode(pageId, forKey: .page_id)
-        case .workspace(let workspace):
+        case .workspace:
             try container.encode(ParentType.workspace, forKey: .type)
-            try container.encode(workspace, forKey: .workspace)
+            try container.encode(true, forKey: .workspace)
         case .block(let blockId):
             try container.encode(ParentType.block, forKey: .type)
             try container.encode(blockId, forKey: .block_id)
+        }
+    }
+
+    func asDictionary() -> [String: String] {
+        switch self {
+        case .database(let parentId):
+            return ["type": ParentType.database.rawValue, "id": parentId]
+        case .page(let parentId):
+            return ["type": ParentType.page.rawValue, "id": parentId]
+        case .workspace:
+            return ["type": ParentType.workspace.rawValue]
+        case .block(let parentId):
+            return ["type": ParentType.block.rawValue, "id": parentId]
         }
     }
 }

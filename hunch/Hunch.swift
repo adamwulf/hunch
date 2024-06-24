@@ -39,7 +39,13 @@ struct Hunch: AsyncParsableCommand {
             }
         case .jsonl:
             do {
-                let ret = try list.map({ ["object": $0.object, "id": $0.id, "description": $0.description ] }).compactMap({
+                let ret = try list.map({
+                    var ret: [String: Any] = ["object": $0.object, "id": $0.id, "description": $0.description]
+                    if let parent = $0.parent?.asDictionary() {
+                        ret["parent"] = parent
+                    }
+                    return ret
+                }).compactMap({
                     let data = try JSONSerialization.data(withJSONObject: $0, options: .sortedKeys)
                     return String(data: data, encoding: .utf8)
                 })
@@ -51,5 +57,4 @@ struct Hunch: AsyncParsableCommand {
             }
         }
     }
-
 }
