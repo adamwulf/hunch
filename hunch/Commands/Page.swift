@@ -15,7 +15,7 @@ struct PageCommand: AsyncParsableCommand {
         abstract: "Fetch pages from Notion"
     )
 
-    @Argument(help: "The Notion id of the object") var entityId: String?
+    @Option(name: .shortAndLong, help: "The Notion id of the object") var database: String?
 
     @Option(name: .shortAndLong, help: "The maxiumum number of results to return")
     var limit: Int?
@@ -32,7 +32,7 @@ struct PageCommand: AsyncParsableCommand {
         var isFirstTry = true
         while isFirstTry || cursor != nil {
             isFirstTry = false
-            let result = await NotionAPI.shared.fetchPages(cursor: cursor)
+            let result = await NotionAPI.shared.fetchPages(cursor: cursor, databaseId: database)
             switch result {
             case .success(let pages):
                 for page in pages.results {

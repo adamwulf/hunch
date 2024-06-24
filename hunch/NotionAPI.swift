@@ -107,26 +107,39 @@ class NotionAPI {
         }.resume()
     }
 
-    func fetchDatabases(cursor: String?) async -> Result<DatabaseList, NotionAPIServiceError> {
+    func fetchDatabases(cursor: String?, parentId: String?) async -> Result<DatabaseList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             fetchResources(url: baseURL.appendingPathComponent("databases"),
-                           query: ["start_cursor": cursor].compactMapValues({ $0 }),
+                           query: ["start_cursor": cursor, "parent": parentId].compactMapValues({ $0 }),
                            completion: { result in
                 continuation.resume(returning: result)
             })
         }
     }
 
-    func fetchPages(cursor: String?) async -> Result<PageList, NotionAPIServiceError> {
+    func fetchPages(cursor: String?, databaseId: String?) async -> Result<PageList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             let bodyJSON: [String: Any] = [:]
             do {
-                let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
-                fetchResources(method: "POST",
-                               url: baseURL.appendingPathComponent("search"),
-                               query: ["start_cursor": cursor].compactMapValues({ $0 }),
-                               body: bodyData) { result in
-                    continuation.resume(returning: result)
+                if let databaseId = databaseId {
+                    let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
+                    let targetURL = baseURL.appendingPathComponent("databases")
+                        .appendingPathComponent(databaseId)
+                        .appendingPathComponent("query")
+                    fetchResources(method: "POST",
+                                   url: targetURL,
+                                   query: ["start_cursor": cursor, "filter_properties": ""].compactMapValues({ $0 }),
+                                   body: bodyData) { result in
+                        continuation.resume(returning: result)
+                    }
+                } else {
+                    let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
+                    fetchResources(method: "POST",
+                                   url: baseURL.appendingPathComponent("search"),
+                                   query: ["start_cursor": cursor].compactMapValues({ $0 }),
+                                   body: bodyData) { result in
+                        continuation.resume(returning: result)
+                    }
                 }
             } catch {
                 continuation.resume(returning: .failure(.encodeError(error)))

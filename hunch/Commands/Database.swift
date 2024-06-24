@@ -32,7 +32,7 @@ struct DatabaseCommand: AsyncParsableCommand {
         var isFirstTry = true
         while isFirstTry || cursor != nil {
             isFirstTry = false
-            let result = await NotionAPI.shared.fetchDatabases(cursor: cursor)
+            let result = await NotionAPI.shared.fetchDatabases(cursor: cursor, parentId: entityId)
             switch result {
             case .success(let dbs):
                 for db in dbs.results {
