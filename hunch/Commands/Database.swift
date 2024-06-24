@@ -12,7 +12,7 @@ import SwiftToolbox
 struct DatabaseCommand: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
         commandName: "database",
-        abstract: "Fetch pages or databases from Notion"
+        abstract: "Fetch databases from Notion"
     )
 
     enum Format: String, ExpressibleByArgument {
@@ -29,8 +29,6 @@ struct DatabaseCommand: AsyncParsableCommand {
     var format: Format = .id
 
     func run() async {
-        log(.debug, "notion_api", context: ["action": "fetch_db"])
-
         let limit = limit ?? .max
         var count = 0
         var cursor: String?
@@ -50,8 +48,7 @@ struct DatabaseCommand: AsyncParsableCommand {
                 cursor = dbs.nextCursor
                 guard count < limit else { break }
             case .failure(let error):
-                print("error: \(error.localizedDescription)")
-                return
+                fatalError("error: \(error.localizedDescription)")
             }
             guard count < limit else { break }
         }
