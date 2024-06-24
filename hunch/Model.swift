@@ -55,26 +55,25 @@ struct DatabaseList: Codable {
     }
 }
 
-struct Block: Codable {
+struct Block: NotionItem {
+    var object: String
     var id: String
+    var parent: Parent?
+    var description: String {
+        return "block: \(object)"
+    }
 }
 
-protocol NotionItem: Codable {
+protocol NotionItem: Codable, CustomStringConvertible {
     var object: String { get }
     var id: String { get }
-    var created: Date { get }
-    var lastEdited: Date { get }
-    var properties: [String: Property] { get }
-    var icon: Icon? { get }
-    var archived: Bool { get }
-    var deleted: Bool { get }
-    var title: [RichText] { get }
-    var plainTextTitle: String { get }
+    var parent: Parent? { get }
 }
 
-struct Page: Codable, NotionItem {
+struct Page: NotionItem {
     let object = "page"
     var id: String
+    var parent: Parent?
     let created: Date
     var lastEdited: Date
     var properties: [String: Property]
@@ -90,7 +89,7 @@ struct Page: Codable, NotionItem {
         return value
     }
 
-    var plainTextTitle: String {
+    var description: String {
         let emoji = icon?.emoji.map({ $0 + " " }) ?? ""
         return emoji + title.reduce("", { $0 + $1.plainText })
     }
@@ -106,9 +105,10 @@ struct Page: Codable, NotionItem {
     }
 }
 
-struct Database: Codable, NotionItem {
+struct Database: NotionItem {
     let object = "database"
     var id: String
+    var parent: Parent?
     let created: Date
     var lastEdited: Date
     var icon: Icon?
@@ -117,7 +117,7 @@ struct Database: Codable, NotionItem {
     var archived: Bool
     var deleted: Bool
 
-    var plainTextTitle: String {
+    var description: String {
         let emoji = icon?.emoji.map({ $0 + " " }) ?? ""
         return emoji + title.reduce("", { $0 + $1.plainText })
     }
@@ -560,4 +560,65 @@ struct Relation: Codable {
 
 struct Rollup: Codable {
     var value: String
+}
+
+enum Parent: Codable {
+    case database(String)
+    case page(String)
+    case workspace(Bool)
+    case block(String)
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case database_id
+        case page_id
+        case workspace
+        case block_id
+    }
+
+    enum ParentType: String, Codable {
+        case database = "database_id"
+        case page = "page_id"
+        case workspace = "workspace"
+        case block = "block_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(ParentType.self, forKey: .type)
+
+        switch type {
+        case .database:
+            let databaseId = try container.decode(String.self, forKey: .database_id)
+            self = .database(databaseId)
+        case .page:
+            let pageId = try container.decode(String.self, forKey: .page_id)
+            self = .page(pageId)
+        case .workspace:
+            let workspace = try container.decode(Bool.self, forKey: .workspace)
+            self = .workspace(workspace)
+        case .block:
+            let blockId = try container.decode(String.self, forKey: .block_id)
+            self = .block(blockId)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        switch self {
+        case .database(let databaseId):
+            try container.encode(ParentType.database, forKey: .type)
+            try container.encode(databaseId, forKey: .database_id)
+        case .page(let pageId):
+            try container.encode(ParentType.page, forKey: .type)
+            try container.encode(pageId, forKey: .page_id)
+        case .workspace(let workspace):
+            try container.encode(ParentType.workspace, forKey: .type)
+            try container.encode(workspace, forKey: .workspace)
+        case .block(let blockId):
+            try container.encode(ParentType.block, forKey: .type)
+            try container.encode(blockId, forKey: .block_id)
+        }
+    }
 }

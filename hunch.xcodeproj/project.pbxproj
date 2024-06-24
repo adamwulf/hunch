@@ -15,6 +15,7 @@
 		C5DAB59A2C27E98C007BA0E8 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5DAB5992C27E98C007BA0E8 /* Logging.swift */; };
 		C5DAB59E2C291A34007BA0E8 /* Database.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5DAB59D2C291A34007BA0E8 /* Database.swift */; };
 		C5DAB5A02C291A39007BA0E8 /* Page.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5DAB59F2C291A39007BA0E8 /* Page.swift */; };
+		C5DAB5A22C291C33007BA0E8 /* Blocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5DAB5A12C291C33007BA0E8 /* Blocks.swift */; };
 		C5F8C9E62C0FA5EB004F2B68 /* SwiftToolbox in Frameworks */ = {isa = PBXBuildFile; productRef = C5F8C9E52C0FA5EB004F2B68 /* SwiftToolbox */; };
 /* End PBXBuildFile section */
 
@@ -40,6 +41,7 @@
 		C5DAB59B2C291A1A007BA0E8 /* dothislater.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = dothislater.txt; sourceTree = "<group>"; };
 		C5DAB59D2C291A34007BA0E8 /* Database.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Database.swift; sourceTree = "<group>"; };
 		C5DAB59F2C291A39007BA0E8 /* Page.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Page.swift; sourceTree = "<group>"; };
+		C5DAB5A12C291C33007BA0E8 /* Blocks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Blocks.swift; sourceTree = "<group>"; };
 		C5F8C9EA2C0FBD18004F2B68 /* Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon.png; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -92,6 +94,7 @@
 			children = (
 				C5DAB59D2C291A34007BA0E8 /* Database.swift */,
 				C5DAB59F2C291A39007BA0E8 /* Page.swift */,
+				C5DAB5A12C291C33007BA0E8 /* Blocks.swift */,
 			);
 			path = Commands;
 			sourceTree = "<group>";
@@ -165,6 +168,7 @@
 				C5DAB59E2C291A34007BA0E8 /* Database.swift in Sources */,
 				C55BC2482654E07300674275 /* URLSession+Extensions.swift in Sources */,
 				C5DAB59A2C27E98C007BA0E8 /* Logging.swift in Sources */,
+				C5DAB5A22C291C33007BA0E8 /* Blocks.swift in Sources */,
 				C55BC2332654D46000674275 /* Hunch.swift in Sources */,
 				C5DAB5A02C291A39007BA0E8 /* Page.swift in Sources */,
 				C55BC2442654DF6F00674275 /* Model.swift in Sources */,

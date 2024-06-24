@@ -1,5 +1,5 @@
 //
-//  Page.swift
+//  Content.swift
 //  hunch
 //
 //  Created by Adam Wulf on 6/23/24.
@@ -9,22 +9,18 @@ import Foundation
 import ArgumentParser
 import SwiftToolbox
 
-struct PageCommand: AsyncParsableCommand {
+struct BlocksCommand: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
-        commandName: "page",
-        abstract: "Fetch pages from Notion"
+        commandName: "blocks",
+        abstract: "Fetch block content from Notion"
     )
 
-    @Argument(help: "The Notion id of the object") var entityId: String?
-
-    @Option(name: .shortAndLong, help: "The maxiumum number of results to return")
-    var limit: Int?
+    @Argument(help: "The Notion id of the object") var pageId: String
 
     @Option(name: .shortAndLong, help: "The format of the output")
     var format: Hunch.Format = .id
 
     func run() async {
-        let limit = limit ?? .max
         var count = 0
         var cursor: String?
         var ret: [NotionItem] = []
@@ -32,20 +28,17 @@ struct PageCommand: AsyncParsableCommand {
         var isFirstTry = true
         while isFirstTry || cursor != nil {
             isFirstTry = false
-            let result = await NotionAPI.shared.fetchPages(cursor: cursor)
+            let result = await NotionAPI.shared.fetchPageContent(in: pageId)
             switch result {
-            case .success(let pages):
-                for page in pages.results {
-                    ret.append(page)
+            case .success(let blocks):
+                for block in blocks.results {
+                    ret.append(block)
                     count += 1
-                    guard count < limit else { break }
                 }
-                cursor = pages.nextCursor
-                guard count < limit else { break }
+                cursor = blocks.nextCursor
             case .failure(let error):
                 fatalError("error: \(error.localizedDescription)")
             }
-            guard count < limit else { break }
         }
 
         Hunch.output(list: ret, format: format)
