@@ -43,7 +43,7 @@ class NotionAPI {
         case search
     }
 
-    public enum NotionAPIServiceError: Error {
+    public enum NotionAPIServiceError: Error, LocalizedError {
         case missingToken
         case apiError(_ error: Error)
         case invalidEndpoint
@@ -52,6 +52,27 @@ class NotionAPI {
         case noData
         case decodeError(_ error: Error)
         case encodeError(_ error: Error)
+
+        var localizedDescription: String {
+            switch self {
+            case .missingToken:
+                return "missing token"
+            case .apiError(let error):
+                return "api error: \(error.localizedDescription)"
+            case .invalidEndpoint:
+                return "invalid endpoint"
+            case .invalidResponse:
+                return "invalid response"
+            case .invalidResponseStatus(let statusCode):
+                return "invalid response status: \(statusCode)"
+            case .noData:
+                return "no data"
+            case .decodeError(let error):
+                return "decode error: \(error.localizedDescription)"
+            case .encodeError(let error):
+                return "encode error: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func fetchResources<T: Decodable>(method: String = "GET",
