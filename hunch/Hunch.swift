@@ -58,8 +58,9 @@ struct Hunch: AsyncParsableCommand {
             }
         case .jsonl:
             do {
+                let encoder = JSONEncoder()
                 let ret = try list.compactMap({
-                    let data = try $0.asJSON()
+                    let data = try encoder.encode($0)
                     return String(data: data, encoding: .utf8)
                 })
                 for line in ret {
