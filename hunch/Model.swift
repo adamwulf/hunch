@@ -676,6 +676,8 @@ struct Block: NotionItem {
     let hasChildren: Bool
     let blockTypeObject: BlockTypeObject
 
+    var children: [Block] = []
+
     var description: String {
         return type.rawValue
     }

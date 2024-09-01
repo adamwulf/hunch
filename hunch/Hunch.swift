@@ -33,14 +33,17 @@ struct Hunch: AsyncParsableCommand {
     }
 
     static func output(list: [NotionItem], format: Format) {
+        // Flatten the list of NotionItems
+        let flattenedList = flatten(items: list)
+
         switch format {
         case .id:
-            for item in list {
+            for item in flattenedList {
                 print(item.id)
             }
         case .smalljsonl:
             do {
-                let ret = try list.map({
+                let ret = try flattenedList.map({
                     var ret: [String: Any] = ["object": $0.object, "id": $0.id, "description": $0.description]
                     if let parent = $0.parent?.asDictionary() {
                         ret["parent"] = parent
@@ -59,7 +62,7 @@ struct Hunch: AsyncParsableCommand {
         case .jsonl:
             do {
                 let encoder = JSONEncoder()
-                let ret = try list.compactMap({
+                let ret = try flattenedList.compactMap({
                     let data = try encoder.encode($0)
                     return String(data: data, encoding: .utf8)
                 })
@@ -70,5 +73,19 @@ struct Hunch: AsyncParsableCommand {
                 print("error: \(error.localizedDescription)")
             }
         }
+    }
+
+    // Helper function to flatten the list of NotionItems
+    private static func flatten(items: [NotionItem]) -> [NotionItem] {
+        var flattenedList: [NotionItem] = []
+
+        for item in items {
+            flattenedList.append(item)
+            if let block = item as? Block {
+                flattenedList.append(contentsOf: flatten(items: block.children))
+            }
+        }
+
+        return flattenedList
     }
 }
