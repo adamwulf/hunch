@@ -13,6 +13,7 @@ import SwiftToolbox
 struct Hunch: AsyncParsableCommand {
 
     enum Format: String, ExpressibleByArgument {
+        case smalljsonl
         case jsonl
         case id
     }
@@ -37,7 +38,7 @@ struct Hunch: AsyncParsableCommand {
             for item in list {
                 print(item.id)
             }
-        case .jsonl:
+        case .smalljsonl:
             do {
                 let ret = try list.map({
                     var ret: [String: Any] = ["object": $0.object, "id": $0.id, "description": $0.description]
@@ -47,6 +48,18 @@ struct Hunch: AsyncParsableCommand {
                     return ret
                 }).compactMap({
                     let data = try JSONSerialization.data(withJSONObject: $0, options: .sortedKeys)
+                    return String(data: data, encoding: .utf8)
+                })
+                for line in ret {
+                    print(line)
+                }
+            } catch {
+                print("error: \(error.localizedDescription)")
+            }
+        case .jsonl:
+            do {
+                let ret = try list.compactMap({
+                    let data = try $0.asJSON()
                     return String(data: data, encoding: .utf8)
                 })
                 for line in ret {
