@@ -67,8 +67,8 @@ class MarkdownRenderer {
             return renderToDo(block)
         case .toggle:
             return renderToggle(block)
-    //    case .code:
-    //        return renderCode(block)
+        case .code:
+            return renderCode(block)
         case .quote:
             return renderQuote(block)
         case .callout:
@@ -155,8 +155,8 @@ class MarkdownRenderer {
     }
 
     private func renderNumberedListItem(_ block: Block) -> String {
-        guard case let .bulletedListItem(bulletedListItemBlock) = block.blockTypeObject else { return "" }
-        let formattedText = bulletedListItemBlock.text.map { renderRichText($0) }.joined()
+        guard case let .numberedListItem(numberedListItemBlock) = block.blockTypeObject else { return "" }
+        let formattedText = numberedListItemBlock.text.map { renderRichText($0) }.joined()
         let indentation = String(repeating: " ", count: level * 4)
         var childrenText = ""
         if block.hasChildren {
@@ -182,9 +182,10 @@ class MarkdownRenderer {
     }
 
     private func renderCode(_ block: Block) -> String {
-        fatalError("not yet implemented")
-    //    guard case let .code(codeBlock) = block.blockTypeObject else { return "" }
-    //    return "```\(codeBlock.language)\n" + codeBlock.text + "\n```\n\n"
+        guard case let .code(codeBlock) = block.blockTypeObject else { return "" }
+        let formattedText = codeBlock.text.map { renderRichText($0) }.joined()
+        return "``` \(codeBlock.language)\n" + formattedText + "\n```\n\n" +
+               block.children.map { renderBlockToMarkdown($0) }.joined()
     }
 
     private func renderQuote(_ block: Block) -> String {
