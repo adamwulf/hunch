@@ -700,6 +700,7 @@ struct Block: NotionItem {
         case heading1 = "heading_1"
         case heading2 = "heading_2"
         case heading3 = "heading_3"
+        case bulletedListItem = "bulleted_list_item"
     }
 
     init(from decoder: Decoder) throws {
@@ -722,7 +723,7 @@ struct Block: NotionItem {
         case .breadcrumb:
             blockTypeObject = .breadcrumb(try BreadcrumbBlock(from: decoder))
         case .bulletedListItem:
-            blockTypeObject = .bulletedListItem(try BulletedListItemBlock(from: decoder))
+            blockTypeObject = .bulletedListItem(try container.decode(BulletedListItemBlock.self, forKey: .bulletedListItem))
         case .callout:
             blockTypeObject = .callout(try CalloutBlock(from: decoder))
         case .childDatabase:
@@ -906,7 +907,8 @@ struct BookmarkBlock: Codable {
 struct BreadcrumbBlock: Codable {}
 
 struct BulletedListItemBlock: Codable {
-    let text: String
+    let text: [RichText]
+    let color: Color
 }
 
 struct CalloutBlock: Codable {

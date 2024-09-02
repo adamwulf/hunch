@@ -74,14 +74,8 @@ struct Hunch: AsyncParsableCommand {
                 print("error: \(error.localizedDescription)")
             }
         case .markdown:
-            let renderer = MarkdownRenderer(ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
-            var markdown = ""
-            for item in flattenedList {
-                guard let item = item as? Block else {
-                    fatalError("Only Blocks can be rendered to markdown.")
-                }
-                markdown += renderer.renderBlockToMarkdown(item)
-            }
+            let renderer = MarkdownRenderer(level: 0, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
+            let markdown = renderer.renderBlocksToMarkdown(list.compactMap({ $0 as? Block }))
             print(markdown)
         }
     }

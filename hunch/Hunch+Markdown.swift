@@ -6,12 +6,28 @@
 //
 
 import Foundation
+import SwiftToolbox
 
-struct MarkdownRenderer {
+class MarkdownRenderer {
+    private(set) var level: Int
     let ignoreColor: Bool
     let ignoreUnderline: Bool
 
-    func renderBlockToMarkdown(_ block: Block) -> String {
+    init(level: Int, ignoreColor: Bool, ignoreUnderline: Bool) {
+        self.level = level
+        self.ignoreColor = ignoreColor
+        self.ignoreUnderline = ignoreUnderline
+    }
+
+    private func childRenderer() -> MarkdownRenderer {
+        return MarkdownRenderer(level: level + 1, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
+    }
+
+    func renderBlocksToMarkdown(_ blocks: [Block]) -> String {
+        return blocks.map({ renderBlockToMarkdown($0) }).joined()
+    }
+
+    private func renderBlockToMarkdown(_ block: Block) -> String {
         switch block.type {
         case .paragraph:
             return renderParagraph(block)
@@ -54,7 +70,10 @@ struct MarkdownRenderer {
     private func renderParagraph(_ block: Block) -> String {
         guard case let .paragraph(paragraphBlock) = block.blockTypeObject else { return "" }
         let formattedText = paragraphBlock.text.map { renderRichText($0) }.joined()
-        return formattedText + "\n\n"
+        let renderer = childRenderer()
+        return formattedText + "\n\n" + block.children.map({
+            renderer.renderBlockToMarkdown($0)
+        }).joined(separator: "")
     }
 
     private func renderRichText(_ richText: RichText) -> String {
@@ -97,7 +116,8 @@ struct MarkdownRenderer {
 
     private func renderBulletedListItem(_ block: Block) -> String {
         guard case let .bulletedListItem(bulletedListItemBlock) = block.blockTypeObject else { return "" }
-        return "- " + bulletedListItemBlock.text + "\n"
+        let formattedText = bulletedListItemBlock.text.map { renderRichText($0) }.joined()
+        return "- " + formattedText + "\n"
     }
 
     private func renderNumberedListItem(_ block: Block) -> String {
