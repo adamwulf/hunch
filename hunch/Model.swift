@@ -635,6 +635,7 @@ enum BlockType: String, Codable {
     case callout
     case childDatabase = "child_database"
     case childPage = "child_page"
+//    case code
     case column
     case columnList = "column_list"
     case divider
@@ -866,6 +867,7 @@ enum BlockTypeObject: Codable {
     case callout(CalloutBlock)
     case childDatabase(ChildDatabaseBlock)
     case childPage(ChildPageBlock)
+//    case code(CodeBlock)
     case column(ColumnBlock)
     case columnList(ColumnListBlock)
     case divider(DividerBlock)
@@ -947,6 +949,7 @@ struct Heading3Block: Codable {
 }
 
 struct ImageBlock: Codable {
+//    let caption: String?
 }
 
 struct LinkPreviewBlock: Codable {
