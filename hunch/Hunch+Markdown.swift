@@ -184,7 +184,11 @@ class MarkdownRenderer {
     private func renderCode(_ block: Block) -> String {
         guard case let .code(codeBlock) = block.blockTypeObject else { return "" }
         let formattedText = codeBlock.text.map { renderRichText($0) }.joined()
-        return "``` \(codeBlock.language)\n" + formattedText + "\n```\n\n" +
+        var captionText = codeBlock.caption.map { renderRichText($0) }.joined()
+        if !captionText.isEmpty {
+            captionText += "\n\n"
+        }
+        return "``` \(codeBlock.language)\n" + formattedText + "\n```\n\n" + captionText +
                block.children.map { renderBlockToMarkdown($0) }.joined()
     }
 

@@ -955,7 +955,7 @@ struct ChildPageBlock: Codable {
 }
 
 struct CodeBlock: Codable {
-//    let caption: [RichText]
+    let caption: [RichText]
     let text: [RichText]
     let language: String
 }
