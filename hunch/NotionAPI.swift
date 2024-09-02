@@ -168,10 +168,13 @@ class NotionAPI {
         }
     }
 
-    func fetchPageContent(in pageIdentifier: String) async -> Result<BlockList, NotionAPIServiceError> {
+    func fetchPageContent(cursor: String?, in pageIdentifier: String) async -> Result<BlockList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             let url = baseURL.appendingPathComponent("blocks").appendingPathComponent(pageIdentifier).appendingPathComponent("children")
-            fetchResources(method: "GET", url: url, body: nil) { result in
+            fetchResources(method: "GET",
+                           url: url,
+                           query: ["start_cursor": cursor].compactMapValues({ $0 }),
+                           body: nil) { result in
                 continuation.resume(returning: result)
             }
         }

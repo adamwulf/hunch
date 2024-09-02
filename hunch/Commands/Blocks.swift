@@ -21,26 +21,30 @@ struct BlocksCommand: AsyncParsableCommand {
     var format: Hunch.Format = .id
 
     func run() async {
-        var count = 0
-        var cursor: String?
-        var ret: [NotionItem] = []
+        let rootBlocks = await fetchBlocksRecursively(blockId: pageId)
+        Hunch.output(list: rootBlocks, format: format)
+    }
 
-        var isFirstTry = true
-        while isFirstTry || cursor != nil {
-            isFirstTry = false
-            let result = await NotionAPI.shared.fetchPageContent(in: pageId)
+    private func fetchBlocksRecursively(blockId: String) async -> [Block] {
+        var blocks: [Block] = []
+        var cursor: String?
+
+        repeat {
+            let result = await NotionAPI.shared.fetchPageContent(cursor: cursor, in: blockId)
             switch result {
-            case .success(let blocks):
-                for block in blocks.results {
-                    ret.append(block)
-                    count += 1
+            case .success(let fetchedBlocks):
+                for var block in fetchedBlocks.results {
+                    if block.hasChildren {
+                        block.children = await fetchBlocksRecursively(blockId: block.id)
+                    }
+                    blocks.append(block)
                 }
-                cursor = blocks.nextCursor
+                cursor = fetchedBlocks.nextCursor
             case .failure(let error):
                 fatalError("error: \(error.localizedDescription)")
             }
-        }
+        } while cursor != nil
 
-        Hunch.output(list: ret, format: format)
+        return blocks
     }
 }
