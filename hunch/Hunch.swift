@@ -33,7 +33,7 @@ struct Hunch: AsyncParsableCommand {
         NotionAPI.shared.token = key
     }
 
-    static func output(list: [NotionItem], format: Format) {
+    static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false) {
         // Flatten the list of NotionItems
         let flattenedList = flatten(items: list)
 
@@ -74,12 +74,13 @@ struct Hunch: AsyncParsableCommand {
                 print("error: \(error.localizedDescription)")
             }
         case .markdown:
+            let renderer = MarkdownRenderer(ignoreColor: ignoreColor)
             var markdown = ""
             for item in flattenedList {
                 guard let item = item as? Block else {
                     fatalError("Only Blocks can be rendered to markdown.")
                 }
-                markdown += renderBlockToMarkdown(item)
+                markdown += renderer.renderBlockToMarkdown(item)
             }
             print(markdown)
         }

@@ -697,6 +697,9 @@ struct Block: NotionItem {
         case inTrash = "in_trash"
         case hasChildren = "has_children"
         case paragraph
+        case heading1 = "heading_1"
+        case heading2 = "heading_2"
+        case heading3 = "heading_3"
     }
 
     init(from decoder: Decoder) throws {
@@ -739,11 +742,11 @@ struct Block: NotionItem {
         case .file:
             blockTypeObject = .file(try FileBlock(from: decoder))
         case .heading1:
-            blockTypeObject = .heading1(try Heading1Block(from: decoder))
+            blockTypeObject = .heading1(try container.decode(Heading1Block.self, forKey: .heading1))
         case .heading2:
-            blockTypeObject = .heading2(try Heading2Block(from: decoder))
+            blockTypeObject = .heading2(try container.decode(Heading2Block.self, forKey: .heading2))
         case .heading3:
-            blockTypeObject = .heading3(try Heading3Block(from: decoder))
+            blockTypeObject = .heading3(try container.decode(Heading3Block.self, forKey: .heading3))
         case .image:
             blockTypeObject = .image(try ImageBlock(from: decoder))
         case .linkPreview:
@@ -937,15 +940,18 @@ struct FileBlock: Codable {
 }
 
 struct Heading1Block: Codable {
-    let text: String
+    let text: [RichText]
+    let color: Color
 }
 
 struct Heading2Block: Codable {
-    let text: String
+    let text: [RichText]
+    let color: Color
 }
 
 struct Heading3Block: Codable {
-    let text: String
+    let text: [RichText]
+    let color: Color
 }
 
 struct ImageBlock: Codable {
@@ -966,6 +972,7 @@ struct NumberedListItemBlock: Codable {
 
 struct ParagraphBlock: Codable {
     let text: [RichText]
+    let color: Color
     let children: [Block]?
 }
 

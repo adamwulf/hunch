@@ -20,9 +20,12 @@ struct BlocksCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "The format of the output")
     var format: Hunch.Format = .id
 
+    @Flag(name: .shortAndLong, help: "Ignore colors in markdown formatting")
+    var ignoreColor: Bool = false
+
     func run() async {
         let rootBlocks = await fetchBlocksRecursively(blockId: pageId)
-        Hunch.output(list: rootBlocks, format: format)
+        Hunch.output(list: rootBlocks, format: format, ignoreColor: ignoreColor)
     }
 
     private func fetchBlocksRecursively(blockId: String) async -> [Block] {
