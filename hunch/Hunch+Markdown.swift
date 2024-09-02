@@ -37,7 +37,7 @@ class MarkdownRenderer {
     private func handleStateForBlock(_ block: Block) -> String {
         var ret = ""
         switch block.type {
-        case .bulletedListItem, .numberedListItem:
+        case .bulletedListItem, .numberedListItem, .toDo:
             listState = true
         default:
             if listState {
@@ -170,8 +170,17 @@ class MarkdownRenderer {
 
     private func renderToDo(_ block: Block) -> String {
         guard case let .toDo(toDoBlock) = block.blockTypeObject else { return "" }
+        let formattedText = toDoBlock.text.map { renderRichText($0) }.joined()
+        let indentation = String(repeating: " ", count: level * 4)
         let checkbox = toDoBlock.checked ? "[x]" : "[ ]"
-        return "- \(checkbox) " + toDoBlock.text + "\n"
+        var childrenText = ""
+        if block.hasChildren {
+            let renderer = childRenderer()
+            childrenText = block.children.map({
+                renderer.renderBlockToMarkdown($0)
+            }).joined(separator: "")
+        }
+        return indentation + "- \(checkbox) " + formattedText + "\n" + childrenText
     }
 
     private func renderToggle(_ block: Block) -> String {

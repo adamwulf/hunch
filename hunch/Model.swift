@@ -702,6 +702,7 @@ struct Block: NotionItem {
         case object
         case paragraph
         case parent
+        case todo = "to_do"
         case type
     }
 
@@ -798,8 +799,7 @@ struct Block: NotionItem {
             fatalError("not yet supported")
             blockTypeObject = .template(try TemplateBlock(from: decoder))
         case .toDo:
-            fatalError("not yet supported")
-            blockTypeObject = .toDo(try ToDoBlock(from: decoder))
+            blockTypeObject = .toDo(try container.decode(ToDoBlock.self, forKey: .todo))
         case .toggle:
             fatalError("not yet supported")
             blockTypeObject = .toggle(try ToggleBlock(from: decoder))
@@ -1042,8 +1042,9 @@ struct TemplateBlock: Codable {
 }
 
 struct ToDoBlock: Codable {
-    let text: String
+    let text: [RichText]
     let checked: Bool
+    let color: Color
 }
 
 struct ToggleBlock: Codable {
