@@ -9,6 +9,7 @@ import Foundation
 
 struct MarkdownRenderer {
     let ignoreColor: Bool
+    let ignoreUnderline: Bool
 
     func renderBlockToMarkdown(_ block: Block) -> String {
         switch block.type {
@@ -64,10 +65,11 @@ struct MarkdownRenderer {
         if richText.annotations.italic { text = "_\(text)_" }
         if richText.annotations.strikethrough { text = "~~\(text)~~" }
         if richText.annotations.code { text = "`\(text)`" }
+        if !ignoreUnderline, richText.annotations.underline { text = "<u>\(text)</u>" }
 
         // Apply color if it's not default
-        if richText.annotations.color != .plain {
-            text = applyColor(text, color: richText.annotations.color)
+        if !ignoreColor, richText.annotations.color != .plain {
+            text = "<span style=\"color: \(richText.annotations.color.rawValue)\">\(text)</span>"
         }
 
         // Apply link if present
@@ -76,13 +78,6 @@ struct MarkdownRenderer {
         }
 
         return text
-    }
-
-    private func applyColor(_ text: String, color: Color) -> String {
-        guard !ignoreColor else { return text }
-        // This is a simplified version. You might want to handle this differently
-        // depending on how you want to represent colors in your Markdown output
-        return "<span style=\"color: \(color)\">\(text)</span>"
     }
 
     private func renderHeading(_ block: Block, level: Int) -> String {

@@ -33,7 +33,7 @@ struct Hunch: AsyncParsableCommand {
         NotionAPI.shared.token = key
     }
 
-    static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false) {
+    static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) {
         // Flatten the list of NotionItems
         let flattenedList = flatten(items: list)
 
@@ -74,7 +74,7 @@ struct Hunch: AsyncParsableCommand {
                 print("error: \(error.localizedDescription)")
             }
         case .markdown:
-            let renderer = MarkdownRenderer(ignoreColor: ignoreColor)
+            let renderer = MarkdownRenderer(ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
             var markdown = ""
             for item in flattenedList {
                 guard let item = item as? Block else {
