@@ -676,6 +676,7 @@ struct Block: NotionItem {
     let hasChildren: Bool
     let blockTypeObject: BlockTypeObject
 
+    // These children are not decoded directly from a Notion API response, and instead are populated by additional API requests
     var children: [Block] = []
 
     var description: String {
