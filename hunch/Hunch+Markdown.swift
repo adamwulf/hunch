@@ -21,8 +21,8 @@ class MarkdownRenderer {
         self.ignoreUnderline = ignoreUnderline
     }
 
-    private func childRenderer() -> MarkdownRenderer {
-        return MarkdownRenderer(level: level + 1, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
+    private func childRenderer(level levelOverride: Int? = nil) -> MarkdownRenderer {
+        return MarkdownRenderer(level: levelOverride ?? (level + 1), ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
     }
 
     func renderBlocksToMarkdown(_ blocks: [Block]) -> String {
@@ -92,10 +92,14 @@ class MarkdownRenderer {
     private func renderParagraph(_ block: Block) -> String {
         guard case let .paragraph(paragraphBlock) = block.blockTypeObject else { return "" }
         let formattedText = paragraphBlock.text.map { renderRichText($0) }.joined()
-        let renderer = childRenderer()
-        return formattedText + "\n\n" + block.children.map({
-            renderer.renderBlockToMarkdown($0)
-        }).joined(separator: "")
+        var childrenText = ""
+        if block.hasChildren {
+            let renderer = childRenderer(level: 0)
+            childrenText = block.children.map({
+                renderer.renderBlockToMarkdown($0)
+            }).joined(separator: "")
+        }
+        return formattedText + "\n\n" + childrenText
     }
 
     private func renderRichText(_ richText: RichText) -> String {
@@ -139,12 +143,29 @@ class MarkdownRenderer {
     private func renderBulletedListItem(_ block: Block) -> String {
         guard case let .bulletedListItem(bulletedListItemBlock) = block.blockTypeObject else { return "" }
         let formattedText = bulletedListItemBlock.text.map { renderRichText($0) }.joined()
-        return "- " + formattedText + "\n"
+        let indentation = String(repeating: " ", count: level * 4)
+        var childrenText = ""
+        if block.hasChildren {
+            let renderer = childRenderer()
+            childrenText = block.children.map({
+                renderer.renderBlockToMarkdown($0)
+            }).joined(separator: "")
+        }
+        return indentation + "- " + formattedText + "\n" + childrenText
     }
 
     private func renderNumberedListItem(_ block: Block) -> String {
-        guard case let .numberedListItem(numberedListItemBlock) = block.blockTypeObject else { return "" }
-        return "1. " + numberedListItemBlock.text + "\n"
+        guard case let .bulletedListItem(bulletedListItemBlock) = block.blockTypeObject else { return "" }
+        let formattedText = bulletedListItemBlock.text.map { renderRichText($0) }.joined()
+        let indentation = String(repeating: " ", count: level * 4)
+        var childrenText = ""
+        if block.hasChildren {
+            let renderer = childRenderer()
+            childrenText = block.children.map({
+                renderer.renderBlockToMarkdown($0)
+            }).joined(separator: "")
+        }
+        return indentation + "1. " + formattedText + "\n" + childrenText
     }
 
     private func renderToDo(_ block: Block) -> String {
