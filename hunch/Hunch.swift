@@ -63,6 +63,8 @@ struct Hunch: AsyncParsableCommand {
         case .jsonl:
             do {
                 let encoder = JSONEncoder()
+                encoder.outputFormatting = .sortedKeys
+                encoder.dateEncodingStrategy = .iso8601
                 let ret = try flattenedList.compactMap({
                     let data = try encoder.encode($0)
                     return String(data: data, encoding: .utf8)
