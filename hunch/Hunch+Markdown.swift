@@ -13,6 +13,8 @@ class MarkdownRenderer {
     let ignoreColor: Bool
     let ignoreUnderline: Bool
 
+    private var listState: Bool = false
+
     init(level: Int, ignoreColor: Bool, ignoreUnderline: Bool) {
         self.level = level
         self.ignoreColor = ignoreColor
@@ -24,7 +26,27 @@ class MarkdownRenderer {
     }
 
     func renderBlocksToMarkdown(_ blocks: [Block]) -> String {
-        return blocks.map({ renderBlockToMarkdown($0) }).joined()
+        var markdown = ""
+        for block in blocks {
+            markdown += handleStateForBlock(block)
+            markdown += renderBlockToMarkdown(block)
+        }
+        return markdown
+    }
+
+    private func handleStateForBlock(_ block: Block) -> String {
+        var ret = ""
+        switch block.type {
+        case .bulletedListItem, .numberedListItem:
+            listState = true
+        default:
+            if listState {
+                // we've ended our list, so append an extra newline to start a new paragraph
+                ret += "\n"
+            }
+            listState = false
+        }
+        return ret
     }
 
     private func renderBlockToMarkdown(_ block: Block) -> String {
