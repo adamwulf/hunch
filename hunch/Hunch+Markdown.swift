@@ -203,7 +203,24 @@ class MarkdownRenderer {
 
     private func renderQuote(_ block: Block) -> String {
         guard case let .quote(quoteBlock) = block.blockTypeObject else { return "" }
-        return "> " + quoteBlock.text.replacingOccurrences(of: "\n", with: "\n> ") + "\n\n"
+        let formattedText = quoteBlock.text.map { renderRichText($0) }.joined()
+        var childrenText = ""
+        if block.hasChildren {
+            let renderer = childRenderer(level: 0)
+            childrenText = block.children.map({
+                renderer.renderBlockToMarkdown($0)
+            }).joined(separator: "")
+        }
+        if childrenText.isEmpty {
+            return "> " + formattedText.replacingOccurrences(of: "\n", with: "\n> ") + "\n\n"
+        } else {
+            let quotedText = (formattedText + "\n\n" + childrenText)
+            let trimmed = quotedText.trimmingSuffixCharacters(in: CharacterSet(charactersIn: "\n"))
+            let newlineCount = quotedText.count - trimmed.count
+            let nearestTwoCount = (newlineCount + 1) / 2 * 2
+            let newlines = String(repeating: "\n", count: nearestTwoCount)
+            return "> " + trimmed.replacingOccurrences(of: "\n", with: "\n> ") + newlines
+        }
     }
 
     private func renderCallout(_ block: Block) -> String {

@@ -702,6 +702,7 @@ struct Block: NotionItem {
         case object
         case paragraph
         case parent
+        case quote
         case todo = "to_do"
         case type
     }
@@ -781,8 +782,7 @@ struct Block: NotionItem {
             fatalError("not yet supported")
             blockTypeObject = .pdf(try PdfBlock(from: decoder))
         case .quote:
-            fatalError("not yet supported")
-            blockTypeObject = .quote(try QuoteBlock(from: decoder))
+            blockTypeObject = .quote(try container.decode(QuoteBlock.self, forKey: .quote))
         case .syncedBlock:
             fatalError("not yet supported")
             blockTypeObject = .syncedBlock(try SyncedBlock(from: decoder))
@@ -1020,7 +1020,8 @@ struct PdfBlock: Codable {
 }
 
 struct QuoteBlock: Codable {
-    let text: String
+    let text: [RichText]
+    let color: Color
 }
 
 struct SyncedBlock: Codable {
