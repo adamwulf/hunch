@@ -18,7 +18,7 @@ class NotionAPI {
     private let urlSession = URLSession(configuration: .ephemeral)
     private let baseURL = URL(string: "https://api.notion.com/v1")!
 
-    private let jsonDecoder: JSONDecoder = {
+    let jsonDecoder: JSONDecoder = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
@@ -27,7 +27,7 @@ class NotionAPI {
         return jsonDecorder
     }()
 
-    private let jsonEncoder: JSONEncoder = {
+    let jsonEncoder: JSONEncoder = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
@@ -75,11 +75,13 @@ class NotionAPI {
         }
     }
 
-    private func fetchResources<T: Decodable>(method: String = "GET",
-                                              url: URL,
-                                              query: [String: String] = [:],
-                                              body: Data? = nil,
-                                              completion: @escaping (Result<T, NotionAPIServiceError>) -> Void) {
+    private func fetchResources<T: Decodable>(
+        method: String = "GET",
+        url: URL,
+        query: [String: String] = [:],
+        body: Data? = nil,
+        completion: @escaping (Result<T, NotionAPIServiceError>) -> Void
+    ) {
         guard let token = token else {
             completion(.failure(.missingToken))
             return
@@ -114,7 +116,7 @@ class NotionAPI {
                     completion(.failure(.invalidResponseStatus(httpResponse.statusCode)))
                     return
                 }
-                Self.logHandler?(.debug, "notion_api", ["status": httpResponse.statusCode])
+                Self.logHandler?(.debug, "notion_api", ["status": httpResponse.statusCode, "path": url.path(percentEncoded: false)])
                 Self.logHandler?(.debug, String(data: data, encoding: .utf8)!, nil)
                 do {
                     let values = try self.jsonDecoder.decode(T.self, from: data)
@@ -168,9 +170,9 @@ class NotionAPI {
         }
     }
 
-    func fetchPageContent(cursor: String?, in pageIdentifier: String) async -> Result<BlockList, NotionAPIServiceError> {
+    func fetchBlockList(cursor: String?, in pageOrBlockId: String) async -> Result<BlockList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
-            let url = baseURL.appendingPathComponent("blocks").appendingPathComponent(pageIdentifier).appendingPathComponent("children")
+            let url = baseURL.appendingPathComponent("blocks").appendingPathComponent(pageOrBlockId).appendingPathComponent("children")
             fetchResources(method: "GET",
                            url: url,
                            query: ["start_cursor": cursor].compactMapValues({ $0 }),

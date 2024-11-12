@@ -34,51 +34,26 @@ struct Hunch: AsyncParsableCommand {
     }
 
     static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) {
-        // Flatten the list of NotionItems
         let flattenedList = flatten(items: list)
 
-        switch format {
-        case .id:
-            for item in flattenedList {
-                print(item.id)
+        let renderer: Renderer = {
+            switch format {
+            case .id:
+                return IDRenderer()
+            case .smalljsonl:
+                return SmallJSONRenderer()
+            case .jsonl:
+                return FullJSONRenderer()
+            case .markdown:
+                return MarkdownRenderer(level: 0, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
             }
-        case .smalljsonl:
-            do {
-                let ret = try flattenedList.map({
-                    var ret: [String: Any] = ["object": $0.object, "id": $0.id, "description": $0.description]
-                    if let parent = $0.parent?.asDictionary() {
-                        ret["parent"] = parent
-                    }
-                    return ret
-                }).compactMap({
-                    let data = try JSONSerialization.data(withJSONObject: $0, options: .sortedKeys)
-                    return String(data: data, encoding: .utf8)
-                })
-                for line in ret {
-                    print(line)
-                }
-            } catch {
-                print("error: \(error.localizedDescription)")
-            }
-        case .jsonl:
-            do {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = .sortedKeys
-                encoder.dateEncodingStrategy = .iso8601
-                let ret = try flattenedList.compactMap({
-                    let data = try encoder.encode($0)
-                    return String(data: data, encoding: .utf8)
-                })
-                for line in ret {
-                    print(line)
-                }
-            } catch {
-                print("error: \(error.localizedDescription)")
-            }
-        case .markdown:
-            let renderer = MarkdownRenderer(level: 0, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
-            let markdown = renderer.renderBlocksToMarkdown(list.compactMap({ $0 as? Block }))
-            print(markdown)
+        }()
+
+        do {
+            let output = try renderer.render(flattenedList)
+            print(output)
+        } catch {
+            print("error: \(error.localizedDescription)")
         }
     }
 

@@ -9,14 +9,31 @@
 /* Begin PBXBuildFile section */
 		C55BC2332654D46000674275 /* Hunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = C55BC2322654D46000674275 /* Hunch.swift */; };
 		C55BC23B2654D4F500674275 /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = C55BC23A2654D4F500674275 /* ArgumentParser */; };
-		C55BC2442654DF6F00674275 /* Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = C55BC2432654DF6F00674275 /* Model.swift */; };
+		C55BC2442654DF6F00674275 /* Property.swift in Sources */ = {isa = PBXBuildFile; fileRef = C55BC2432654DF6F00674275 /* Property.swift */; };
 		C55BC2462654DFE000674275 /* NotionAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = C55BC2452654DFE000674275 /* NotionAPI.swift */; };
 		C55BC2482654E07300674275 /* URLSession+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = C55BC2472654E07300674275 /* URLSession+Extensions.swift */; };
-		C560BF732C856EC8000DA468 /* Hunch+Markdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = C560BF722C856EC8000DA468 /* Hunch+Markdown.swift */; };
+		C560BF732C856EC8000DA468 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C560BF722C856EC8000DA468 /* MarkdownRenderer.swift */; };
+		C5B3AFAD2CE328020096350E /* BlockList.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFAC2CE327FF0096350E /* BlockList.swift */; };
+		C5B3AFAF2CE328120096350E /* DatabaseList.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFAE2CE3280F0096350E /* DatabaseList.swift */; };
+		C5B3AFB12CE328170096350E /* PageList.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFB02CE328160096350E /* PageList.swift */; };
+		C5B3AFB42CE328640096350E /* NotionItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFB32CE328640096350E /* NotionItem.swift */; };
+		C5B3AFB62CE3287B0096350E /* Page.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFB52CE3287B0096350E /* Page.swift */; };
+		C5B3AFB82CE328B00096350E /* Database.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFB72CE328B00096350E /* Database.swift */; };
+		C5B3AFBA2CE328D70096350E /* Block.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFB92CE328D70096350E /* Block.swift */; };
+		C5B3AFBC2CE329BB0096350E /* Parent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFBB2CE329BA0096350E /* Parent.swift */; };
+		C5B3AFBE2CE32A080096350E /* Icon.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFBD2CE32A080096350E /* Icon.swift */; };
+		C5B3AFC02CE32A410096350E /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFBF2CE32A400096350E /* User.swift */; };
+		C5B3AFC22CE32A720096350E /* Color.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFC12CE32A720096350E /* Color.swift */; };
+		C5B3AFC42CE32AB00096350E /* RichText.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFC32CE32AB00096350E /* RichText.swift */; };
+		C5B3AFC62CE32BF70096350E /* HunchAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFC52CE32BF40096350E /* HunchAPI.swift */; };
+		C5B3AFC82CE331290096350E /* SmallJSONRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFC72CE331290096350E /* SmallJSONRenderer.swift */; };
+		C5B3AFCB2CE332D00096350E /* Renderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFCA2CE332D00096350E /* Renderer.swift */; };
+		C5B3AFCC2CE332D00096350E /* IDRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFC92CE332D00096350E /* IDRenderer.swift */; };
+		C5B3AFCE2CE3342D0096350E /* FullJSONRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFCD2CE3342D0096350E /* FullJSONRenderer.swift */; };
 		C5DAB59A2C27E98C007BA0E8 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5DAB5992C27E98C007BA0E8 /* Logging.swift */; };
-		C5DAB59E2C291A34007BA0E8 /* Database.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5DAB59D2C291A34007BA0E8 /* Database.swift */; };
-		C5DAB5A02C291A39007BA0E8 /* Page.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5DAB59F2C291A39007BA0E8 /* Page.swift */; };
-		C5DAB5A22C291C33007BA0E8 /* Blocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5DAB5A12C291C33007BA0E8 /* Blocks.swift */; };
+		C5DAB59E2C291A34007BA0E8 /* DatabaseCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5DAB59D2C291A34007BA0E8 /* DatabaseCommand.swift */; };
+		C5DAB5A02C291A39007BA0E8 /* PageCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5DAB59F2C291A39007BA0E8 /* PageCommand.swift */; };
+		C5DAB5A22C291C33007BA0E8 /* BlocksCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5DAB5A12C291C33007BA0E8 /* BlocksCommand.swift */; };
 		C5F8C9E62C0FA5EB004F2B68 /* SwiftToolbox in Frameworks */ = {isa = PBXBuildFile; productRef = C5F8C9E52C0FA5EB004F2B68 /* SwiftToolbox */; };
 /* End PBXBuildFile section */
 
@@ -35,15 +52,32 @@
 /* Begin PBXFileReference section */
 		C55BC22F2654D46000674275 /* hunch */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = hunch; sourceTree = BUILT_PRODUCTS_DIR; };
 		C55BC2322654D46000674275 /* Hunch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Hunch.swift; sourceTree = "<group>"; };
-		C55BC2432654DF6F00674275 /* Model.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model.swift; sourceTree = "<group>"; };
+		C55BC2432654DF6F00674275 /* Property.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Property.swift; sourceTree = "<group>"; };
 		C55BC2452654DFE000674275 /* NotionAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotionAPI.swift; sourceTree = "<group>"; };
 		C55BC2472654E07300674275 /* URLSession+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLSession+Extensions.swift"; sourceTree = "<group>"; };
-		C560BF722C856EC8000DA468 /* Hunch+Markdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hunch+Markdown.swift"; sourceTree = "<group>"; };
+		C560BF722C856EC8000DA468 /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
+		C5B3AFAC2CE327FF0096350E /* BlockList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockList.swift; sourceTree = "<group>"; };
+		C5B3AFAE2CE3280F0096350E /* DatabaseList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseList.swift; sourceTree = "<group>"; };
+		C5B3AFB02CE328160096350E /* PageList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageList.swift; sourceTree = "<group>"; };
+		C5B3AFB32CE328640096350E /* NotionItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotionItem.swift; sourceTree = "<group>"; };
+		C5B3AFB52CE3287B0096350E /* Page.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Page.swift; sourceTree = "<group>"; };
+		C5B3AFB72CE328B00096350E /* Database.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Database.swift; sourceTree = "<group>"; };
+		C5B3AFB92CE328D70096350E /* Block.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Block.swift; sourceTree = "<group>"; };
+		C5B3AFBB2CE329BA0096350E /* Parent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Parent.swift; sourceTree = "<group>"; };
+		C5B3AFBD2CE32A080096350E /* Icon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Icon.swift; sourceTree = "<group>"; };
+		C5B3AFBF2CE32A400096350E /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		C5B3AFC12CE32A720096350E /* Color.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Color.swift; sourceTree = "<group>"; };
+		C5B3AFC32CE32AB00096350E /* RichText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichText.swift; sourceTree = "<group>"; };
+		C5B3AFC52CE32BF40096350E /* HunchAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HunchAPI.swift; sourceTree = "<group>"; };
+		C5B3AFC72CE331290096350E /* SmallJSONRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmallJSONRenderer.swift; sourceTree = "<group>"; };
+		C5B3AFC92CE332D00096350E /* IDRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IDRenderer.swift; sourceTree = "<group>"; };
+		C5B3AFCA2CE332D00096350E /* Renderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Renderer.swift; sourceTree = "<group>"; };
+		C5B3AFCD2CE3342D0096350E /* FullJSONRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullJSONRenderer.swift; sourceTree = "<group>"; };
 		C5DAB5992C27E98C007BA0E8 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
 		C5DAB59B2C291A1A007BA0E8 /* dothislater.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = dothislater.txt; sourceTree = "<group>"; };
-		C5DAB59D2C291A34007BA0E8 /* Database.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Database.swift; sourceTree = "<group>"; };
-		C5DAB59F2C291A39007BA0E8 /* Page.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Page.swift; sourceTree = "<group>"; };
-		C5DAB5A12C291C33007BA0E8 /* Blocks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Blocks.swift; sourceTree = "<group>"; };
+		C5DAB59D2C291A34007BA0E8 /* DatabaseCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseCommand.swift; sourceTree = "<group>"; };
+		C5DAB59F2C291A39007BA0E8 /* PageCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageCommand.swift; sourceTree = "<group>"; };
+		C5DAB5A12C291C33007BA0E8 /* BlocksCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlocksCommand.swift; sourceTree = "<group>"; };
 		C5F8C9EA2C0FBD18004F2B68 /* Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon.png; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -80,24 +114,73 @@
 			isa = PBXGroup;
 			children = (
 				C5F8C9EA2C0FBD18004F2B68 /* Icon.png */,
-				C55BC2432654DF6F00674275 /* Model.swift */,
-				C55BC2452654DFE000674275 /* NotionAPI.swift */,
-				C55BC2322654D46000674275 /* Hunch.swift */,
-				C560BF722C856EC8000DA468 /* Hunch+Markdown.swift */,
-				C5DAB59C2C291A27007BA0E8 /* Commands */,
 				C5DAB59B2C291A1A007BA0E8 /* dothislater.txt */,
-				C5DAB5992C27E98C007BA0E8 /* Logging.swift */,
-				C55BC2472654E07300674275 /* URLSession+Extensions.swift */,
+				C55BC2322654D46000674275 /* Hunch.swift */,
+				C5B3AFA92CE324CF0096350E /* APIs */,
+				C5DAB59C2C291A27007BA0E8 /* Commands */,
+				C5B3AFAA2CE324E50096350E /* Helpers */,
+				C5B3AFAB2CE325370096350E /* Lists */,
+				C5B3AFB22CE3284E0096350E /* NotionItems */,
 			);
 			path = hunch;
+			sourceTree = "<group>";
+		};
+		C5B3AFA92CE324CF0096350E /* APIs */ = {
+			isa = PBXGroup;
+			children = (
+				C55BC2452654DFE000674275 /* NotionAPI.swift */,
+				C5B3AFC52CE32BF40096350E /* HunchAPI.swift */,
+			);
+			path = APIs;
+			sourceTree = "<group>";
+		};
+		C5B3AFAA2CE324E50096350E /* Helpers */ = {
+			isa = PBXGroup;
+			children = (
+				C5B3AFC92CE332D00096350E /* IDRenderer.swift */,
+				C5B3AFCA2CE332D00096350E /* Renderer.swift */,
+				C5B3AFC72CE331290096350E /* SmallJSONRenderer.swift */,
+				C5B3AFCD2CE3342D0096350E /* FullJSONRenderer.swift */,
+				C5DAB5992C27E98C007BA0E8 /* Logging.swift */,
+				C560BF722C856EC8000DA468 /* MarkdownRenderer.swift */,
+				C55BC2472654E07300674275 /* URLSession+Extensions.swift */,
+			);
+			path = Helpers;
+			sourceTree = "<group>";
+		};
+		C5B3AFAB2CE325370096350E /* Lists */ = {
+			isa = PBXGroup;
+			children = (
+				C5B3AFAC2CE327FF0096350E /* BlockList.swift */,
+				C5B3AFAE2CE3280F0096350E /* DatabaseList.swift */,
+				C5B3AFB02CE328160096350E /* PageList.swift */,
+			);
+			path = Lists;
+			sourceTree = "<group>";
+		};
+		C5B3AFB22CE3284E0096350E /* NotionItems */ = {
+			isa = PBXGroup;
+			children = (
+				C5B3AFB92CE328D70096350E /* Block.swift */,
+				C5B3AFC12CE32A720096350E /* Color.swift */,
+				C5B3AFB72CE328B00096350E /* Database.swift */,
+				C5B3AFBD2CE32A080096350E /* Icon.swift */,
+				C5B3AFB32CE328640096350E /* NotionItem.swift */,
+				C5B3AFB52CE3287B0096350E /* Page.swift */,
+				C5B3AFBB2CE329BA0096350E /* Parent.swift */,
+				C55BC2432654DF6F00674275 /* Property.swift */,
+				C5B3AFC32CE32AB00096350E /* RichText.swift */,
+				C5B3AFBF2CE32A400096350E /* User.swift */,
+			);
+			path = NotionItems;
 			sourceTree = "<group>";
 		};
 		C5DAB59C2C291A27007BA0E8 /* Commands */ = {
 			isa = PBXGroup;
 			children = (
-				C5DAB59D2C291A34007BA0E8 /* Database.swift */,
-				C5DAB59F2C291A39007BA0E8 /* Page.swift */,
-				C5DAB5A12C291C33007BA0E8 /* Blocks.swift */,
+				C5DAB5A12C291C33007BA0E8 /* BlocksCommand.swift */,
+				C5DAB59D2C291A34007BA0E8 /* DatabaseCommand.swift */,
+				C5DAB59F2C291A39007BA0E8 /* PageCommand.swift */,
 			);
 			path = Commands;
 			sourceTree = "<group>";
@@ -168,15 +251,32 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C5DAB59E2C291A34007BA0E8 /* Database.swift in Sources */,
+				C5DAB59E2C291A34007BA0E8 /* DatabaseCommand.swift in Sources */,
+				C5B3AFC82CE331290096350E /* SmallJSONRenderer.swift in Sources */,
+				C5B3AFBA2CE328D70096350E /* Block.swift in Sources */,
 				C55BC2482654E07300674275 /* URLSession+Extensions.swift in Sources */,
+				C5B3AFC42CE32AB00096350E /* RichText.swift in Sources */,
 				C5DAB59A2C27E98C007BA0E8 /* Logging.swift in Sources */,
-				C5DAB5A22C291C33007BA0E8 /* Blocks.swift in Sources */,
-				C560BF732C856EC8000DA468 /* Hunch+Markdown.swift in Sources */,
+				C5B3AFB82CE328B00096350E /* Database.swift in Sources */,
+				C5DAB5A22C291C33007BA0E8 /* BlocksCommand.swift in Sources */,
+				C5B3AFC62CE32BF70096350E /* HunchAPI.swift in Sources */,
+				C5B3AFB62CE3287B0096350E /* Page.swift in Sources */,
+				C560BF732C856EC8000DA468 /* MarkdownRenderer.swift in Sources */,
+				C5B3AFCE2CE3342D0096350E /* FullJSONRenderer.swift in Sources */,
+				C5B3AFAF2CE328120096350E /* DatabaseList.swift in Sources */,
 				C55BC2332654D46000674275 /* Hunch.swift in Sources */,
-				C5DAB5A02C291A39007BA0E8 /* Page.swift in Sources */,
-				C55BC2442654DF6F00674275 /* Model.swift in Sources */,
+				C5B3AFBC2CE329BB0096350E /* Parent.swift in Sources */,
+				C5DAB5A02C291A39007BA0E8 /* PageCommand.swift in Sources */,
+				C5B3AFBE2CE32A080096350E /* Icon.swift in Sources */,
+				C5B3AFC22CE32A720096350E /* Color.swift in Sources */,
+				C55BC2442654DF6F00674275 /* Property.swift in Sources */,
 				C55BC2462654DFE000674275 /* NotionAPI.swift in Sources */,
+				C5B3AFB42CE328640096350E /* NotionItem.swift in Sources */,
+				C5B3AFB12CE328170096350E /* PageList.swift in Sources */,
+				C5B3AFAD2CE328020096350E /* BlockList.swift in Sources */,
+				C5B3AFC02CE32A410096350E /* User.swift in Sources */,
+				C5B3AFCB2CE332D00096350E /* Renderer.swift in Sources */,
+				C5B3AFCC2CE332D00096350E /* IDRenderer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -309,6 +409,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = W622AK4AJ4;
 				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.5;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 			};
@@ -321,6 +422,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = W622AK4AJ4;
 				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.5;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 			};
