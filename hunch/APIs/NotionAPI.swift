@@ -117,7 +117,7 @@ class NotionAPI {
                     return
                 }
                 Self.logHandler?(.debug, "notion_api", ["status": httpResponse.statusCode, "path": url.path(percentEncoded: false)])
-//                Self.logHandler?(.debug, String(data: data, encoding: .utf8)!, nil)
+                Self.logHandler?(.debug, String(data: data, encoding: .utf8)!, nil)
                 do {
                     let values = try self.jsonDecoder.decode(T.self, from: data)
                     completion(.success(values))

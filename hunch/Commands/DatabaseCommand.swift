@@ -25,29 +25,7 @@ struct DatabaseCommand: AsyncParsableCommand {
 
     func run() async {
         let limit = limit ?? .max
-        var count = 0
-        var cursor: String?
-        var ret: [NotionItem] = []
-
-        var isFirstTry = true
-        while isFirstTry || cursor != nil {
-            isFirstTry = false
-            let result = await NotionAPI.shared.fetchDatabases(cursor: cursor, parentId: entityId)
-            switch result {
-            case .success(let dbs):
-                for db in dbs.results {
-                    ret.append(db)
-                    count += 1
-                    guard count < limit else { break }
-                }
-                cursor = dbs.nextCursor
-                guard count < limit else { break }
-            case .failure(let error):
-                fatalError("error: \(error.localizedDescription)")
-            }
-            guard count < limit else { break }
-        }
-
-        Hunch.output(list: ret, format: format)
+        let databases = await HunchAPI.shared.fetchDatabases(parentId: entityId, limit: limit)
+        Hunch.output(list: databases, format: format)
     }
 }

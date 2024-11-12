@@ -40,4 +40,27 @@ class HunchAPI {
 
         return blocks
     }
+
+    func fetchDatabases(parentId: String?, limit: Int = .max) async -> [Database] {
+        var databases: [Database] = []
+        var cursor: String?
+        var count = 0
+
+        repeat {
+            let result = await notion.fetchDatabases(cursor: cursor, parentId: parentId)
+            switch result {
+            case .success(let dbs):
+                for db in dbs.results {
+                    databases.append(db)
+                    count += 1
+                    guard count < limit else { return databases }
+                }
+                cursor = dbs.nextCursor
+            case .failure(let error):
+                fatalError("error: \(error.localizedDescription)")
+            }
+        } while cursor != nil
+
+        return databases
+    }
 }
