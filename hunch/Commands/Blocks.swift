@@ -27,21 +27,21 @@ struct BlocksCommand: AsyncParsableCommand {
     var ignoreUnderline: Bool = false
 
     func run() async {
-        let rootBlocks = await fetchBlocksRecursively(blockId: pageId)
+        let rootBlocks = await fetchBlocksRecursively(blockOrPageId: pageId)
         Hunch.output(list: rootBlocks, format: format, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
     }
 
-    private func fetchBlocksRecursively(blockId: String) async -> [Block] {
+    private func fetchBlocksRecursively(blockOrPageId: String) async -> [Block] {
         var blocks: [Block] = []
         var cursor: String?
 
         repeat {
-            let result = await NotionAPI.shared.fetchPageContent(cursor: cursor, in: blockId)
+            let result = await NotionAPI.shared.fetchBlockList(cursor: cursor, in: blockOrPageId)
             switch result {
             case .success(let fetchedBlocks):
                 for var block in fetchedBlocks.results {
                     if block.hasChildren {
-                        block.children = await fetchBlocksRecursively(blockId: block.id)
+                        block.children = await fetchBlocksRecursively(blockOrPageId: block.id)
                     }
                     blocks.append(block)
                 }
