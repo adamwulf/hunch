@@ -1,5 +1,5 @@
 //
-//  Hunch+Markdown.swift
+//  MarkdownRenderer.swift
 //  hunch
 //
 //  Created by Adam Wulf on 9/1/24.
