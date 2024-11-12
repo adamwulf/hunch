@@ -34,7 +34,6 @@ struct Hunch: AsyncParsableCommand {
     }
 
     static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) {
-        // Flatten the list of NotionItems
         let flattenedList = flatten(items: list)
 
         switch format {
@@ -44,34 +43,17 @@ struct Hunch: AsyncParsableCommand {
             }
         case .smalljsonl:
             do {
-                let ret = try flattenedList.map({
-                    var ret: [String: Any] = ["object": $0.object, "id": $0.id, "description": $0.description]
-                    if let parent = $0.parent?.asDictionary() {
-                        ret["parent"] = parent
-                    }
-                    return ret
-                }).compactMap({
-                    let data = try JSONSerialization.data(withJSONObject: $0, options: .sortedKeys)
-                    return String(data: data, encoding: .utf8)
-                })
-                for line in ret {
-                    print(line)
-                }
+                let renderer = SmallJSONRenderer()
+                let lines = try renderer.render(flattenedList)
+                lines.forEach { print($0) }
             } catch {
                 print("error: \(error.localizedDescription)")
             }
         case .jsonl:
             do {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = .sortedKeys
-                encoder.dateEncodingStrategy = .iso8601
-                let ret = try flattenedList.compactMap({
-                    let data = try encoder.encode($0)
-                    return String(data: data, encoding: .utf8)
-                })
-                for line in ret {
-                    print(line)
-                }
+                let renderer = FullJSONRenderer()
+                let lines = try renderer.render(flattenedList)
+                lines.forEach { print($0) }
             } catch {
                 print("error: \(error.localizedDescription)")
             }
