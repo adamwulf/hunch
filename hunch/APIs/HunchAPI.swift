@@ -18,29 +18,6 @@ class HunchAPI {
         self.notion = notion
     }
 
-    func fetchContents(of blockOrPageId: String) async -> [Block] {
-        var blocks: [Block] = []
-        var cursor: String?
-
-        repeat {
-            let result = await NotionAPI.shared.fetchBlockList(cursor: cursor, in: blockOrPageId)
-            switch result {
-            case .success(let fetchedBlocks):
-                for var block in fetchedBlocks.results {
-                    if block.hasChildren {
-                        block.children = await fetchContents(of: block.id)
-                    }
-                    blocks.append(block)
-                }
-                cursor = fetchedBlocks.nextCursor
-            case .failure(let error):
-                fatalError("error: \(error.localizedDescription)")
-            }
-        } while cursor != nil
-
-        return blocks
-    }
-
     func fetchDatabases(parentId: String?, limit: Int = .max) async -> [Database] {
         var databases: [Database] = []
         var cursor: String?
@@ -62,5 +39,51 @@ class HunchAPI {
         } while cursor != nil
 
         return databases
+    }
+
+    func fetchPages(databaseId: String?, limit: Int = .max) async -> [Page] {
+        var pages: [Page] = []
+        var cursor: String?
+        var count = 0
+
+        repeat {
+            let result = await notion.fetchPages(cursor: cursor, databaseId: databaseId)
+            switch result {
+            case .success(let pageList):
+                for page in pageList.results {
+                    pages.append(page)
+                    count += 1
+                    guard count < limit else { return pages }
+                }
+                cursor = pageList.nextCursor
+            case .failure(let error):
+                fatalError("error: \(error.localizedDescription)")
+            }
+        } while cursor != nil
+
+        return pages
+    }
+
+    func fetchBlocks(in blockOrPageId: String) async -> [Block] {
+        var blocks: [Block] = []
+        var cursor: String?
+
+        repeat {
+            let result = await NotionAPI.shared.fetchBlockList(cursor: cursor, in: blockOrPageId)
+            switch result {
+            case .success(let fetchedBlocks):
+                for var block in fetchedBlocks.results {
+                    if block.hasChildren {
+                        block.children = await fetchBlocks(in: block.id)
+                    }
+                    blocks.append(block)
+                }
+                cursor = fetchedBlocks.nextCursor
+            case .failure(let error):
+                fatalError("error: \(error.localizedDescription)")
+            }
+        } while cursor != nil
+
+        return blocks
     }
 }

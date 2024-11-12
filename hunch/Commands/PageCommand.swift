@@ -25,29 +25,7 @@ struct PageCommand: AsyncParsableCommand {
 
     func run() async {
         let limit = limit ?? .max
-        var count = 0
-        var cursor: String?
-        var ret: [NotionItem] = []
-
-        var isFirstTry = true
-        while isFirstTry || cursor != nil {
-            isFirstTry = false
-            let result = await NotionAPI.shared.fetchPages(cursor: cursor, databaseId: database)
-            switch result {
-            case .success(let pages):
-                for page in pages.results {
-                    ret.append(page)
-                    count += 1
-                    guard count < limit else { break }
-                }
-                cursor = pages.nextCursor
-                guard count < limit else { break }
-            case .failure(let error):
-                fatalError("error: \(error.localizedDescription)")
-            }
-            guard count < limit else { break }
-        }
-
-        Hunch.output(list: ret, format: format)
+        let pages = await HunchAPI.shared.fetchPages(databaseId: database, limit: limit)
+        Hunch.output(list: pages, format: format)
     }
 }

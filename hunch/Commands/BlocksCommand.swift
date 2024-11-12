@@ -27,7 +27,7 @@ struct BlocksCommand: AsyncParsableCommand {
     var ignoreUnderline: Bool = false
 
     func run() async {
-        let rootBlocks = await HunchAPI.shared.fetchContents(of: pageId)
+        let rootBlocks = await HunchAPI.shared.fetchBlocks(in: pageId)
         Hunch.output(list: rootBlocks, format: format, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
     }
 }
