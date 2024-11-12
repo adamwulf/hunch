@@ -635,6 +635,7 @@ enum BlockType: String, Codable {
     case callout
     case childDatabase = "child_database"
     case childPage = "child_page"
+    case code
     case column
     case columnList = "column_list"
     case divider
@@ -684,18 +685,26 @@ struct Block: NotionItem {
     }
 
     enum CodingKeys: String, CodingKey {
-        case object
-        case id
-        case parent
-        case type
-        case createdTime = "created_time"
-        case createdBy = "created_by"
-        case lastEditedTime = "last_edited_time"
-        case lastEditedBy = "last_edited_by"
         case archived
-        case inTrash = "in_trash"
+        case bulletedListItem = "bulleted_list_item"
+        case code
+        case createdBy = "created_by"
+        case createdTime = "created_time"
         case hasChildren = "has_children"
+        case heading1 = "heading_1"
+        case heading2 = "heading_2"
+        case heading3 = "heading_3"
+        case id
+        case inTrash = "in_trash"
+        case lastEditedBy = "last_edited_by"
+        case lastEditedTime = "last_edited_time"
+        case numberedListItem = "numbered_list_item"
+        case object
         case paragraph
+        case parent
+        case quote
+        case todo = "to_do"
+        case type
     }
 
     init(from decoder: Decoder) throws {
@@ -714,66 +723,91 @@ struct Block: NotionItem {
 
         switch type {
         case .bookmark:
+            fatalError("not yet supported")
             blockTypeObject = .bookmark(try BookmarkBlock(from: decoder))
         case .breadcrumb:
+            fatalError("not yet supported")
             blockTypeObject = .breadcrumb(try BreadcrumbBlock(from: decoder))
         case .bulletedListItem:
-            blockTypeObject = .bulletedListItem(try BulletedListItemBlock(from: decoder))
+            blockTypeObject = .bulletedListItem(try container.decode(BulletedListItemBlock.self, forKey: .bulletedListItem))
         case .callout:
+            fatalError("not yet supported")
             blockTypeObject = .callout(try CalloutBlock(from: decoder))
         case .childDatabase:
+            fatalError("not yet supported")
             blockTypeObject = .childDatabase(try ChildDatabaseBlock(from: decoder))
         case .childPage:
+            fatalError("not yet supported")
             blockTypeObject = .childPage(try ChildPageBlock(from: decoder))
+        case .code:
+            blockTypeObject = .code(try container.decode(CodeBlock.self, forKey: .code))
         case .column:
+            fatalError("not yet supported")
             blockTypeObject = .column(try ColumnBlock(from: decoder))
         case .columnList:
+            fatalError("not yet supported")
             blockTypeObject = .columnList(try ColumnListBlock(from: decoder))
         case .divider:
+            fatalError("not yet supported")
             blockTypeObject = .divider(try DividerBlock(from: decoder))
         case .embed:
+            fatalError("not yet supported")
             blockTypeObject = .embed(try EmbedBlock(from: decoder))
         case .equation:
+            fatalError("not yet supported")
             blockTypeObject = .equation(try EquationBlock(from: decoder))
         case .file:
+            fatalError("not yet supported")
             blockTypeObject = .file(try FileBlock(from: decoder))
         case .heading1:
-            blockTypeObject = .heading1(try Heading1Block(from: decoder))
+            blockTypeObject = .heading1(try container.decode(Heading1Block.self, forKey: .heading1))
         case .heading2:
-            blockTypeObject = .heading2(try Heading2Block(from: decoder))
+            blockTypeObject = .heading2(try container.decode(Heading2Block.self, forKey: .heading2))
         case .heading3:
-            blockTypeObject = .heading3(try Heading3Block(from: decoder))
+            blockTypeObject = .heading3(try container.decode(Heading3Block.self, forKey: .heading3))
         case .image:
+            fatalError("not yet supported")
             blockTypeObject = .image(try ImageBlock(from: decoder))
         case .linkPreview:
+            fatalError("not yet supported")
             blockTypeObject = .linkPreview(try LinkPreviewBlock(from: decoder))
         case .linkToPage:
+            fatalError("not yet supported")
             blockTypeObject = .linkToPage(try LinkToPageBlock(from: decoder))
         case .numberedListItem:
-            blockTypeObject = .numberedListItem(try NumberedListItemBlock(from: decoder))
+            blockTypeObject = .numberedListItem(try container.decode(NumberedListItemBlock.self, forKey: .numberedListItem))
         case .paragraph:
             blockTypeObject = .paragraph(try container.decode(ParagraphBlock.self, forKey: .paragraph))
         case .pdf:
+            fatalError("not yet supported")
             blockTypeObject = .pdf(try PdfBlock(from: decoder))
         case .quote:
-            blockTypeObject = .quote(try QuoteBlock(from: decoder))
+            blockTypeObject = .quote(try container.decode(QuoteBlock.self, forKey: .quote))
         case .syncedBlock:
+            fatalError("not yet supported")
             blockTypeObject = .syncedBlock(try SyncedBlock(from: decoder))
         case .table:
+            fatalError("not yet supported")
             blockTypeObject = .table(try TableBlock(from: decoder))
         case .tableOfContents:
+            fatalError("not yet supported")
             blockTypeObject = .tableOfContents(try TableOfContentsBlock(from: decoder))
         case .tableRow:
+            fatalError("not yet supported")
             blockTypeObject = .tableRow(try TableRowBlock(from: decoder))
         case .template:
+            fatalError("not yet supported")
             blockTypeObject = .template(try TemplateBlock(from: decoder))
         case .toDo:
-            blockTypeObject = .toDo(try ToDoBlock(from: decoder))
+            blockTypeObject = .toDo(try container.decode(ToDoBlock.self, forKey: .todo))
         case .toggle:
+            fatalError("not yet supported")
             blockTypeObject = .toggle(try ToggleBlock(from: decoder))
         case .unsupported:
+            fatalError("not yet supported")
             blockTypeObject = .unsupported(try UnsupportedBlock(from: decoder))
         case .video:
+            fatalError("not yet supported")
             blockTypeObject = .video(try VideoBlock(from: decoder))
         }
     }
@@ -804,6 +838,8 @@ struct Block: NotionItem {
         case .childDatabase(let value):
             try value.encode(to: encoder)
         case .childPage(let value):
+            try value.encode(to: encoder)
+        case .code(let value):
             try value.encode(to: encoder)
         case .column(let value):
             try value.encode(to: encoder)
@@ -866,6 +902,7 @@ enum BlockTypeObject: Codable {
     case callout(CalloutBlock)
     case childDatabase(ChildDatabaseBlock)
     case childPage(ChildPageBlock)
+    case code(CodeBlock)
     case column(ColumnBlock)
     case columnList(ColumnListBlock)
     case divider(DividerBlock)
@@ -901,7 +938,8 @@ struct BookmarkBlock: Codable {
 struct BreadcrumbBlock: Codable {}
 
 struct BulletedListItemBlock: Codable {
-    let text: String
+    let text: [RichText]
+    let color: Color
 }
 
 struct CalloutBlock: Codable {
@@ -914,6 +952,12 @@ struct ChildDatabaseBlock: Codable {
 
 struct ChildPageBlock: Codable {
     let title: String
+}
+
+struct CodeBlock: Codable {
+    let caption: [RichText]
+    let text: [RichText]
+    let language: String
 }
 
 struct ColumnBlock: Codable {}
@@ -935,18 +979,22 @@ struct FileBlock: Codable {
 }
 
 struct Heading1Block: Codable {
-    let text: String
+    let text: [RichText]
+    let color: Color
 }
 
 struct Heading2Block: Codable {
-    let text: String
+    let text: [RichText]
+    let color: Color
 }
 
 struct Heading3Block: Codable {
-    let text: String
+    let text: [RichText]
+    let color: Color
 }
 
 struct ImageBlock: Codable {
+//    let caption: String?
 }
 
 struct LinkPreviewBlock: Codable {
@@ -958,12 +1006,13 @@ struct LinkToPageBlock: Codable {
 }
 
 struct NumberedListItemBlock: Codable {
-    let text: String
+    let text: [RichText]
+    let color: Color
 }
 
 struct ParagraphBlock: Codable {
     let text: [RichText]
-    let children: [Block]?
+    let color: Color
 }
 
 struct PdfBlock: Codable {
@@ -971,7 +1020,8 @@ struct PdfBlock: Codable {
 }
 
 struct QuoteBlock: Codable {
-    let text: String
+    let text: [RichText]
+    let color: Color
 }
 
 struct SyncedBlock: Codable {
@@ -993,8 +1043,9 @@ struct TemplateBlock: Codable {
 }
 
 struct ToDoBlock: Codable {
-    let text: String
+    let text: [RichText]
     let checked: Bool
+    let color: Color
 }
 
 struct ToggleBlock: Codable {

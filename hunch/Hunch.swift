@@ -16,6 +16,7 @@ struct Hunch: AsyncParsableCommand {
         case smalljsonl
         case jsonl
         case id
+        case markdown
     }
 
     static var configuration = CommandConfiguration(
@@ -32,7 +33,7 @@ struct Hunch: AsyncParsableCommand {
         NotionAPI.shared.token = key
     }
 
-    static func output(list: [NotionItem], format: Format) {
+    static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) {
         // Flatten the list of NotionItems
         let flattenedList = flatten(items: list)
 
@@ -62,6 +63,8 @@ struct Hunch: AsyncParsableCommand {
         case .jsonl:
             do {
                 let encoder = JSONEncoder()
+                encoder.outputFormatting = .sortedKeys
+                encoder.dateEncodingStrategy = .iso8601
                 let ret = try flattenedList.compactMap({
                     let data = try encoder.encode($0)
                     return String(data: data, encoding: .utf8)
@@ -72,6 +75,10 @@ struct Hunch: AsyncParsableCommand {
             } catch {
                 print("error: \(error.localizedDescription)")
             }
+        case .markdown:
+            let renderer = MarkdownRenderer(level: 0, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
+            let markdown = renderer.renderBlocksToMarkdown(list.compactMap({ $0 as? Block }))
+            print(markdown)
         }
     }
 
