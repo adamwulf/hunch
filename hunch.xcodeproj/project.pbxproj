@@ -81,8 +81,8 @@
 			children = (
 				C5F8C9EA2C0FBD18004F2B68 /* Icon.png */,
 				C5DAB59B2C291A1A007BA0E8 /* dothislater.txt */,
-				C55BC2432654DF6F00674275 /* Model.swift */,
 				C55BC2322654D46000674275 /* Hunch.swift */,
+				C5B3AFAB2CE325370096350E /* Models */,
 				C5B3AFA92CE324CF0096350E /* APIs */,
 				C5DAB59C2C291A27007BA0E8 /* Commands */,
 				C5B3AFAA2CE324E50096350E /* Helpers */,
@@ -106,6 +106,14 @@
 				C55BC2472654E07300674275 /* URLSession+Extensions.swift */,
 			);
 			path = Helpers;
+			sourceTree = "<group>";
+		};
+		C5B3AFAB2CE325370096350E /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				C55BC2432654DF6F00674275 /* Model.swift */,
+			);
+			path = Models;
 			sourceTree = "<group>";
 		};
 		C5DAB59C2C291A27007BA0E8 /* Commands */ = {
