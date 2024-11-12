@@ -18,5 +18,5 @@ enum Logging {
 }
 
 func log(_ logLevel: OSLogType, _ message: String, context: [String: Any]? = nil) {
-//    log.log(level: logLevel, "\(message) \(String.logfmt(context ?? [:]))")
+    log.log(level: logLevel, "\(message) \(String.logfmt(context ?? [:]))")
 }

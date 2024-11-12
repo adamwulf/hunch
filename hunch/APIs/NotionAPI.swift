@@ -75,11 +75,13 @@ class NotionAPI {
         }
     }
 
-    private func fetchResources<T: Decodable>(method: String = "GET",
-                                              url: URL,
-                                              query: [String: String] = [:],
-                                              body: Data? = nil,
-                                              completion: @escaping (Result<T, NotionAPIServiceError>) -> Void) {
+    private func fetchResources<T: Decodable>(
+        method: String = "GET",
+        url: URL,
+        query: [String: String] = [:],
+        body: Data? = nil,
+        completion: @escaping (Result<T, NotionAPIServiceError>) -> Void
+    ) {
         guard let token = token else {
             completion(.failure(.missingToken))
             return

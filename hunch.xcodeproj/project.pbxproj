@@ -25,6 +25,7 @@
 		C5B3AFC02CE32A410096350E /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFBF2CE32A400096350E /* User.swift */; };
 		C5B3AFC22CE32A720096350E /* Color.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFC12CE32A720096350E /* Color.swift */; };
 		C5B3AFC42CE32AB00096350E /* RichText.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFC32CE32AB00096350E /* RichText.swift */; };
+		C5B3AFC62CE32BF70096350E /* HunchAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B3AFC52CE32BF40096350E /* HunchAPI.swift */; };
 		C5DAB59A2C27E98C007BA0E8 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5DAB5992C27E98C007BA0E8 /* Logging.swift */; };
 		C5DAB59E2C291A34007BA0E8 /* DatabaseCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5DAB59D2C291A34007BA0E8 /* DatabaseCommand.swift */; };
 		C5DAB5A02C291A39007BA0E8 /* PageCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5DAB59F2C291A39007BA0E8 /* PageCommand.swift */; };
@@ -63,6 +64,7 @@
 		C5B3AFBF2CE32A400096350E /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
 		C5B3AFC12CE32A720096350E /* Color.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Color.swift; sourceTree = "<group>"; };
 		C5B3AFC32CE32AB00096350E /* RichText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichText.swift; sourceTree = "<group>"; };
+		C5B3AFC52CE32BF40096350E /* HunchAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HunchAPI.swift; sourceTree = "<group>"; };
 		C5DAB5992C27E98C007BA0E8 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
 		C5DAB59B2C291A1A007BA0E8 /* dothislater.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = dothislater.txt; sourceTree = "<group>"; };
 		C5DAB59D2C291A34007BA0E8 /* DatabaseCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseCommand.swift; sourceTree = "<group>"; };
@@ -119,6 +121,7 @@
 			isa = PBXGroup;
 			children = (
 				C55BC2452654DFE000674275 /* NotionAPI.swift */,
+				C5B3AFC52CE32BF40096350E /* HunchAPI.swift */,
 			);
 			path = APIs;
 			sourceTree = "<group>";
@@ -243,6 +246,7 @@
 				C5DAB59A2C27E98C007BA0E8 /* Logging.swift in Sources */,
 				C5B3AFB82CE328B00096350E /* Database.swift in Sources */,
 				C5DAB5A22C291C33007BA0E8 /* BlocksCommand.swift in Sources */,
+				C5B3AFC62CE32BF70096350E /* HunchAPI.swift in Sources */,
 				C5B3AFB62CE3287B0096350E /* Page.swift in Sources */,
 				C560BF732C856EC8000DA468 /* MarkdownRenderer.swift in Sources */,
 				C5B3AFAF2CE328120096350E /* DatabaseList.swift in Sources */,
