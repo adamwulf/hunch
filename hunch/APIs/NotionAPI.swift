@@ -18,7 +18,7 @@ class NotionAPI {
     private let urlSession = URLSession(configuration: .ephemeral)
     private let baseURL = URL(string: "https://api.notion.com/v1")!
 
-    private let jsonDecoder: JSONDecoder = {
+    let jsonDecoder: JSONDecoder = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
@@ -27,7 +27,7 @@ class NotionAPI {
         return jsonDecorder
     }()
 
-    private let jsonEncoder: JSONEncoder = {
+    let jsonEncoder: JSONEncoder = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
         formatter.timeZone = TimeZone(secondsFromGMT: 0)

@@ -36,31 +36,24 @@ struct Hunch: AsyncParsableCommand {
     static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) {
         let flattenedList = flatten(items: list)
 
-        switch format {
-        case .id:
-            for item in flattenedList {
-                print(item.id)
+        let renderer: Renderer = {
+            switch format {
+            case .id:
+                return IDRenderer()
+            case .smalljsonl:
+                return SmallJSONRenderer()
+            case .jsonl:
+                return FullJSONRenderer()
+            case .markdown:
+                return MarkdownRenderer(level: 0, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
             }
-        case .smalljsonl:
-            do {
-                let renderer = SmallJSONRenderer()
-                let lines = try renderer.render(flattenedList)
-                lines.forEach { print($0) }
-            } catch {
-                print("error: \(error.localizedDescription)")
-            }
-        case .jsonl:
-            do {
-                let renderer = FullJSONRenderer()
-                let lines = try renderer.render(flattenedList)
-                lines.forEach { print($0) }
-            } catch {
-                print("error: \(error.localizedDescription)")
-            }
-        case .markdown:
-            let renderer = MarkdownRenderer(level: 0, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
-            let markdown = renderer.renderBlocksToMarkdown(list.compactMap({ $0 as? Block }))
-            print(markdown)
+        }()
+
+        do {
+            let output = try renderer.render(flattenedList)
+            print(output)
+        } catch {
+            print("error: \(error.localizedDescription)")
         }
     }
 

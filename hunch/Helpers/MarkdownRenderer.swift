@@ -8,7 +8,7 @@
 import Foundation
 import SwiftToolbox
 
-class MarkdownRenderer {
+class MarkdownRenderer: Renderer {
     private(set) var level: Int
     let ignoreColor: Bool
     let ignoreUnderline: Bool
@@ -25,7 +25,11 @@ class MarkdownRenderer {
         return MarkdownRenderer(level: levelOverride ?? (level + 1), ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
     }
 
-    func renderBlocksToMarkdown(_ blocks: [Block]) -> String {
+    func render(_ items: [NotionItem]) throws -> String {
+        return renderBlocksToMarkdown(items.compactMap { $0 as? Block })
+    }
+
+    private func renderBlocksToMarkdown(_ blocks: [Block]) -> String {
         var markdown = ""
         for block in blocks {
             markdown += handleStateForBlock(block)

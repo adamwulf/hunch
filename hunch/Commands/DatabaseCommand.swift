@@ -1,5 +1,5 @@
 //
-//  Database.swift
+//  DatabaseCommand.swift
 //  hunch
 //
 //  Created by Adam Wulf on 6/23/24.
