@@ -27,30 +27,7 @@ struct BlocksCommand: AsyncParsableCommand {
     var ignoreUnderline: Bool = false
 
     func run() async {
-        let rootBlocks = await fetchBlocksRecursively(blockOrPageId: pageId)
+        let rootBlocks = await HunchAPI.shared.fetchContents(of: pageId)
         Hunch.output(list: rootBlocks, format: format, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
-    }
-
-    private func fetchBlocksRecursively(blockOrPageId: String) async -> [Block] {
-        var blocks: [Block] = []
-        var cursor: String?
-
-        repeat {
-            let result = await NotionAPI.shared.fetchBlockList(cursor: cursor, in: blockOrPageId)
-            switch result {
-            case .success(let fetchedBlocks):
-                for var block in fetchedBlocks.results {
-                    if block.hasChildren {
-                        block.children = await fetchBlocksRecursively(blockOrPageId: block.id)
-                    }
-                    blocks.append(block)
-                }
-                cursor = fetchedBlocks.nextCursor
-            case .failure(let error):
-                fatalError("error: \(error.localizedDescription)")
-            }
-        } while cursor != nil
-
-        return blocks
     }
 }
