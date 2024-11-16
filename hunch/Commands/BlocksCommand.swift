@@ -27,7 +27,11 @@ struct BlocksCommand: AsyncParsableCommand {
     var ignoreUnderline: Bool = false
 
     func run() async {
-        let rootBlocks = await HunchAPI.shared.fetchBlocks(in: pageId)
-        Hunch.output(list: rootBlocks, format: format, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
+        do {
+            let rootBlocks = try await HunchAPI.shared.fetchBlocks(in: pageId)
+            Hunch.output(list: rootBlocks, format: format, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
+        } catch {
+            fatalError("error: \(error.localizedDescription)")
+        }
     }
 }

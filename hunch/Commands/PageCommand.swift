@@ -24,8 +24,12 @@ struct PageCommand: AsyncParsableCommand {
     var format: Hunch.Format = .id
 
     func run() async {
-        let limit = limit ?? .max
-        let pages = await HunchAPI.shared.fetchPages(databaseId: database, limit: limit)
-        Hunch.output(list: pages, format: format)
+        do {
+            let limit = limit ?? .max
+            let pages = try await HunchAPI.shared.fetchPages(databaseId: database, limit: limit)
+            Hunch.output(list: pages, format: format)
+        } catch {
+            fatalError("error: \(error.localizedDescription)")
+        }
     }
 }

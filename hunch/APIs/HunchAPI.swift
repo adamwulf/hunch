@@ -8,6 +8,17 @@
 import Foundation
 import OSLog
 
+enum HunchAPIError: LocalizedError {
+    case apiError(NotionAPI.NotionAPIServiceError)
+
+    var errorDescription: String? {
+        switch self {
+        case .apiError(let error):
+            return error.localizedDescription
+        }
+    }
+}
+
 class HunchAPI {
     public static var logHandler: ((_ level: OSLogType, _ message: String, _ context: [String: Any]?) -> Void)?
     public static let shared = HunchAPI(notion: NotionAPI.shared)
@@ -18,7 +29,7 @@ class HunchAPI {
         self.notion = notion
     }
 
-    func fetchDatabases(parentId: String?, limit: Int = .max) async -> [Database] {
+    func fetchDatabases(parentId: String?, limit: Int = .max) async throws -> [Database] {
         var databases: [Database] = []
         var cursor: String?
         var count = 0
@@ -34,14 +45,14 @@ class HunchAPI {
                 }
                 cursor = dbs.nextCursor
             case .failure(let error):
-                fatalError("error: \(error.localizedDescription)")
+                throw HunchAPIError.apiError(error)
             }
         } while cursor != nil
 
         return databases
     }
 
-    func fetchPages(databaseId: String?, limit: Int = .max) async -> [Page] {
+    func fetchPages(databaseId: String?, limit: Int = .max) async throws -> [Page] {
         var pages: [Page] = []
         var cursor: String?
         var count = 0
@@ -57,14 +68,14 @@ class HunchAPI {
                 }
                 cursor = pageList.nextCursor
             case .failure(let error):
-                fatalError("error: \(error.localizedDescription)")
+                throw HunchAPIError.apiError(error)
             }
         } while cursor != nil
 
         return pages
     }
 
-    func fetchBlocks(in blockOrPageId: String) async -> [Block] {
+    func fetchBlocks(in blockOrPageId: String) async throws -> [Block] {
         var blocks: [Block] = []
         var cursor: String?
 
@@ -74,13 +85,13 @@ class HunchAPI {
             case .success(let fetchedBlocks):
                 for var block in fetchedBlocks.results {
                     if block.hasChildren {
-                        block.children = await fetchBlocks(in: block.id)
+                        block.children = try await fetchBlocks(in: block.id)
                     }
                     blocks.append(block)
                 }
                 cursor = fetchedBlocks.nextCursor
             case .failure(let error):
-                fatalError("error: \(error.localizedDescription)")
+                throw HunchAPIError.apiError(error)
             }
         } while cursor != nil
 
