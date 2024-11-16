@@ -239,10 +239,17 @@ public class MarkdownRenderer: Renderer {
     }
 
     private func renderImage(_ block: Block) -> String {
-        fatalError("not yet implemented")
-    //    guard case let .image(imageBlock) = block.blockTypeObject else { return "" }
-    //    let caption = imageBlock.caption.isEmpty ? "Image" : imageBlock.caption
-    //    return "![\(caption)](\(imageBlock.url))\n\n"
+        guard
+            case let .image(imageBlock) = block.blockTypeObject,
+            let url = imageBlock.image.external?.url ?? imageBlock.image.file?.url
+        else { return "" }
+        let caption: String
+        if let text = imageBlock.image.caption {
+            caption = (try? render(text)) ?? "Image"
+        } else {
+            caption = "Image"
+        }
+        return "![\(caption)](\(url))\n\n"
     }
 
     private func renderVideo(_ block: Block) -> String {

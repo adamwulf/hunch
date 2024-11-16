@@ -109,7 +109,6 @@ public struct Block: NotionItem {
         case .heading3:
             blockTypeObject = .heading3(try container.decode(Heading3Block.self, forKey: .heading3))
         case .image:
-            fatalError("not yet supported")
             blockTypeObject = .image(try ImageBlock(from: decoder))
         case .linkPreview:
             fatalError("not yet supported")
@@ -352,7 +351,27 @@ public struct EquationBlock: Codable {
 }
 
 public struct FileBlock: Codable {
-    public let file: String
+    public enum ImageType: String, Codable {
+        case external
+        case file
+    }
+    public struct External: Codable {
+        let url: String
+    }
+    public struct NotionHosted: Codable {
+        let url: String
+        let expiryTime: String
+
+        enum CodingKeys: String, CodingKey {
+            case url
+            case expiryTime = "expiry_time"
+        }
+    }
+
+    public let caption: [RichText]?
+    public let type: ImageType
+    public let external: External?
+    public let file: NotionHosted?
 }
 
 public struct Heading1Block: Codable {
@@ -370,7 +389,9 @@ public struct Heading3Block: Codable {
     public let color: Color
 }
 
-public struct ImageBlock: Codable {}
+public struct ImageBlock: Codable {
+    public let image: FileBlock
+}
 
 public struct LinkPreviewBlock: Codable {
     public let url: String
