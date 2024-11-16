@@ -25,6 +25,10 @@ public class MarkdownRenderer: Renderer {
         return renderBlocksToMarkdown(items.compactMap { $0 as? Block })
     }
 
+    public func render(_ text: [RichText]) throws -> String {
+        return text.map { renderRichText($0) }.joined()
+    }
+
     private func childRenderer(level levelOverride: Int? = nil) -> MarkdownRenderer {
         return MarkdownRenderer(level: levelOverride ?? (level + 1), ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
     }
