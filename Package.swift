@@ -8,7 +8,7 @@ let package = Package(
         .iOS(.v16)
     ],
     products: [
-        .library(name: "Hunch", targets: ["HunchKit"]),
+        .library(name: "HunchKit", targets: ["HunchKit"]),
         .executable(name: "hunch", targets: ["hunch"])
     ],
     dependencies: [
