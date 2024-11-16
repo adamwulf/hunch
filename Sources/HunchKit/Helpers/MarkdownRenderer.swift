@@ -243,13 +243,14 @@ public class MarkdownRenderer: Renderer {
             case let .image(imageBlock) = block.blockTypeObject,
             let url = imageBlock.image.external?.url ?? imageBlock.image.file?.url
         else { return "" }
-        let caption: String
+        let caption: String?
         if let text = imageBlock.image.caption {
-            caption = (try? render(text)) ?? "Image"
+            caption = try? self.render(text)
         } else {
-            caption = "Image"
+            caption = nil
         }
-        return "![\(caption)](\(url))\n\n"
+
+        return "![\(block.id)](\(url))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
     }
 
     private func renderVideo(_ block: Block) -> String {
