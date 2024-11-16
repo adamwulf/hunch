@@ -7,18 +7,18 @@
 
 import Foundation
 
-struct Page: NotionItem {
-    let object = "page"
-    var id: String
-    var parent: Parent?
-    let created: Date
-    var lastEdited: Date
-    var properties: [String: Property]
-    var icon: Icon?
-    var archived: Bool
-    var deleted: Bool
+public struct Page: NotionItem {
+    public let object = "page"
+    public internal(set) var id: String
+    public internal(set) var parent: Parent?
+    public let created: Date
+    public internal(set) var lastEdited: Date
+    public internal(set) var properties: [String: Property]
+    public internal(set) var icon: Icon?
+    public internal(set) var archived: Bool
+    public internal(set) var deleted: Bool
 
-    var title: [RichText] {
+    public var title: [RichText] {
         guard
             let title = properties.values.first(where: { $0.kind == .title }),
             case .title(_, let value) = title
@@ -26,7 +26,7 @@ struct Page: NotionItem {
         return value
     }
 
-    var description: String {
+    public var description: String {
         let emoji = icon?.emoji.map({ $0 + " " }) ?? ""
         return emoji + title.reduce("", { $0 + $1.plainText })
     }

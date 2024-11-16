@@ -7,8 +7,11 @@
 
 import Foundation
 
-class FullJSONRenderer: Renderer {
-    func render(_ items: [NotionItem]) throws -> String {
+public class FullJSONRenderer: Renderer {
+
+    public init() {}
+
+    public func render(_ items: [NotionItem]) throws -> String {
         return try items.map { item in
             let data = try NotionAPI.shared.jsonEncoder.encode(item)
             return String(data: data, encoding: .utf8)!

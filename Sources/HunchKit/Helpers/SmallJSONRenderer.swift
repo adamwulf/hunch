@@ -7,8 +7,11 @@
 
 import Foundation
 
-class SmallJSONRenderer: Renderer {
-    func render(_ items: [NotionItem]) throws -> String {
+public class SmallJSONRenderer: Renderer {
+
+    public init() {}
+
+    public func render(_ items: [NotionItem]) throws -> String {
         return try items.map { item in
             var ret: [String: Any] = ["object": item.object, "id": item.id, "description": item.description]
             if let parent = item.parent?.asDictionary() {

@@ -7,17 +7,17 @@
 
 import Foundation
 
-struct User: Codable {
-    enum Kind: String, Codable {
+public struct User: Codable {
+    public enum Kind: String, Codable {
         case person
         case bot
     }
 
-    let object = "user"
-    let id: String
-    let type: Kind
-    let name: String?
-    let avatarURL: String?
+    public let object = "user"
+    public let id: String
+    public let type: Kind
+    public let name: String?
+    public let avatarURL: String?
 
     enum CodingKeys: String, CodingKey {
         case id

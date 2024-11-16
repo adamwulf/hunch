@@ -9,7 +9,7 @@
 import Foundation
 import OSLog
 
-class NotionAPI {
+public class NotionAPI {
     public static var logHandler: ((_ level: OSLogType, _ message: String, _ context: [String: Any]?) -> Void)?
     public static let shared = NotionAPI()
     public var token: String?
@@ -130,7 +130,7 @@ class NotionAPI {
         }.resume()
     }
 
-    func fetchDatabases(cursor: String?, parentId: String?) async -> Result<DatabaseList, NotionAPIServiceError> {
+    internal func fetchDatabases(cursor: String?, parentId: String?) async -> Result<DatabaseList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             fetchResources(url: baseURL.appendingPathComponent("databases"),
                            query: ["start_cursor": cursor, "parent": parentId].compactMapValues({ $0 }),
@@ -140,7 +140,7 @@ class NotionAPI {
         }
     }
 
-    func fetchPages(cursor: String?, databaseId: String?) async -> Result<PageList, NotionAPIServiceError> {
+    internal func fetchPages(cursor: String?, databaseId: String?) async -> Result<PageList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             let bodyJSON: [String: Any] = [:]
             do {
@@ -170,7 +170,7 @@ class NotionAPI {
         }
     }
 
-    func fetchBlockList(cursor: String?, in pageOrBlockId: String) async -> Result<BlockList, NotionAPIServiceError> {
+    internal func fetchBlockList(cursor: String?, in pageOrBlockId: String) async -> Result<BlockList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             let url = baseURL.appendingPathComponent("blocks").appendingPathComponent(pageOrBlockId).appendingPathComponent("children")
             fetchResources(method: "GET",

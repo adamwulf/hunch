@@ -8,25 +8,25 @@
 import Foundation
 import SwiftToolbox
 
-class MarkdownRenderer: Renderer {
+public class MarkdownRenderer: Renderer {
     private(set) var level: Int
     let ignoreColor: Bool
     let ignoreUnderline: Bool
 
     private var listState: Bool = false
 
-    init(level: Int, ignoreColor: Bool, ignoreUnderline: Bool) {
+    public init(level: Int, ignoreColor: Bool, ignoreUnderline: Bool) {
         self.level = level
         self.ignoreColor = ignoreColor
         self.ignoreUnderline = ignoreUnderline
     }
 
-    private func childRenderer(level levelOverride: Int? = nil) -> MarkdownRenderer {
-        return MarkdownRenderer(level: levelOverride ?? (level + 1), ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
+    public func render(_ items: [NotionItem]) throws -> String {
+        return renderBlocksToMarkdown(items.compactMap { $0 as? Block })
     }
 
-    func render(_ items: [NotionItem]) throws -> String {
-        return renderBlocksToMarkdown(items.compactMap { $0 as? Block })
+    private func childRenderer(level levelOverride: Int? = nil) -> MarkdownRenderer {
+        return MarkdownRenderer(level: levelOverride ?? (level + 1), ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
     }
 
     private func renderBlocksToMarkdown(_ blocks: [Block]) -> String {

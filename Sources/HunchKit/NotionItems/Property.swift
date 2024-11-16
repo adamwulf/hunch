@@ -8,7 +8,7 @@
 
 import Foundation
 
-enum Property: Codable {
+public enum Property: Codable {
     case title(id: String, value: [RichText])
     case richText(id: String, value: [RichText])
     case number(id: String, value: Double)
@@ -57,7 +57,7 @@ enum Property: Codable {
         case lastEditedBy = "last_edited_by"
     }
 
-    enum Kind: String, Codable {
+    public enum Kind: String, Codable {
         case title
         case richText = "rich_text"
         case number
@@ -81,7 +81,7 @@ enum Property: Codable {
         case null
     }
 
-    var kind: Kind {
+    public var kind: Kind {
         switch self {
         case .title: .title
         case .richText: .richText
@@ -107,7 +107,7 @@ enum Property: Codable {
         }
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let id = try container.decode(String.self, forKey: .id)
         let kind = try container.decode(Kind.self, forKey: .type)
@@ -188,7 +188,7 @@ enum Property: Codable {
 
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
         case .null:
@@ -277,18 +277,18 @@ enum Property: Codable {
     }
 }
 
-struct SelectOption: Codable {
-    var name: String
+public struct SelectOption: Codable {
+    public internal(set) var name: String
 }
 
-struct DateRange: Codable {
-    var start: Date
-    var end: Date?
+public struct DateRange: Codable {
+    public internal(set) var start: Date
+    public internal(set) var end: Date?
 }
 
-struct File: Codable {
-    var url: String
-    var expiryTime: Date?
+public struct File: Codable {
+    public internal(set) var url: String
+    public internal(set) var expiryTime: Date?
 
     enum CodingKeys: String, CodingKey {
         case url
@@ -296,14 +296,14 @@ struct File: Codable {
     }
 }
 
-struct Formula: Codable {
-    var expression: String
+public struct Formula: Codable {
+    public internal(set) var expression: String
 }
 
-struct Relation: Codable {
-    var id: String
+public struct Relation: Codable {
+    public internal(set) var id: String
 }
 
-struct Rollup: Codable {
-    var value: String
+public struct Rollup: Codable {
+    public internal(set) var value: String
 }

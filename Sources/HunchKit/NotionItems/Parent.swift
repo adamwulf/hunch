@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum Parent: Codable {
+public enum Parent: Codable {
     case database(String)
     case page(String)
     case workspace
@@ -28,7 +28,7 @@ enum Parent: Codable {
         case block = "block_id"
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let type = try container.decode(ParentType.self, forKey: .type)
 
@@ -47,7 +47,7 @@ enum Parent: Codable {
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
 
         switch self {

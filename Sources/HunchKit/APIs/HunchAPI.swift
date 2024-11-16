@@ -8,10 +8,10 @@
 import Foundation
 import OSLog
 
-enum HunchAPIError: LocalizedError {
+public enum HunchAPIError: LocalizedError {
     case apiError(NotionAPI.NotionAPIServiceError)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .apiError(let error):
             return error.localizedDescription
@@ -19,7 +19,7 @@ enum HunchAPIError: LocalizedError {
     }
 }
 
-class HunchAPI {
+public class HunchAPI {
     public static var logHandler: ((_ level: OSLogType, _ message: String, _ context: [String: Any]?) -> Void)?
     public static let shared = HunchAPI(notion: NotionAPI.shared)
 
@@ -29,7 +29,7 @@ class HunchAPI {
         self.notion = notion
     }
 
-    func fetchDatabases(parentId: String?, limit: Int = .max) async throws -> [Database] {
+    public func fetchDatabases(parentId: String?, limit: Int = .max) async throws -> [Database] {
         var databases: [Database] = []
         var cursor: String?
         var count = 0
@@ -52,7 +52,7 @@ class HunchAPI {
         return databases
     }
 
-    func fetchPages(databaseId: String?, limit: Int = .max) async throws -> [Page] {
+    public func fetchPages(databaseId: String?, limit: Int = .max) async throws -> [Page] {
         var pages: [Page] = []
         var cursor: String?
         var count = 0
@@ -75,7 +75,7 @@ class HunchAPI {
         return pages
     }
 
-    func fetchBlocks(in blockOrPageId: String) async throws -> [Block] {
+    public func fetchBlocks(in blockOrPageId: String) async throws -> [Block] {
         var blocks: [Block] = []
         var cursor: String?
 

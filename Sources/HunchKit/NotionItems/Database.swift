@@ -7,19 +7,19 @@
 
 import Foundation
 
-struct Database: NotionItem {
-    let object = "database"
-    var id: String
-    var parent: Parent?
-    let created: Date
-    var lastEdited: Date
-    var icon: Icon?
-    var title: [RichText]
-    var properties: [String: Property]
-    var archived: Bool
-    var deleted: Bool
+public struct Database: NotionItem {
+    public let object = "database"
+    public internal(set) var id: String
+    public internal(set) var parent: Parent?
+    public let created: Date
+    public internal(set) var lastEdited: Date
+    public internal(set) var icon: Icon?
+    public internal(set) var title: [RichText]
+    public internal(set) var properties: [String: Property]
+    public internal(set) var archived: Bool
+    public internal(set) var deleted: Bool
 
-    var description: String {
+    public var description: String {
         let emoji = icon?.emoji.map({ $0 + " " }) ?? ""
         return emoji + title.reduce("", { $0 + $1.plainText })
     }

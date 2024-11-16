@@ -7,7 +7,7 @@
 
 import Foundation
 
-protocol NotionItem: Codable, CustomStringConvertible {
+public protocol NotionItem: Codable, CustomStringConvertible {
     var object: String { get }
     var id: String { get }
     var parent: Parent? { get }

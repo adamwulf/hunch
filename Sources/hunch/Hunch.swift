@@ -8,6 +8,7 @@
 import Foundation
 import ArgumentParser
 import SwiftToolbox
+import HunchKit
 
 @main
 struct Hunch: AsyncParsableCommand {

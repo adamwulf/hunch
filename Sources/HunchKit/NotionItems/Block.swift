@@ -7,24 +7,23 @@
 
 import Foundation
 
-struct Block: NotionItem {
-    let object: String
-    let id: String
-    let parent: Parent?
-    let type: BlockType
-    let createdTime: String
-    let createdBy: PartialUser
-    let lastEditedTime: String
-    let lastEditedBy: PartialUser
-    let archived: Bool
-    let inTrash: Bool
-    let hasChildren: Bool
-    let blockTypeObject: BlockTypeObject
+public struct Block: NotionItem {
+    public let object: String
+    public let id: String
+    public let parent: Parent?
+    public let type: BlockType
+    public let createdTime: String
+    public let createdBy: PartialUser
+    public let lastEditedTime: String
+    public let lastEditedBy: PartialUser
+    public let archived: Bool
+    public let inTrash: Bool
+    public let hasChildren: Bool
+    public let blockTypeObject: BlockTypeObject
 
-    // These children are not decoded directly from a Notion API response, and instead are populated by additional API requests
-    var children: [Block] = []
+    public internal(set) var children: [Block] = []
 
-    var description: String {
+    public var description: String {
         return type.rawValue
     }
 
@@ -51,11 +50,11 @@ struct Block: NotionItem {
         case type
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         object = try container.decode(String.self, forKey: .object)
         id = try container.decode(String.self, forKey: .id)
-        parent = try container.decode(Parent.self, forKey: .parent)
+        parent = try container.decodeIfPresent(Parent.self, forKey: .parent)
         type = try container.decode(BlockType.self, forKey: .type)
         createdTime = try container.decode(String.self, forKey: .createdTime)
         createdBy = try container.decode(PartialUser.self, forKey: .createdBy)
@@ -156,7 +155,7 @@ struct Block: NotionItem {
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(object, forKey: .object)
         try container.encode(id, forKey: .id)
@@ -239,7 +238,7 @@ struct Block: NotionItem {
     }
 }
 
-enum BlockType: String, Codable {
+public enum BlockType: String, Codable {
     case bookmark
     case breadcrumb
     case bulletedListItem = "bulleted_list_item"
@@ -274,7 +273,7 @@ enum BlockType: String, Codable {
     case video
 }
 
-enum BlockTypeObject: Codable {
+public enum BlockTypeObject: Codable {
     case bookmark(BookmarkBlock)
     case breadcrumb(BreadcrumbBlock)
     case bulletedListItem(BulletedListItemBlock)
@@ -309,135 +308,132 @@ enum BlockTypeObject: Codable {
     case video(VideoBlock)
 }
 
-// Example block type structs
-struct BookmarkBlock: Codable {
-    let url: String
+public struct BookmarkBlock: Codable {
+    public let url: String
 }
 
-struct BreadcrumbBlock: Codable {}
+public struct BreadcrumbBlock: Codable {}
 
-struct BulletedListItemBlock: Codable {
-    let text: [RichText]
-    let color: Color
+public struct BulletedListItemBlock: Codable {
+    public let text: [RichText]
+    public let color: Color
 }
 
-struct CalloutBlock: Codable {
-    let text: String
+public struct CalloutBlock: Codable {
+    public let text: String
 }
 
-struct ChildDatabaseBlock: Codable {
-    let title: String
+public struct ChildDatabaseBlock: Codable {
+    public let title: String
 }
 
-struct ChildPageBlock: Codable {
-    let title: String
+public struct ChildPageBlock: Codable {
+    public let title: String
 }
 
-struct CodeBlock: Codable {
-    let caption: [RichText]
-    let text: [RichText]
-    let language: String
+public struct CodeBlock: Codable {
+    public let caption: [RichText]
+    public let text: [RichText]
+    public let language: String
 }
 
-struct ColumnBlock: Codable {}
+public struct ColumnBlock: Codable {}
 
-struct ColumnListBlock: Codable {}
+public struct ColumnListBlock: Codable {}
 
-struct DividerBlock: Codable {}
+public struct DividerBlock: Codable {}
 
-struct EmbedBlock: Codable {
-    let url: String
+public struct EmbedBlock: Codable {
+    public let url: String
 }
 
-struct EquationBlock: Codable {
-    let expression: String
+public struct EquationBlock: Codable {
+    public let expression: String
 }
 
-struct FileBlock: Codable {
-    let file: String
+public struct FileBlock: Codable {
+    public let file: String
 }
 
-struct Heading1Block: Codable {
-    let text: [RichText]
-    let color: Color
+public struct Heading1Block: Codable {
+    public let text: [RichText]
+    public let color: Color
 }
 
-struct Heading2Block: Codable {
-    let text: [RichText]
-    let color: Color
+public struct Heading2Block: Codable {
+    public let text: [RichText]
+    public let color: Color
 }
 
-struct Heading3Block: Codable {
-    let text: [RichText]
-    let color: Color
+public struct Heading3Block: Codable {
+    public let text: [RichText]
+    public let color: Color
 }
 
-struct ImageBlock: Codable {
-//    let caption: String?
+public struct ImageBlock: Codable {}
+
+public struct LinkPreviewBlock: Codable {
+    public let url: String
 }
 
-struct LinkPreviewBlock: Codable {
-    let url: String
+public struct LinkToPageBlock: Codable {
+    public let pageId: String
 }
 
-struct LinkToPageBlock: Codable {
-    let pageId: String
+public struct NumberedListItemBlock: Codable {
+    public let text: [RichText]
+    public let color: Color
 }
 
-struct NumberedListItemBlock: Codable {
-    let text: [RichText]
-    let color: Color
+public struct ParagraphBlock: Codable {
+    public let text: [RichText]
+    public let color: Color
 }
 
-struct ParagraphBlock: Codable {
-    let text: [RichText]
-    let color: Color
+public struct PdfBlock: Codable {
+    public let url: String
 }
 
-struct PdfBlock: Codable {
-    let url: String
+public struct QuoteBlock: Codable {
+    public let text: [RichText]
+    public let color: Color
 }
 
-struct QuoteBlock: Codable {
-    let text: [RichText]
-    let color: Color
+public struct SyncedBlock: Codable {
+    public let syncedFrom: String
 }
 
-struct SyncedBlock: Codable {
-    let syncedFrom: String
+public struct TableBlock: Codable {
+    public let rows: Int
 }
 
-struct TableBlock: Codable {
-    let rows: Int
+public struct TableOfContentsBlock: Codable {}
+
+public struct TableRowBlock: Codable {
+    public let cells: [String]
 }
 
-struct TableOfContentsBlock: Codable {}
-
-struct TableRowBlock: Codable {
-    let cells: [String]
+public struct TemplateBlock: Codable {
+    public let text: String
 }
 
-struct TemplateBlock: Codable {
-    let text: String
+public struct ToDoBlock: Codable {
+    public let text: [RichText]
+    public let checked: Bool
+    public let color: Color
 }
 
-struct ToDoBlock: Codable {
-    let text: [RichText]
-    let checked: Bool
-    let color: Color
+public struct ToggleBlock: Codable {
+    public let text: String
 }
 
-struct ToggleBlock: Codable {
-    let text: String
+public struct UnsupportedBlock: Codable {}
+
+public struct VideoBlock: Codable {
+    public let url: String
 }
 
-struct UnsupportedBlock: Codable {}
-
-struct VideoBlock: Codable {
-    let url: String
-}
-
-struct PartialUser: Codable {
-    let object: String
-    let id: String
+public struct PartialUser: Codable {
+    public let object: String
+    public let id: String
 }
