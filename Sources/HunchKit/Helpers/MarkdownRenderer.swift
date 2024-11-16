@@ -25,6 +25,10 @@ public class MarkdownRenderer: Renderer {
         return renderBlocksToMarkdown(items.compactMap { $0 as? Block })
     }
 
+    public func render(_ text: [RichText]) throws -> String {
+        return text.map { renderRichText($0) }.joined()
+    }
+
     private func childRenderer(level levelOverride: Int? = nil) -> MarkdownRenderer {
         return MarkdownRenderer(level: levelOverride ?? (level + 1), ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
     }
@@ -235,10 +239,18 @@ public class MarkdownRenderer: Renderer {
     }
 
     private func renderImage(_ block: Block) -> String {
-        fatalError("not yet implemented")
-    //    guard case let .image(imageBlock) = block.blockTypeObject else { return "" }
-    //    let caption = imageBlock.caption.isEmpty ? "Image" : imageBlock.caption
-    //    return "![\(caption)](\(imageBlock.url))\n\n"
+        guard
+            case let .image(imageBlock) = block.blockTypeObject,
+            let url = imageBlock.image.external?.url ?? imageBlock.image.file?.url
+        else { return "" }
+        let caption: String?
+        if let text = imageBlock.image.caption {
+            caption = try? self.render(text)
+        } else {
+            caption = nil
+        }
+
+        return "![\(block.id)](\(url))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
     }
 
     private func renderVideo(_ block: Block) -> String {
