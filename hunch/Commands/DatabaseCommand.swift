@@ -24,8 +24,12 @@ struct DatabaseCommand: AsyncParsableCommand {
     var format: Hunch.Format = .id
 
     func run() async {
-        let limit = limit ?? .max
-        let databases = await HunchAPI.shared.fetchDatabases(parentId: entityId, limit: limit)
-        Hunch.output(list: databases, format: format)
+        do {
+            let limit = limit ?? .max
+            let databases = try await HunchAPI.shared.fetchDatabases(parentId: entityId, limit: limit)
+            Hunch.output(list: databases, format: format)
+        } catch {
+            fatalError("error: \(error.localizedDescription)")
+        }
     }
 }
