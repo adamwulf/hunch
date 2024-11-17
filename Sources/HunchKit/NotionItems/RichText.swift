@@ -29,12 +29,11 @@ public struct RichText: Codable {
         }
     }
 
-    let plainText: String
-    var href: String?
-    var annotations: Annotation
-    var type: String
-
-    var text: Text?
+    public let plainText: String
+    public internal(set) var href: String?
+    public internal(set) var annotations: Annotation
+    public internal(set) var type: String
+    public internal(set) var text: Text?
 
     enum CodingKeys: String, CodingKey {
         case plainText = "plain_text"

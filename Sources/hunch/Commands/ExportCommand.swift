@@ -47,6 +47,30 @@ struct ExportCommand: AsyncParsableCommand {
             // Write to file
             let filePath = (pageDir as NSString).appendingPathComponent("content.md")
             try markdown.write(toFile: filePath, atomically: true, encoding: .utf8)
+
+            // Add this helper function
+            try writeWebloc(pageId: page.id, title: page.title, to: pageDir)
         }
+    }
+
+    // Add this helper function
+    private func writeWebloc(pageId: String, title: [RichText], to directory: String) throws {
+        let weblocContent = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>URL</key>
+            <string>https://www.notion.so/\(pageId.replacingOccurrences(of: "-", with: ""))</string>
+        </dict>
+        </plist>
+        """
+
+        var filename = title.map({ $0.plainText }).joined()
+        if filename.isEmpty {
+            filename = "Link"
+        }
+        let filePath = (directory as NSString).appendingPathComponent("\(filename).webloc")
+        try weblocContent.write(toFile: filePath, atomically: true, encoding: .utf8)
     }
 }
