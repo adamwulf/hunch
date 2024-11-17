@@ -52,6 +52,8 @@ struct ExportCommand: AsyncParsableCommand {
                     return (name, values.map { $0.name })
                 case .select(_, let value):
                     return (name, [value.name])
+                case .url(_, let value):
+                    return (name, [value])
                 default:
                     return nil
                 }
