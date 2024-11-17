@@ -39,9 +39,20 @@ struct ExportCommand: AsyncParsableCommand {
             let blocks = try await HunchAPI.shared.fetchBlocks(in: page.id)
 
             // Render to markdown
-            let emoji = page.icon?.emoji.map({ $0 + " " }) ?? ""
             let renderer = MarkdownRenderer(level: 0, ignoreColor: false, ignoreUnderline: false)
-            let titleHeader = "# \(emoji)" + (try renderer.render(page.title)) + "\n\n"
+            let emoji = page.icon?.emoji.map({ $0 + " " }) ?? ""
+            let dateFormatter = ISO8601DateFormatter()
+            dateFormatter.timeZone = .utc
+            dateFormatter.formatOptions = [.withInternetDateTime]
+            let titleHeader = """
+                ---
+                title: "\(emoji)\(try renderer.render(page.title))"
+                created: \(dateFormatter.string(from: page.created))
+                lastEdited: \(dateFormatter.string(from: page.lastEdited))
+                archived: \(page.archived)
+                id: \(page.id)
+                ---\n\n
+                """
             let markdown = titleHeader + (try renderer.render([page] + blocks))
 
             // Write to file
