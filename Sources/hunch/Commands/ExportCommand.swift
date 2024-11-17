@@ -39,9 +39,38 @@ struct ExportCommand: AsyncParsableCommand {
             let blocks = try await HunchAPI.shared.fetchBlocks(in: page.id)
 
             // Render to markdown
-            let emoji = page.icon?.emoji.map({ $0 + " " }) ?? ""
             let renderer = MarkdownRenderer(level: 0, ignoreColor: false, ignoreUnderline: false)
-            let titleHeader = "# \(emoji)" + (try renderer.render(page.title)) + "\n\n"
+            let emoji = page.icon?.emoji.map({ $0 + " " }) ?? ""
+            let dateFormatter = ISO8601DateFormatter()
+            dateFormatter.timeZone = .utc
+            dateFormatter.formatOptions = [.withInternetDateTime]
+
+            // Extract select properties
+            let selectProperties = page.properties.compactMap { (name: String, prop: Property) -> (String, [String])? in
+                switch prop {
+                case .multiSelect(_, let values):
+                    return (name, values.map { $0.name })
+                case .select(_, let value):
+                    return (name, [value.name])
+                default:
+                    return nil
+                }
+            }
+
+            let titleHeader = """
+                ---
+                title: "\(emoji)\(try renderer.render(page.title))"
+                created: \(dateFormatter.string(from: page.created))
+                lastEdited: \(dateFormatter.string(from: page.lastEdited))
+                archived: \(page.archived)
+                id: \(page.id)
+                \(selectProperties.map { name, values in
+                    "\(name.lowercased()): \(values.joined(separator: ", "))"
+                }.joined(separator: "\n"))
+                ---
+
+
+                """
             let markdown = titleHeader + (try renderer.render([page] + blocks))
 
             // Write to file

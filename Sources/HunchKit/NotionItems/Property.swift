@@ -127,8 +127,8 @@ public enum Property: Codable {
                 let value = try container.decode(SelectOption.self, forKey: .select)
                 self = .select(id: id, value: value)
             case .multiSelect:
-                let value = try container.decode([String: [SelectOption]].self, forKey: .multiSelect)
-                self = .multiSelect(id: id, value: value["options"] ?? [])
+                let value = try container.decode([SelectOption].self, forKey: .multiSelect)
+                self = .multiSelect(id: id, value: value)
             case .date:
                 let value = try container.decode(DateRange.self, forKey: .date)
                 self = .date(id: id, value: value)
@@ -278,7 +278,9 @@ public enum Property: Codable {
 }
 
 public struct SelectOption: Codable {
+    public internal(set) var id: String
     public internal(set) var name: String
+    public internal(set) var color: Color
 }
 
 public struct DateRange: Codable {
