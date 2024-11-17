@@ -70,7 +70,7 @@ struct ExportCommand: AsyncParsableCommand {
                 ---
 
 
-                """
+                """ // format to ensure an newline between the metadata and page content
             let markdown = titleHeader + (try renderer.render([page] + blocks))
 
             // Write to file
