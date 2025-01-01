@@ -297,7 +297,11 @@ public class MarkdownRenderer: Renderer {
 
     private func renderBookmark(_ block: Block) -> String {
         guard case let .bookmark(bookmarkBlock) = block.blockTypeObject else { return "" }
-        return "[\(bookmarkBlock.url)](\(bookmarkBlock.url))\n\n"
+        var caption = bookmarkBlock.caption.map { renderRichText($0) }.joined()
+        if !caption.isEmpty {
+            caption += "\n\n"
+        }
+        return "[\(bookmarkBlock.url)](\(bookmarkBlock.url))\n\n" + caption
     }
 
     private func renderChildPage(_ block: Block) -> String {
