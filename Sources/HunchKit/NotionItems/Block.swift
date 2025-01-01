@@ -38,6 +38,7 @@ public struct Block: NotionItem {
     enum CodingKeys: String, CodingKey {
         case archived
         case bulletedListItem = "bulleted_list_item"
+        case callout
         case code
         case childPage = "child_page"
         case createdBy = "created_by"
@@ -84,8 +85,7 @@ public struct Block: NotionItem {
         case .bulletedListItem:
             blockTypeObject = .bulletedListItem(try container.decode(BulletedListItemBlock.self, forKey: .bulletedListItem))
         case .callout:
-            fatalError("not yet supported")
-            blockTypeObject = .callout(try CalloutBlock(from: decoder))
+            blockTypeObject = .callout(try container.decode(CalloutBlock.self, forKey: .callout))
         case .childDatabase:
             fatalError("not yet supported")
             blockTypeObject = .childDatabase(try ChildDatabaseBlock(from: decoder))
@@ -327,7 +327,8 @@ public struct BulletedListItemBlock: Codable {
 }
 
 public struct CalloutBlock: Codable {
-    public let text: String
+    public let icon: Icon
+    public let text: [RichText]
 }
 
 public struct ChildDatabaseBlock: Codable {

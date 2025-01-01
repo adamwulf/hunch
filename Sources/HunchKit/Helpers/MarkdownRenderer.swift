@@ -234,11 +234,28 @@ public class MarkdownRenderer: Renderer {
         }
     }
 
+    // since markdown doesn't have a native callout style, use a quote style and insert the emoji on the first line
     private func renderCallout(_ block: Block) -> String {
-        fatalError("not yet implemented")
-    //    guard case let .callout(calloutBlock) = block.blockTypeObject else { return "" }
-    //    let icon = calloutBlock.icon?.emoji ?? "ℹ️"
-    //    return "> \(icon) " + calloutBlock.text.replacingOccurrences(of: "\n", with: "\n> ") + "\n\n"
+        guard case let .callout(calloutBlock) = block.blockTypeObject else { return "" }
+        let icon = calloutBlock.icon.emoji ?? "ℹ️"
+        let formattedText = calloutBlock.text.map { renderRichText($0) }.joined()
+        var childrenText = ""
+        if block.hasChildren {
+            let renderer = childRenderer(level: 0)
+            childrenText = block.children.map({
+                renderer.renderBlockToMarkdown($0)
+            }).joined(separator: "")
+        }
+        if childrenText.isEmpty {
+            return "> " + icon + " " + formattedText.replacingOccurrences(of: "\n", with: "\n> ") + "\n\n"
+        } else {
+            let quotedText = (icon + " " + formattedText + "\n\n" + childrenText)
+            let trimmed = quotedText.trimmingSuffixCharacters(in: CharacterSet(charactersIn: "\n"))
+            let newlineCount = quotedText.count - trimmed.count
+            let nearestTwoCount = (newlineCount + 1) / 2 * 2
+            let newlines = String(repeating: "\n", count: nearestTwoCount)
+            return "> " + trimmed.replacingOccurrences(of: "\n", with: "\n> ") + newlines
+        }
     }
 
     private func renderImage(_ block: Block) -> String {
