@@ -44,6 +44,7 @@ public struct Block: NotionItem {
         case childPage = "child_page"
         case createdBy = "created_by"
         case createdTime = "created_time"
+        case file
         case hasChildren = "has_children"
         case heading1 = "heading_1"
         case heading2 = "heading_2"
@@ -63,6 +64,7 @@ public struct Block: NotionItem {
         case todo = "to_do"
         case toggle
         case type
+        case video
     }
 
     public init(from decoder: Decoder) throws {
@@ -113,8 +115,7 @@ public struct Block: NotionItem {
             fatalError("not yet supported")
             blockTypeObject = .equation(try EquationBlock(from: decoder))
         case .file:
-            fatalError("not yet supported")
-            blockTypeObject = .file(try FileBlock(from: decoder))
+            blockTypeObject = .file(try container.decode(FileBlock.self, forKey: .file))
         case .heading1:
             blockTypeObject = .heading1(try container.decode(Heading1Block.self, forKey: .heading1))
         case .heading2:
@@ -158,8 +159,7 @@ public struct Block: NotionItem {
             fatalError("not yet supported")
             blockTypeObject = .unsupported(try UnsupportedBlock(from: decoder))
         case .video:
-            fatalError("not yet supported")
-            blockTypeObject = .video(try VideoBlock(from: decoder))
+            blockTypeObject = .video(try container.decode(VideoBlock.self, forKey: .video))
         }
     }
 
@@ -361,28 +361,75 @@ public struct EquationBlock: Codable {
 }
 
 public struct FileBlock: Codable {
-    public enum ImageType: String, Codable {
-        case external
-        case file
-    }
-    public struct External: Codable {
-        let url: String
-    }
-    public struct NotionHosted: Codable {
-        let url: String
-        let expiryTime: String
+    public let caption: [RichText]?
+    public let type: FileType
 
-        enum CodingKeys: String, CodingKey {
-            case url
-            case expiryTime = "expiry_time"
+    public enum FileType {
+        case external(External)
+        case file(File)
+
+        public var url: String {
+            switch self {
+            case .external(let external): external.url
+            case .file(let file): file.url
+            }
+        }
+
+        public struct External: Codable {
+            public let url: String
+        }
+
+        public struct File: Codable {
+            public let url: String
+            public let expiryTime: String
+
+            private enum CodingKeys: String, CodingKey {
+                case url
+                case expiryTime = "expiry_time"
+            }
         }
     }
 
-    public let caption: [RichText]?
-    public let type: ImageType
-    public let external: External?
-    public let file: NotionHosted?
+    private enum CodingKeys: String, CodingKey {
+        case caption
+        case file
+        case external
+        case type
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        caption = try container.decodeIfPresent([RichText].self, forKey: .caption)
+
+        let type = try container.decode(String.self, forKey: .type)
+        switch type {
+        case "external":
+            let external = try container.decode(FileType.External.self, forKey: .external)
+            self.type = .external(external)
+        case "file":
+            let file = try container.decode(FileType.File.self, forKey: .file)
+            self.type = .file(file)
+        default:
+            throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Unknown file type")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(caption, forKey: .caption)
+
+        switch type {
+        case .external(let external):
+            try container.encode("external", forKey: .type)
+            try container.encode(external, forKey: .external)
+        case .file(let file):
+            try container.encode("file", forKey: .type)
+            try container.encode(file, forKey: .file)
+        }
+    }
 }
+
+public typealias VideoBlock = FileBlock
 
 public struct Heading1Block: Codable {
     public let text: [RichText]
@@ -472,10 +519,6 @@ public struct ToggleBlock: Codable {
 }
 
 public struct UnsupportedBlock: Codable {}
-
-public struct VideoBlock: Codable {
-    public let url: String
-}
 
 public struct PartialUser: Codable {
     public let object: String
