@@ -52,6 +52,7 @@ public struct Block: NotionItem {
         case inTrash = "in_trash"
         case lastEditedBy = "last_edited_by"
         case lastEditedTime = "last_edited_time"
+        case linkToPage = "link_to_page"
         case numberedListItem = "numbered_list_item"
         case object
         case paragraph
@@ -126,8 +127,7 @@ public struct Block: NotionItem {
             fatalError("not yet supported")
             blockTypeObject = .linkPreview(try LinkPreviewBlock(from: decoder))
         case .linkToPage:
-            fatalError("not yet supported")
-            blockTypeObject = .linkToPage(try LinkToPageBlock(from: decoder))
+            blockTypeObject = .linkToPage(try container.decode(LinkToPageBlock.self, forKey: .linkToPage))
         case .numberedListItem:
             blockTypeObject = .numberedListItem(try container.decode(NumberedListItemBlock.self, forKey: .numberedListItem))
         case .paragraph:
@@ -409,6 +409,10 @@ public struct LinkPreviewBlock: Codable {
 
 public struct LinkToPageBlock: Codable {
     public let pageId: String
+
+    enum CodingKeys: String, CodingKey {
+        case pageId = "page_id"
+    }
 }
 
 public struct NumberedListItemBlock: Codable {

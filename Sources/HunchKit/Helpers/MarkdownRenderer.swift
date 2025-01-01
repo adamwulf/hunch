@@ -95,6 +95,8 @@ public class MarkdownRenderer: Renderer {
             return renderChildPage(block)
         case .table:
             return renderTable(block)
+        case .linkToPage:
+            return renderLinkToPage(block)
         // Add more cases for other block types as needed
         default:
             return "Unsupported block type: \(block.type.rawValue)\n"
@@ -310,5 +312,11 @@ public class MarkdownRenderer: Renderer {
             return foo
         })
         return "<table>\n" + rowContents.joined() + "</table>\n\n"
+    }
+
+    // TODO: Also fetch the linked child page, and lookup its title to render a rich link here
+    private func renderLinkToPage(_ block: Block) -> String {
+        guard case let .linkToPage(childPage) = block.blockTypeObject else { return "" }
+        return "[\(childPage.pageId)](\(childPage.pageId).md)\n\n"
     }
 }
