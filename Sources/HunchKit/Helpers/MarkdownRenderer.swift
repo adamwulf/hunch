@@ -82,7 +82,7 @@ public class MarkdownRenderer: Renderer {
         case .callout:
             return renderCallout(block)
         case .divider:
-            return "---\n"
+            return "---\n\n"
         case .image:
             return renderImage(block)
         case .video:

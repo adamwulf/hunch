@@ -46,6 +46,7 @@ public struct Block: NotionItem {
         case childPage = "child_page"
         case createdBy = "created_by"
         case createdTime = "created_time"
+        case divider
         case file
         case hasChildren = "has_children"
         case heading1 = "heading_1"
@@ -106,8 +107,7 @@ public struct Block: NotionItem {
             fatalError("not yet supported")
             blockTypeObject = .columnList(try ColumnListBlock(from: decoder))
         case .divider:
-            fatalError("not yet supported")
-            blockTypeObject = .divider(try DividerBlock(from: decoder))
+            blockTypeObject = .divider(try container.decode(DividerBlock.self, forKey: .divider))
         case .embed:
             fatalError("not yet supported")
             blockTypeObject = .embed(try EmbedBlock(from: decoder))
