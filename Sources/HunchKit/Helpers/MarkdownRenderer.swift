@@ -93,6 +93,8 @@ public class MarkdownRenderer: Renderer {
             return renderBookmark(block)
         case .childPage:
             return renderChildPage(block)
+        case .table:
+            return renderTable(block)
         // Add more cases for other block types as needed
         default:
             return "Unsupported block type: \(block.type.rawValue)\n"
@@ -292,5 +294,21 @@ public class MarkdownRenderer: Renderer {
     private func renderChildPage(_ block: Block) -> String {
         guard case let .childPage(childPage) = block.blockTypeObject else { return "" }
         return "[\(childPage.title)](\(block.id).md)\n\n"
+    }
+
+    private func renderTable(_ block: Block) -> String {
+        guard case let .table(tableNode) = block.blockTypeObject else { return "" }
+        let rowContents = block.children.compactMap({ child, row -> String? in
+            guard case let .tableRow(tableRow) = child.blockTypeObject else { return nil }
+            let foo = "<tr>" + tableRow.cells.map({ cell, column in
+                let isColumnHeader = tableNode.hasColumnHeader && column == 0
+                let isRowHeader = tableNode.hasRowHeader && row == 0
+                let td = isColumnHeader || isRowHeader ? "<th>" : "<td>"
+                let slashTD = isColumnHeader || isRowHeader ? "</th>" : "</td>"
+                return td + cell.map { renderRichText($0) }.joined() + slashTD
+            }).joined() + "</tr>\n"
+            return foo
+        })
+        return "<table>\n" + rowContents.joined() + "</table>\n\n"
     }
 }
