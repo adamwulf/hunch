@@ -27,6 +27,7 @@ public struct Block: NotionItem {
         switch type {
         case .toggle: return []
         case .childPage: return []
+        case .table: return []
         default: return children
         }
     }
@@ -56,6 +57,8 @@ public struct Block: NotionItem {
         case paragraph
         case parent
         case quote
+        case table
+        case tableRow = "table_row"
         case todo = "to_do"
         case toggle
         case type
@@ -138,14 +141,12 @@ public struct Block: NotionItem {
             fatalError("not yet supported")
             blockTypeObject = .syncedBlock(try SyncedBlock(from: decoder))
         case .table:
-            fatalError("not yet supported")
-            blockTypeObject = .table(try TableBlock(from: decoder))
+            blockTypeObject = .table(try container.decode(TableBlock.self, forKey: .table))
         case .tableOfContents:
             fatalError("not yet supported")
             blockTypeObject = .tableOfContents(try TableOfContentsBlock(from: decoder))
         case .tableRow:
-            fatalError("not yet supported")
-            blockTypeObject = .tableRow(try TableRowBlock(from: decoder))
+            blockTypeObject = .tableRow(try container.decode(TableRowBlock.self, forKey: .tableRow))
         case .template:
             fatalError("not yet supported")
             blockTypeObject = .template(try TemplateBlock(from: decoder))
@@ -434,13 +435,21 @@ public struct SyncedBlock: Codable {
 }
 
 public struct TableBlock: Codable {
-    public let rows: Int
+    public let rowCount: Int
+    public let hasColumnHeader: Bool
+    public let hasRowHeader: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case rowCount = "table_width"
+        case hasColumnHeader = "has_column_header"
+        case hasRowHeader = "has_row_header"
+    }
 }
 
 public struct TableOfContentsBlock: Codable {}
 
 public struct TableRowBlock: Codable {
-    public let cells: [String]
+    public let cells: [[RichText]]
 }
 
 public struct TemplateBlock: Codable {
