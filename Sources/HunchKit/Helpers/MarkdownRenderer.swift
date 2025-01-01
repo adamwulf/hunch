@@ -99,6 +99,8 @@ public class MarkdownRenderer: Renderer {
             return renderLinkToPage(block)
         case .breadcrumb:
             return ""
+        case .embed:
+            return renderEmbed(block)
         // Add more cases for other block types as needed
         default:
             return "Unsupported block type: \(block.type.rawValue)\n"
@@ -331,5 +333,10 @@ public class MarkdownRenderer: Renderer {
     private func renderLinkToPage(_ block: Block) -> String {
         guard case let .linkToPage(childPage) = block.blockTypeObject else { return "" }
         return "[\(childPage.pageId)](\(childPage.pageId).md)\n\n"
+    }
+
+    private func renderEmbed(_ block: Block) -> String {
+        guard case let .embed(embed) = block.blockTypeObject else { return "" }
+        return "Embed: [\(embed.url)](\(embed.url))\n\n"
     }
 }
