@@ -156,8 +156,7 @@ public struct Block: NotionItem {
         case .toggle:
             blockTypeObject = .toggle(try container.decode(ToggleBlock.self, forKey: .toggle))
         case .unsupported:
-            fatalError("not yet supported")
-            blockTypeObject = .unsupported(try UnsupportedBlock(from: decoder))
+            blockTypeObject = .unsupported(UnsupportedBlock())
         case .video:
             blockTypeObject = .video(try container.decode(VideoBlock.self, forKey: .video))
         }
