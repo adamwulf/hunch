@@ -263,10 +263,8 @@ public class MarkdownRenderer: Renderer {
     }
 
     private func renderImage(_ block: Block) -> String {
-        guard
-            case let .image(imageBlock) = block.blockTypeObject,
-            let url = imageBlock.image.external?.url ?? imageBlock.image.file?.url
-        else { return "" }
+        guard case let .image(imageBlock) = block.blockTypeObject else { return "" }
+        let url = imageBlock.image.type.url
         let caption: String?
         if let text = imageBlock.image.caption {
             caption = try? self.render(text)
@@ -279,13 +277,22 @@ public class MarkdownRenderer: Renderer {
 
     private func renderVideo(_ block: Block) -> String {
         guard case let .video(videoBlock) = block.blockTypeObject else { return "" }
-        return "Video: [\(videoBlock.url)](\(videoBlock.url))\n\n"
+        var caption = videoBlock.caption?.map { renderRichText($0) }.joined() ?? ""
+        if !caption.isEmpty {
+            caption += "\n\n"
+        }
+        let name = URL(string: videoBlock.type.url)?.lastPathComponent ?? videoBlock.type.url
+        return "Video: [\(name)](\(videoBlock.type.url))\n\n" + caption
     }
 
     private func renderFile(_ block: Block) -> String {
-        fatalError("not yet implemented")
-    //    guard case let .file(fileBlock) = block.blockTypeObject else { return "" }
-    //    return "File: [\(fileBlock.name)](\(fileBlock.url))\n\n"
+        guard case let .file(fileBlock) = block.blockTypeObject else { return "" }
+        var caption = fileBlock.caption?.map { renderRichText($0) }.joined() ?? ""
+        if !caption.isEmpty {
+            caption += "\n\n"
+        }
+        let name = URL(string: fileBlock.type.url)?.lastPathComponent ?? fileBlock.type.url
+        return "File: [\(name)](\(fileBlock.type.url))\n\n" + caption
     }
 
     private func renderBookmark(_ block: Block) -> String {
