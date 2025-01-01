@@ -26,6 +26,7 @@ public struct Block: NotionItem {
     public var childrenToFlatten: [Block] {
         switch type {
         case .toggle: return []
+        case .childPage: return []
         default: return children
         }
     }
@@ -38,6 +39,7 @@ public struct Block: NotionItem {
         case archived
         case bulletedListItem = "bulleted_list_item"
         case code
+        case childPage = "child_page"
         case createdBy = "created_by"
         case createdTime = "created_time"
         case hasChildren = "has_children"
@@ -88,8 +90,7 @@ public struct Block: NotionItem {
             fatalError("not yet supported")
             blockTypeObject = .childDatabase(try ChildDatabaseBlock(from: decoder))
         case .childPage:
-            fatalError("not yet supported")
-            blockTypeObject = .childPage(try ChildPageBlock(from: decoder))
+            blockTypeObject = .childPage(try container.decode(ChildPageBlock.self, forKey: .childPage))
         case .code:
             blockTypeObject = .code(try container.decode(CodeBlock.self, forKey: .code))
         case .column:

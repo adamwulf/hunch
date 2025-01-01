@@ -91,6 +91,8 @@ public class MarkdownRenderer: Renderer {
             return renderFile(block)
         case .bookmark:
             return renderBookmark(block)
+        case .childPage:
+            return renderChildPage(block)
         // Add more cases for other block types as needed
         default:
             return "Unsupported block type: \(block.type.rawValue)\n"
@@ -270,4 +272,8 @@ public class MarkdownRenderer: Renderer {
         return "[\(bookmarkBlock.url)](\(bookmarkBlock.url))\n\n"
     }
 
+    private func renderChildPage(_ block: Block) -> String {
+        guard case let .childPage(childPage) = block.blockTypeObject else { return "" }
+        return "[\(childPage.title)](\(block.id).md)\n\n"
+    }
 }
