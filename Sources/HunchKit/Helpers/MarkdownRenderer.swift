@@ -97,6 +97,8 @@ public class MarkdownRenderer: Renderer {
             return renderTable(block)
         case .linkToPage:
             return renderLinkToPage(block)
+        case .breadcrumb:
+            return ""
         // Add more cases for other block types as needed
         default:
             return "Unsupported block type: \(block.type.rawValue)\n"

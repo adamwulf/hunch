@@ -39,6 +39,7 @@ public struct Block: NotionItem {
     enum CodingKeys: String, CodingKey {
         case archived
         case bookmark
+        case breadcrumb
         case bulletedListItem = "bulleted_list_item"
         case callout
         case code
@@ -86,8 +87,7 @@ public struct Block: NotionItem {
         case .bookmark:
             blockTypeObject = .bookmark(try container.decode(BookmarkBlock.self, forKey: .bookmark))
         case .breadcrumb:
-            fatalError("not yet supported")
-            blockTypeObject = .breadcrumb(try BreadcrumbBlock(from: decoder))
+            blockTypeObject = .breadcrumb(try container.decode(BreadcrumbBlock.self, forKey: .breadcrumb))
         case .bulletedListItem:
             blockTypeObject = .bulletedListItem(try container.decode(BulletedListItemBlock.self, forKey: .bulletedListItem))
         case .callout:
