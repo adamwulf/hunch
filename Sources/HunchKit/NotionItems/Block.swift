@@ -23,6 +23,13 @@ public struct Block: NotionItem {
 
     public internal(set) var children: [Block] = []
 
+    public var childrenToFlatten: [Block] {
+        switch type {
+        case .toggle: return []
+        default: return children
+        }
+    }
+
     public var description: String {
         return type.rawValue
     }
@@ -47,6 +54,7 @@ public struct Block: NotionItem {
         case parent
         case quote
         case todo = "to_do"
+        case toggle
         case type
     }
 
@@ -143,8 +151,7 @@ public struct Block: NotionItem {
         case .toDo:
             blockTypeObject = .toDo(try container.decode(ToDoBlock.self, forKey: .todo))
         case .toggle:
-            fatalError("not yet supported")
-            blockTypeObject = .toggle(try ToggleBlock(from: decoder))
+            blockTypeObject = .toggle(try container.decode(ToggleBlock.self, forKey: .toggle))
         case .unsupported:
             fatalError("not yet supported")
             blockTypeObject = .unsupported(try UnsupportedBlock(from: decoder))
@@ -445,7 +452,8 @@ public struct ToDoBlock: Codable {
 }
 
 public struct ToggleBlock: Codable {
-    public let text: String
+    public let text: [RichText]
+    public let color: Color
 }
 
 public struct UnsupportedBlock: Codable {}
