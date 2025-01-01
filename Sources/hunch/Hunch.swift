@@ -65,7 +65,7 @@ struct Hunch: AsyncParsableCommand {
         for item in items {
             flattenedList.append(item)
             if let block = item as? Block {
-                flattenedList.append(contentsOf: flatten(items: block.children))
+                flattenedList.append(contentsOf: flatten(items: block.childrenToFlatten))
             }
         }
 

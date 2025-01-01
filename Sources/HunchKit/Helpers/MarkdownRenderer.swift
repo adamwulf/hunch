@@ -193,7 +193,8 @@ public class MarkdownRenderer: Renderer {
 
     private func renderToggle(_ block: Block) -> String {
         guard case let .toggle(toggleBlock) = block.blockTypeObject else { return "" }
-        return "<details><summary>" + toggleBlock.text + "</summary>\n\n" +
+        let formattedText = toggleBlock.text.map { renderRichText($0) }.joined()
+        return "<details><summary>" + formattedText + "</summary>\n\n" +
                block.children.map { renderBlockToMarkdown($0) }.joined() +
                "</details>\n\n"
     }
