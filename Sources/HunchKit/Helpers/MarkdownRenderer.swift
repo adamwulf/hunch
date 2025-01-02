@@ -101,6 +101,8 @@ public class MarkdownRenderer: Renderer {
             return ""
         case .embed:
             return renderEmbed(block)
+        case .linkPreview:
+            return renderLinkPreview(block)
         // Add more cases for other block types as needed
         default:
             return "Unsupported block type: \(block.type.rawValue)\n"
@@ -338,5 +340,10 @@ public class MarkdownRenderer: Renderer {
     private func renderEmbed(_ block: Block) -> String {
         guard case let .embed(embed) = block.blockTypeObject else { return "" }
         return "Embed: [\(embed.url)](\(embed.url))\n\n"
+    }
+
+    private func renderLinkPreview(_ block: Block) -> String {
+        guard case let .linkPreview(linkPreview) = block.blockTypeObject else { return "" }
+        return "Preview: [\(linkPreview.url)](\(linkPreview.url))\n\n"
     }
 }
