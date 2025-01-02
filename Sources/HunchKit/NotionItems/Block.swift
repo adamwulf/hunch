@@ -57,6 +57,7 @@ public struct Block: NotionItem {
         case inTrash = "in_trash"
         case lastEditedBy = "last_edited_by"
         case lastEditedTime = "last_edited_time"
+        case linkPreview = "link_preview"
         case linkToPage = "link_to_page"
         case numberedListItem = "numbered_list_item"
         case object
@@ -125,8 +126,7 @@ public struct Block: NotionItem {
         case .image:
             blockTypeObject = .image(try ImageBlock(from: decoder))
         case .linkPreview:
-            fatalError("not yet supported")
-            blockTypeObject = .linkPreview(try LinkPreviewBlock(from: decoder))
+            blockTypeObject = .linkPreview(try container.decode(LinkPreviewBlock.self, forKey: .linkPreview))
         case .linkToPage:
             blockTypeObject = .linkToPage(try container.decode(LinkToPageBlock.self, forKey: .linkToPage))
         case .numberedListItem:
