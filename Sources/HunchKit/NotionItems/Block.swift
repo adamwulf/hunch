@@ -72,6 +72,8 @@ public struct Block: NotionItem {
         case toggle
         case type
         case video
+        case column
+        case columnList = "column_list"
     }
 
     public init(from decoder: Decoder) throws {
@@ -104,11 +106,9 @@ public struct Block: NotionItem {
         case .code:
             blockTypeObject = .code(try container.decode(CodeBlock.self, forKey: .code))
         case .column:
-            fatalError("not yet supported")
-            blockTypeObject = .column(try ColumnBlock(from: decoder))
+            blockTypeObject = .column(try container.decode(ColumnBlock.self, forKey: .column))
         case .columnList:
-            fatalError("not yet supported")
-            blockTypeObject = .columnList(try ColumnListBlock(from: decoder))
+            blockTypeObject = .columnList(try container.decode(ColumnListBlock.self, forKey: .columnList))
         case .divider:
             blockTypeObject = .divider(try container.decode(DividerBlock.self, forKey: .divider))
         case .embed:

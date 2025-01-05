@@ -112,6 +112,10 @@ public class MarkdownRenderer: Renderer {
             return renderPDF(block)
         case .childDatabase:
             return renderChildDatabase(block)
+        case .columnList:
+            return renderColumnList(block)
+        case .column:
+            return renderColumn(block)
         // Add more cases for other block types as needed
         default:
             return "Unsupported block type: \(block.type.rawValue)\n"
@@ -398,5 +402,24 @@ public class MarkdownRenderer: Renderer {
     private func renderChildDatabase(_ block: Block) -> String {
         guard case let .childDatabase(database) = block.blockTypeObject else { return "" }
         return "Database: \(database.title)\n\n"
+    }
+
+    private func renderColumnList(_ block: Block) -> String {
+        guard case .columnList = block.blockTypeObject else { return "" }
+        // Start table with equal width columns
+        let columnCount = block.children.count
+        let width = 100 / columnCount
+        let cells = block.children.map { child in
+            "<td style=\"width: \(width)%;\">\n" +
+            renderBlockToMarkdown(child).trimmingCharacters(in: .whitespacesAndNewlines) + "\n" +
+            "</td>"
+        }.joined()
+
+        return "<table><tr>\n" + cells + "</tr></table>\n\n"
+    }
+
+    private func renderColumn(_ block: Block) -> String {
+        guard case .column = block.blockTypeObject else { return "" }
+        return block.children.map { renderBlockToMarkdown($0) }.joined()
     }
 }
