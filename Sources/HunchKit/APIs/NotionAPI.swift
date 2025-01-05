@@ -187,7 +187,7 @@ public class NotionAPI {
 
     internal func fetchPages(cursor: String?, databaseId: String?) async -> Result<PageList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
-            let bodyJSON: [String: Any] = [:]
+            let bodyJSON: [String: Any] = ["start_cursor": cursor].compactMapValues({ $0 })
             do {
                 if let databaseId = databaseId {
                     let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
@@ -196,7 +196,7 @@ public class NotionAPI {
                         .appendingPathComponent("query")
                     fetchResources(method: "POST",
                                    url: targetURL,
-                                   query: ["start_cursor": cursor, "filter_properties": ""].compactMapValues({ $0 }),
+                                   query: ["filter_properties": ""].compactMapValues({ $0 }),
                                    body: bodyData) { result in
                         continuation.resume(returning: result)
                     }
