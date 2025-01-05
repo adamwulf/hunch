@@ -48,7 +48,8 @@ public struct FileDownloader {
                             maxRetryDelay,
                             minRetryDelay * pow(2.0, Double(retryCount))
                         )
-                        let delayInterval = max(retryAfter, backoffDelay)
+                        // Add one to ensure we're always after the requested delay instead of coming in milliseconds too soon
+                        let delayInterval = 1 + max(retryAfter, backoffDelay)
 
                         NotionAPI.logHandler?(.error, "Download rate limit hit, retrying after \(delayInterval) seconds",
                             ["attempt": retryCount + 1, "max_attempts": maxRetries])

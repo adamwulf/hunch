@@ -131,7 +131,8 @@ public class NotionAPI {
                             self.maxRetryDelay,
                             self.minRetryDelay * pow(2.0, Double(retryCount))
                         )
-                        let delayInterval = max(retryAfter, backoffDelay)
+                        // Add one to ensure we're always after the requested delay instead of coming in milliseconds too soon
+                        let delayInterval = 1 + max(retryAfter, backoffDelay)
 
                         Self.logHandler?(.error, "Rate limit hit, retrying after \(delayInterval) seconds",
                             ["attempt": retryCount + 1, "max_attempts": self.maxRetries])
@@ -148,8 +149,7 @@ public class NotionAPI {
                         }
                         return
                     } else {
-                        Self.logHandler?(.fault, "Rate limit retries exhausted",
-                            ["attempts": self.maxRetries, "retry_after": retryAfter])
+                        Self.logHandler?(.fault, "Rate limit retries exhausted", ["attempts": self.maxRetries, "retry_after": retryAfter])
                         completion(.failure(.rateLimitExceeded(retryAfter: retryAfter)))
                         return
                     }
