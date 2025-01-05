@@ -32,10 +32,10 @@ struct ExportCommand: AsyncParsableCommand {
         for page in pages {
             let pageDir = (normalizedPath as NSString).appendingPathComponent(page.id)
             let assetsDir = (pageDir as NSString).appendingPathComponent("assets")
+            var didCreateAssetsDir = false
 
             // Create directory for this page
             try fm.createDirectory(atPath: pageDir, withIntermediateDirectories: true)
-            try fm.createDirectory(atPath: assetsDir, withIntermediateDirectories: true)
 
             // Fetch page blocks
             let blocks = try await HunchAPI.shared.fetchBlocks(in: page.id)
@@ -58,8 +58,12 @@ struct ExportCommand: AsyncParsableCommand {
                     }
                 }()
 
-                if let urlString = assetUrl,
-                   let url = URL(string: urlString) {
+                if let urlString = assetUrl, let url = URL(string: urlString) {
+                    if !didCreateAssetsDir {
+                        // only create the assets directory if we actuallly need it
+                        didCreateAssetsDir = true
+                        try fm.createDirectory(atPath: assetsDir, withIntermediateDirectories: true)
+                    }
                     do {
                         let asset = try await FileDownloader.downloadFile(from: url, to: assetsDir)
                         downloadedAssets[urlString] = asset
