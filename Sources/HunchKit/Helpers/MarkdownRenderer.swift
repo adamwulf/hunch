@@ -286,10 +286,12 @@ public class MarkdownRenderer: Renderer {
         }
 
         if let asset = downloadedAssets[url] {
-            return "![\(block.id)](assets/\(asset.localPath))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
+            let name = URL(fileURLWithPath: asset.localPath).lastPathComponent
+            return "![\(name)](assets/\(asset.localPath))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
         }
 
-        return "![\(block.id)](\(url))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
+        let name = URL(string: url)?.lastPathComponent ?? url
+        return "![\(name)](\(url))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
     }
 
     private func renderVideo(_ block: Block) -> String {
@@ -383,9 +385,11 @@ public class MarkdownRenderer: Renderer {
         }
 
         if let asset = downloadedAssets[url] {
-            return "PDF: [\(block.id)](assets/\(asset.localPath))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
+            let name = URL(fileURLWithPath: asset.localPath).lastPathComponent
+            return "PDF: [\(name)](assets/\(asset.localPath))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
         }
 
-        return "PDF: [\(block.id)](\(url))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
+        let name = URL(string: url)?.lastPathComponent ?? url
+        return "PDF: [\(name)](\(url))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
     }
 }
