@@ -123,7 +123,7 @@ public class NotionAPI {
                     return
                 }
 
-                if httpResponse.statusCode == 429 {
+                if httpResponse.statusCode == 429 || (500...599).contains(httpResponse.statusCode) {
                     let retryAfter = TimeInterval(httpResponse.value(forHTTPHeaderField: "Retry-After") ?? "5") ?? 5
 
                     if retryCount < self.maxRetries {
@@ -131,11 +131,13 @@ public class NotionAPI {
                             self.maxRetryDelay,
                             self.minRetryDelay * pow(2.0, Double(retryCount))
                         )
-                        // Add one to ensure we're always after the requested delay instead of coming in milliseconds too soon
                         let delayInterval = 1 + max(retryAfter, backoffDelay)
 
-                        Self.logHandler?(.error, "Rate limit hit, retrying after \(delayInterval) seconds",
-                            ["attempt": retryCount + 1, "max_attempts": self.maxRetries])
+                        Self.logHandler?(.error, "\(httpResponse.statusCode) error, retrying after \(delayInterval) seconds",
+                            ["attempt": retryCount + 1,
+                             "max_attempts": self.maxRetries,
+                             "status": httpResponse.statusCode,
+                             "path": url.path(percentEncoded: false)])
 
                         DispatchQueue.global().asyncAfter(deadline: .now() + delayInterval) {
                             self.fetchResources(
@@ -148,14 +150,14 @@ public class NotionAPI {
                             )
                         }
                         return
-                    } else {
-                        Self.logHandler?(.fault, "Rate limit retries exhausted", ["attempts": self.maxRetries, "retry_after": retryAfter])
-                        completion(.failure(.rateLimitExceeded(retryAfter: retryAfter)))
-                        return
                     }
                 }
 
                 guard 200..<299 ~= httpResponse.statusCode else {
+                    Self.logHandler?(.error, "Notion API error", [
+                        "status": httpResponse.statusCode,
+                        "path": url.path(percentEncoded: false)
+                    ])
                     completion(.failure(.invalidResponseStatus(httpResponse.statusCode)))
                     return
                 }
