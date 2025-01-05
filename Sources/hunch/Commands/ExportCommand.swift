@@ -51,6 +51,8 @@ struct ExportCommand: AsyncParsableCommand {
                         return video.type.url
                     case .file(let file):
                         return file.type.url
+                    case .pdf(let pdf):
+                        return pdf.pdf.type.url
                     default:
                         return nil
                     }

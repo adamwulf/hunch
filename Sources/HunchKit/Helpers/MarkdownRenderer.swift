@@ -382,6 +382,10 @@ public class MarkdownRenderer: Renderer {
             caption = nil
         }
 
+        if let asset = downloadedAssets[url] {
+            return "PDF: [\(block.id)](assets/\(asset.localPath))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
+        }
+
         return "PDF: [\(block.id)](\(url))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
     }
 }
