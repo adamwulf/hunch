@@ -30,12 +30,23 @@ struct ExportCommand: AsyncParsableCommand {
 
         // Process each page
         for page in pages {
-            let pageDir = (normalizedPath as NSString).appendingPathComponent(page.id)
+            let localizedName = page.title.map({ $0.plainText })
+                .joined()
+                .replacingOccurrences(of: "\n", with: " ")
+                .replacingOccurrences(of: "\r", with: "")
+            let pageDir = (normalizedPath as NSString).appendingPathComponent(page.id + ".localized")
+            let localizedDir = (pageDir as NSString).appendingPathComponent(".localized")
             let assetsDir = (pageDir as NSString).appendingPathComponent("assets")
             var didCreateAssetsDir = false
 
-            // Create directory for this page
+            // Create directories
             try fm.createDirectory(atPath: pageDir, withIntermediateDirectories: true)
+            try fm.createDirectory(atPath: localizedDir, withIntermediateDirectories: true)
+
+            // Create Base.strings file
+            let stringsContent = "\"\(page.id)\" = \"\(localizedName)\";"
+            let stringsPath = (localizedDir as NSString).appendingPathComponent("Base.strings")
+            try stringsContent.write(toFile: stringsPath, atomically: true, encoding: .utf8)
 
             // Fetch page blocks
             let blocks = try await HunchAPI.shared.fetchBlocks(in: page.id)
