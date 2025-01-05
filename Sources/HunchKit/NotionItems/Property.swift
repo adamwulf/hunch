@@ -314,6 +314,19 @@ public struct Formula: Codable {
             case .string(let string): string
             }
         }
+
+        public var stringValue: String? {
+            switch self {
+            case .boolean(let bool): bool.map { String($0) }
+            case .date(let date): date.map {
+                let formatter = ISO8601DateFormatter()
+                formatter.timeZone = TimeZone(identifier: "UTC")!
+                return formatter.string(from: $0)
+            }
+            case .number(let number): number.map { String($0) }
+            case .string(let string): string
+            }
+        }
     }
 
     enum CodingKeys: String, CodingKey {

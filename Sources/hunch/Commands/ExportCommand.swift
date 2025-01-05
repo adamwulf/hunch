@@ -97,18 +97,22 @@ struct ExportCommand: AsyncParsableCommand {
             dateFormatter.formatOptions = [.withInternetDateTime]
 
             // Extract select properties
-            let selectProperties = page.properties.compactMap { (name: String, prop: Property) -> (String, [String])? in
-                switch prop {
-                case .multiSelect(_, let values):
-                    return (name, values.map { $0.name })
-                case .select(_, let value):
-                    return (name, [value.name])
-                case .url(_, let value):
-                    return (name, [value])
-                default:
-                    return nil
+            let selectProperties = page.properties
+                .sorted(by: { $0.key < $1.key })
+                .compactMap { (name: String, prop: Property) -> (String, [String])? in
+                    switch prop {
+                    case .multiSelect(_, let values):
+                        return (name, values.map { $0.name })
+                    case .select(_, let value):
+                        return (name, [value.name])
+                    case .url(_, let value):
+                        return (name, [value])
+                    case .formula(_, let value):
+                        return (name, [value.type.stringValue ?? ""])
+                    default:
+                        return nil
+                    }
                 }
-            }
 
             let titleHeader = """
                 ---
