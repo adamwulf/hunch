@@ -126,6 +126,14 @@ struct ExportCommand: AsyncParsableCommand {
                         return (name, values.map { $0.id })
                     case .rollup(_, let value):
                         return (name, [value.value])
+                    case .people(_, let users):
+                        return (name, users.compactMap { $0.name })
+                    case .file(_, let files), .files(_, let files):
+                        return (name, files.map { $0.url })
+                    case .createdBy(_, let user):
+                        return (name, [user.name].compactMap({ $0 }))
+                    case .lastEditedBy(_, let user):
+                        return (name, [user.name].compactMap({ $0 }))
                     default:
                         return nil
                     }
