@@ -63,6 +63,7 @@ public struct Block: NotionItem {
         case object
         case paragraph
         case parent
+        case pdf
         case quote
         case table
         case tableRow = "table_row"
@@ -134,7 +135,6 @@ public struct Block: NotionItem {
         case .paragraph:
             blockTypeObject = .paragraph(try container.decode(ParagraphBlock.self, forKey: .paragraph))
         case .pdf:
-            fatalError("not yet supported")
             blockTypeObject = .pdf(try PdfBlock(from: decoder))
         case .quote:
             blockTypeObject = .quote(try container.decode(QuoteBlock.self, forKey: .quote))
@@ -473,7 +473,7 @@ public struct ParagraphBlock: Codable {
 }
 
 public struct PdfBlock: Codable {
-    public let url: String
+    public let pdf: FileBlock
 }
 
 public struct QuoteBlock: Codable {
