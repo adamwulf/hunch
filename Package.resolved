@@ -23,8 +23,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log.git",
       "state" : {
-        "revision" : "9cb486020ebf03bfa5b5df985387a14a98744537",
-        "version" : "1.6.1"
+        "revision" : "96a2f8a0fa41e9e09af4585e2724c4e825410b91",
+        "version" : "1.6.2"
       }
     },
     {
@@ -33,7 +33,7 @@
       "location" : "https://github.com/adamwulf/SwiftToolbox",
       "state" : {
         "branch" : "main",
-        "revision" : "2bba2638696ec7ecbf1cced481d6e06dff26ba17"
+        "revision" : "8f7c5716de552ddf319dfa98deec2e72f412c7a3"
       }
     }
   ],

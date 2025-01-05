@@ -188,7 +188,15 @@ struct ExportCommand: AsyncParsableCommand {
         if filename.isEmpty {
             filename = "Link"
         }
-        let filePath = (directory as NSString).appendingPathComponent("\(filename.filenameSafe).webloc")
+
+        // Ensure filename + .webloc is <= 255 chars
+        let ext = ".webloc"
+        let maxLength = 255 - ".webloc".count
+        if filename.count > maxLength {
+            filename = String(filename.prefix(maxLength))
+        }
+
+        let filePath = (directory as NSString).appendingPathComponent("\(filename.filenameSafe + ext)")
         try weblocContent.write(toFile: filePath, atomically: true, encoding: .utf8)
     }
 }
