@@ -18,6 +18,10 @@ public class NotionAPI {
     private let urlSession = URLSession(configuration: .ephemeral)
     private let baseURL = URL(string: "https://api.notion.com/v1")!
 
+    private let maxRetries = 3
+    private let minRetryDelay: TimeInterval = 1.0
+    private let maxRetryDelay: TimeInterval = 60.0
+
     let jsonDecoder: JSONDecoder = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
@@ -52,6 +56,7 @@ public class NotionAPI {
         case noData
         case decodeError(_ error: Error)
         case encodeError(_ error: Error)
+        case rateLimitExceeded(retryAfter: TimeInterval)
 
         var localizedDescription: String {
             switch self {
@@ -71,6 +76,8 @@ public class NotionAPI {
                 return "decode error: \(error.localizedDescription)"
             case .encodeError(let error):
                 return "encode error: \(error.localizedDescription)"
+            case .rateLimitExceeded(let retryAfter):
+                return "Rate limit exceeded. Retry after \(retryAfter) seconds"
             }
         }
     }
@@ -80,6 +87,7 @@ public class NotionAPI {
         url: URL,
         query: [String: String] = [:],
         body: Data? = nil,
+        retryCount: Int = 0,
         completion: @escaping (Result<T, NotionAPIServiceError>) -> Void
     ) {
         guard let token = token else {
@@ -105,19 +113,56 @@ public class NotionAPI {
         request.httpMethod = method
         request.httpBody = body
 
-        urlSession.dataTask(with: request) { (result) in
+        urlSession.dataTask(with: request) { [weak self] (result) in
+            guard let self = self else { return }
+
             switch result {
             case .success(let (response, data)):
                 guard let httpResponse = response as? HTTPURLResponse else {
                     completion(.failure(.invalidResponse))
                     return
                 }
+
+                if httpResponse.statusCode == 429 {
+                    let retryAfter = TimeInterval(httpResponse.value(forHTTPHeaderField: "Retry-After") ?? "5") ?? 5
+
+                    if retryCount < self.maxRetries {
+                        let backoffDelay = min(
+                            self.maxRetryDelay,
+                            self.minRetryDelay * pow(2.0, Double(retryCount))
+                        )
+                        // Add one to ensure we're always after the requested delay instead of coming in milliseconds too soon
+                        let delayInterval = 1 + max(retryAfter, backoffDelay)
+
+                        Self.logHandler?(.error, "Rate limit hit, retrying after \(delayInterval) seconds",
+                            ["attempt": retryCount + 1, "max_attempts": self.maxRetries])
+
+                        DispatchQueue.global().asyncAfter(deadline: .now() + delayInterval) {
+                            self.fetchResources(
+                                method: method,
+                                url: url,
+                                query: query,
+                                body: body,
+                                retryCount: retryCount + 1,
+                                completion: completion
+                            )
+                        }
+                        return
+                    } else {
+                        Self.logHandler?(.fault, "Rate limit retries exhausted", ["attempts": self.maxRetries, "retry_after": retryAfter])
+                        completion(.failure(.rateLimitExceeded(retryAfter: retryAfter)))
+                        return
+                    }
+                }
+
                 guard 200..<299 ~= httpResponse.statusCode else {
                     completion(.failure(.invalidResponseStatus(httpResponse.statusCode)))
                     return
                 }
+
                 Self.logHandler?(.debug, "notion_api", ["status": httpResponse.statusCode, "path": url.path(percentEncoded: false)])
                 Self.logHandler?(.debug, String(data: data, encoding: .utf8)!, nil)
+
                 do {
                     let values = try self.jsonDecoder.decode(T.self, from: data)
                     completion(.success(values))
