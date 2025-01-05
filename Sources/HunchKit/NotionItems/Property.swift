@@ -154,8 +154,7 @@ public enum Property: Codable {
                 let value = try container.decode(String.self, forKey: .phoneNumber)
                 self = .phoneNumber(id: id, value: value)
             case .formula:
-                let value = try container.decode(Formula.self, forKey: .formula)
-                self = .formula(id: id, value: value)
+                self = .formula(id: id, value: try Formula(from: decoder))
             case .relation:
                 let value = try container.decode([Relation].self, forKey: .relation)
                 self = .relation(id: id, value: value)
@@ -299,7 +298,75 @@ public struct File: Codable {
 }
 
 public struct Formula: Codable {
-    public internal(set) var expression: String
+    public let type: FormulaType
+
+    public enum FormulaType {
+        case boolean(Bool?)
+        case date(Date?)
+        case number(Double?)
+        case string(String?)
+
+        public var value: Any? {
+            switch self {
+            case .boolean(let bool): bool
+            case .date(let date): date
+            case .number(let number): number
+            case .string(let string): string
+            }
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case formula
+        case type
+        case boolean
+        case date
+        case number
+        case string
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let formulaContainer = try container.nestedContainer(keyedBy: CodingKeys.self, forKey: .formula)
+        let type = try formulaContainer.decode(String.self, forKey: .type)
+
+        switch type {
+        case "boolean":
+            let value = try formulaContainer.decodeIfPresent(Bool.self, forKey: .boolean)
+            self.type = .boolean(value)
+        case "date":
+            let value = try formulaContainer.decodeIfPresent(Date.self, forKey: .date)
+            self.type = .date(value)
+        case "number":
+            let value = try formulaContainer.decodeIfPresent(Double.self, forKey: .number)
+            self.type = .number(value)
+        case "string":
+            let value = try formulaContainer.decodeIfPresent(String.self, forKey: .string)
+            self.type = .string(value)
+        default:
+            throw DecodingError.dataCorruptedError(forKey: .type, in: formulaContainer, debugDescription: "Unknown formula type")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        var formulaContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .formula)
+
+        switch type {
+        case .boolean(let value):
+            try formulaContainer.encode("boolean", forKey: .type)
+            try formulaContainer.encode(value, forKey: .boolean)
+        case .date(let value):
+            try formulaContainer.encode("date", forKey: .type)
+            try formulaContainer.encode(value, forKey: .date)
+        case .number(let value):
+            try formulaContainer.encode("number", forKey: .type)
+            try formulaContainer.encode(value, forKey: .number)
+        case .string(let value):
+            try formulaContainer.encode("string", forKey: .type)
+            try formulaContainer.encode(value, forKey: .string)
+        }
+    }
 }
 
 public struct Relation: Codable {
