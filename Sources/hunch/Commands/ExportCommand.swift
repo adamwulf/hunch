@@ -132,6 +132,13 @@ struct ExportCommand: AsyncParsableCommand {
 
             // Add this helper function
             try writeWebloc(pageId: page.id, title: page.title, to: pageDir)
+
+            // Set folder dates AFTER all async downloads and file operations
+            let attributes: [FileAttributeKey: Any] = [
+                .creationDate: page.created,
+                .modificationDate: page.lastEdited
+            ]
+            try fm.setAttributes(attributes, ofItemAtPath: pageDir)
         }
     }
 
