@@ -43,6 +43,7 @@ public struct Block: NotionItem {
         case bulletedListItem = "bulleted_list_item"
         case callout
         case code
+        case childDatabase = "child_database"
         case childPage = "child_page"
         case createdBy = "created_by"
         case createdTime = "created_time"
@@ -97,8 +98,7 @@ public struct Block: NotionItem {
         case .callout:
             blockTypeObject = .callout(try container.decode(CalloutBlock.self, forKey: .callout))
         case .childDatabase:
-            fatalError("not yet supported")
-            blockTypeObject = .childDatabase(try ChildDatabaseBlock(from: decoder))
+            blockTypeObject = .childDatabase(try container.decode(ChildDatabaseBlock.self, forKey: .childDatabase))
         case .childPage:
             blockTypeObject = .childPage(try container.decode(ChildPageBlock.self, forKey: .childPage))
         case .code:
