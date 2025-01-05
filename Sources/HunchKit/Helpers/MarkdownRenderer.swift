@@ -110,6 +110,8 @@ public class MarkdownRenderer: Renderer {
             return renderLinkPreview(block)
         case .pdf:
             return renderPDF(block)
+        case .childDatabase:
+            return renderChildDatabase(block)
         // Add more cases for other block types as needed
         default:
             return "Unsupported block type: \(block.type.rawValue)\n"
@@ -391,5 +393,10 @@ public class MarkdownRenderer: Renderer {
 
         let name = URL(string: url)?.lastPathComponent ?? url
         return "PDF: [\(name)](\(url))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
+    }
+
+    private func renderChildDatabase(_ block: Block) -> String {
+        guard case let .childDatabase(database) = block.blockTypeObject else { return "" }
+        return "Database: \(database.title)\n\n"
     }
 }
