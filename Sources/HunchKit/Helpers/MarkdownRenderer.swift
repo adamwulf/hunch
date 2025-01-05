@@ -12,13 +12,18 @@ public class MarkdownRenderer: Renderer {
     private(set) var level: Int
     let ignoreColor: Bool
     let ignoreUnderline: Bool
+    let downloadedAssets: [String: FileDownloader.DownloadedAsset]
 
     private var listState: Bool = false
 
-    public init(level: Int, ignoreColor: Bool, ignoreUnderline: Bool) {
+    public init(level: Int,
+                ignoreColor: Bool,
+                ignoreUnderline: Bool,
+                downloadedAssets: [String: FileDownloader.DownloadedAsset] = [:]) {
         self.level = level
         self.ignoreColor = ignoreColor
         self.ignoreUnderline = ignoreUnderline
+        self.downloadedAssets = downloadedAssets
     }
 
     public func render(_ items: [NotionItem]) throws -> String {
@@ -30,7 +35,7 @@ public class MarkdownRenderer: Renderer {
     }
 
     private func childRenderer(level levelOverride: Int? = nil) -> MarkdownRenderer {
-        return MarkdownRenderer(level: levelOverride ?? (level + 1), ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
+        return MarkdownRenderer(level: levelOverride ?? (level + 1), ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline, downloadedAssets: downloadedAssets)
     }
 
     private func renderBlocksToMarkdown(_ blocks: [Block]) -> String {
@@ -280,7 +285,13 @@ public class MarkdownRenderer: Renderer {
             caption = nil
         }
 
-        return "![\(block.id)](\(url))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
+        if let asset = downloadedAssets[url] {
+            let name = URL(fileURLWithPath: asset.localPath).lastPathComponent
+            return "![\(name)](assets/\(asset.localPath))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
+        }
+
+        let name = URL(string: url)?.lastPathComponent ?? url
+        return "![\(name)](\(url))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
     }
 
     private func renderVideo(_ block: Block) -> String {
@@ -289,8 +300,15 @@ public class MarkdownRenderer: Renderer {
         if !caption.isEmpty {
             caption += "\n\n"
         }
-        let name = URL(string: videoBlock.type.url)?.lastPathComponent ?? videoBlock.type.url
-        return "Video: [\(name)](\(videoBlock.type.url))\n\n" + caption
+
+        let url = videoBlock.type.url
+        if let asset = downloadedAssets[url] {
+            let name = URL(string: asset.localPath)?.lastPathComponent ?? asset.localPath
+            return "Video: [\(name)](assets/\(asset.localPath))\n\n" + caption
+        }
+
+        let name = URL(string: url)?.lastPathComponent ?? url
+        return "Video: [\(name)](\(url))\n\n" + caption
     }
 
     private func renderFile(_ block: Block) -> String {
@@ -299,8 +317,15 @@ public class MarkdownRenderer: Renderer {
         if !caption.isEmpty {
             caption += "\n\n"
         }
-        let name = URL(string: fileBlock.type.url)?.lastPathComponent ?? fileBlock.type.url
-        return "File: [\(name)](\(fileBlock.type.url))\n\n" + caption
+
+        let url = fileBlock.type.url
+        if let asset = downloadedAssets[url] {
+            let name = URL(string: asset.localPath)?.lastPathComponent ?? asset.localPath
+            return "File: [\(name)](assets/\(asset.localPath))\n\n" + caption
+        }
+
+        let name = URL(string: url)?.lastPathComponent ?? url
+        return "File: [\(name)](\(url))\n\n" + caption
     }
 
     private func renderBookmark(_ block: Block) -> String {
@@ -359,6 +384,12 @@ public class MarkdownRenderer: Renderer {
             caption = nil
         }
 
-        return "PDF: [\(block.id)](\(url))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
+        if let asset = downloadedAssets[url] {
+            let name = URL(fileURLWithPath: asset.localPath).lastPathComponent
+            return "PDF: [\(name)](assets/\(asset.localPath))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
+        }
+
+        let name = URL(string: url)?.lastPathComponent ?? url
+        return "PDF: [\(name)](\(url))\(caption.map({ "\n" + $0 }) ?? "")\n\n"
     }
 }
