@@ -52,8 +52,23 @@ struct ExportCommand: AsyncParsableCommand {
             let stringsPath = (localizedDir as NSString).appendingPathComponent("Base.strings")
             try stringsContent.write(toFile: stringsPath, atomically: true, encoding: .utf8)
 
-            // Fetch page blocks
-            let blocks = try await HunchAPI.shared.fetchBlocks(in: page.id)
+            // After creating pageDir
+            let contentJsonPath = (pageDir as NSString).appendingPathComponent("content.json")
+
+            // Load or fetch blocks
+            let blocks: [Block]
+            if fm.fileExists(atPath: contentJsonPath),
+               let jsonData = try? Data(contentsOf: URL(fileURLWithPath: contentJsonPath)),
+               let cachedBlocks = try? JSONDecoder().decode([Block].self, from: jsonData) {
+                blocks = cachedBlocks
+            } else {
+                blocks = try await HunchAPI.shared.fetchBlocks(in: page.id)
+                // Cache the blocks
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(blocks)
+                try jsonData.write(to: URL(fileURLWithPath: contentJsonPath))
+            }
 
             // Download assets and collect their local paths
             var downloadedAssets: [String: FileDownloader.DownloadedAsset] = [:]
@@ -89,10 +104,11 @@ struct ExportCommand: AsyncParsableCommand {
             }
 
             // Create renderer with downloaded assets
-            let renderer = MarkdownRenderer(level: 0,
-                                          ignoreColor: false,
-                                          ignoreUnderline: false,
-                                          downloadedAssets: downloadedAssets)
+            let renderer = MarkdownRenderer(
+                level: 0,
+                ignoreColor: false,
+                ignoreUnderline: false,
+                downloadedAssets: downloadedAssets)
 
             // Render to markdown
             let emoji = page.icon?.emoji.map({ $0 + " " }) ?? ""

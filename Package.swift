@@ -32,6 +32,10 @@ let package = Package(
                 .product(name: "SwiftToolbox", package: "SwiftToolbox"),
                 .product(name: "Logfmt", package: "Logfmt")
             ]
+        ),
+        .testTarget(
+            name: "HunchKitTests",
+            dependencies: ["HunchKit"]
         )
     ]
 )

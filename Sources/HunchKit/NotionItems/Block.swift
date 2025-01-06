@@ -36,6 +36,33 @@ public struct Block: NotionItem {
         return type.rawValue
     }
 
+    public init(object: String,
+                id: String,
+                parent: Parent?,
+                type: BlockType,
+                createdTime: String,
+                createdBy: PartialUser,
+                lastEditedTime: String,
+                lastEditedBy: PartialUser,
+                archived: Bool,
+                inTrash: Bool,
+                hasChildren: Bool,
+                blockTypeObject: BlockTypeObject) {
+        self.object = object
+        self.id = id
+        self.parent = parent
+        self.type = type
+        self.createdTime = createdTime
+        self.createdBy = createdBy
+        self.lastEditedTime = lastEditedTime
+        self.lastEditedBy = lastEditedBy
+        self.archived = archived
+        self.inTrash = inTrash
+        self.hasChildren = hasChildren
+        self.blockTypeObject = blockTypeObject
+        self.children = []
+    }
+
     enum CodingKeys: String, CodingKey {
         case archived
         case bookmark
@@ -45,6 +72,7 @@ public struct Block: NotionItem {
         case code
         case childDatabase = "child_database"
         case childPage = "child_page"
+        case children
         case createdBy = "created_by"
         case createdTime = "created_time"
         case divider
@@ -89,6 +117,7 @@ public struct Block: NotionItem {
         archived = try container.decode(Bool.self, forKey: .archived)
         inTrash = try container.decode(Bool.self, forKey: .inTrash)
         hasChildren = try container.decode(Bool.self, forKey: .hasChildren)
+        children = try container.decodeIfPresent([Block].self, forKey: .children) ?? []
 
         switch type {
         case .bookmark:
@@ -175,72 +204,75 @@ public struct Block: NotionItem {
         try container.encode(archived, forKey: .archived)
         try container.encode(inTrash, forKey: .inTrash)
         try container.encode(hasChildren, forKey: .hasChildren)
+        if !children.isEmpty {
+            try container.encode(children, forKey: .children)
+        }
 
         switch blockTypeObject {
         case .bookmark(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .bookmark)
         case .breadcrumb(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .breadcrumb)
         case .bulletedListItem(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .bulletedListItem)
         case .callout(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .callout)
         case .childDatabase(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .childDatabase)
         case .childPage(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .childPage)
         case .code(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .code)
         case .column(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .column)
         case .columnList(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .columnList)
         case .divider(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .divider)
         case .embed(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .embed)
         case .equation(let value):
             try value.encode(to: encoder)
         case .file(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .file)
         case .heading1(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .heading1)
         case .heading2(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .heading2)
         case .heading3(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .heading3)
         case .image(let value):
             try value.encode(to: encoder)
         case .linkPreview(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .linkPreview)
         case .linkToPage(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .linkToPage)
         case .numberedListItem(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .numberedListItem)
         case .paragraph(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .paragraph)
         case .pdf(let value):
             try value.encode(to: encoder)
         case .quote(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .quote)
         case .syncedBlock(let value):
             try value.encode(to: encoder)
         case .table(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .table)
         case .tableOfContents(let value):
             try value.encode(to: encoder)
         case .tableRow(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .tableRow)
         case .template(let value):
             try value.encode(to: encoder)
         case .toDo(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .todo)
         case .toggle(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .toggle)
         case .unsupported(let value):
             try value.encode(to: encoder)
         case .video(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .video)
         }
     }
 }
@@ -363,6 +395,11 @@ public struct EquationBlock: Codable {
 public struct FileBlock: Codable {
     public let caption: [RichText]?
     public let type: FileType
+
+    public init(caption: [RichText]?, type: FileType) {
+        self.caption = caption
+        self.type = type
+    }
 
     public enum FileType {
         case external(External)
