@@ -72,6 +72,7 @@ public struct Block: NotionItem {
         case code
         case childDatabase = "child_database"
         case childPage = "child_page"
+        case children
         case createdBy = "created_by"
         case createdTime = "created_time"
         case divider
@@ -116,6 +117,7 @@ public struct Block: NotionItem {
         archived = try container.decode(Bool.self, forKey: .archived)
         inTrash = try container.decode(Bool.self, forKey: .inTrash)
         hasChildren = try container.decode(Bool.self, forKey: .hasChildren)
+        children = try container.decodeIfPresent([Block].self, forKey: .children) ?? []
 
         switch type {
         case .bookmark:
@@ -202,6 +204,9 @@ public struct Block: NotionItem {
         try container.encode(archived, forKey: .archived)
         try container.encode(inTrash, forKey: .inTrash)
         try container.encode(hasChildren, forKey: .hasChildren)
+        if !children.isEmpty {
+            try container.encode(children, forKey: .children)
+        }
 
         switch blockTypeObject {
         case .bookmark(let value):
