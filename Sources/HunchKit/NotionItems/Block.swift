@@ -36,6 +36,33 @@ public struct Block: NotionItem {
         return type.rawValue
     }
 
+    public init(object: String,
+                id: String,
+                parent: Parent?,
+                type: BlockType,
+                createdTime: String,
+                createdBy: PartialUser,
+                lastEditedTime: String,
+                lastEditedBy: PartialUser,
+                archived: Bool,
+                inTrash: Bool,
+                hasChildren: Bool,
+                blockTypeObject: BlockTypeObject) {
+        self.object = object
+        self.id = id
+        self.parent = parent
+        self.type = type
+        self.createdTime = createdTime
+        self.createdBy = createdBy
+        self.lastEditedTime = lastEditedTime
+        self.lastEditedBy = lastEditedBy
+        self.archived = archived
+        self.inTrash = inTrash
+        self.hasChildren = hasChildren
+        self.blockTypeObject = blockTypeObject
+        self.children = []
+    }
+
     enum CodingKeys: String, CodingKey {
         case archived
         case bookmark
@@ -363,6 +390,11 @@ public struct EquationBlock: Codable {
 public struct FileBlock: Codable {
     public let caption: [RichText]?
     public let type: FileType
+
+    public init(caption: [RichText]?, type: FileType) {
+        self.caption = caption
+        self.type = type
+    }
 
     public enum FileType {
         case external(External)
