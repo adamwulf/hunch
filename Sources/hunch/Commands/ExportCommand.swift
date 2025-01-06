@@ -44,7 +44,11 @@ struct ExportCommand: AsyncParsableCommand {
             try fm.createDirectory(atPath: localizedDir, withIntermediateDirectories: true)
 
             // Create Base.strings file
-            let stringsContent = "\"\(page.id)\" = \"\(localizedName)\";"
+            let escapedName = localizedName
+                .replacingOccurrences(of: "\\", with: "\\\\")  // Must escape backslashes first
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "\t", with: "\\t")
+            let stringsContent = "\"\(page.id)\" = \"\(escapedName)\";"
             let stringsPath = (localizedDir as NSString).appendingPathComponent("Base.strings")
             try stringsContent.write(toFile: stringsPath, atomically: true, encoding: .utf8)
 
@@ -188,7 +192,15 @@ struct ExportCommand: AsyncParsableCommand {
         if filename.isEmpty {
             filename = "Link"
         }
-        let filePath = (directory as NSString).appendingPathComponent("\(filename.filenameSafe).webloc")
+
+        // Ensure filename + .webloc is <= 255 chars
+        let ext = ".webloc"
+        let maxLength = 255 - ".webloc".count
+        if filename.count > maxLength {
+            filename = String(filename.prefix(maxLength))
+        }
+
+        let filePath = (directory as NSString).appendingPathComponent("\(filename.filenameSafe + ext)")
         try weblocContent.write(toFile: filePath, atomically: true, encoding: .utf8)
     }
 }
