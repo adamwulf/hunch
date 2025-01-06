@@ -205,95 +205,69 @@ public struct Block: NotionItem {
 
         switch blockTypeObject {
         case .bookmark(let value):
-            var bookmarkContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .bookmark)
-            try value.encode(to: bookmarkContainer.superEncoder())
+            try container.encode(value, forKey: .bookmark)
         case .breadcrumb(let value):
-            var breadcrumbContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .breadcrumb)
-            try value.encode(to: breadcrumbContainer.superEncoder())
+            try container.encode(value, forKey: .breadcrumb)
         case .bulletedListItem(let value):
-            var bulletedContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .bulletedListItem)
-            try value.encode(to: bulletedContainer.superEncoder())
+            try container.encode(value, forKey: .bulletedListItem)
         case .callout(let value):
-            var calloutContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .callout)
-            try value.encode(to: calloutContainer.superEncoder())
+            try container.encode(value, forKey: .callout)
         case .childDatabase(let value):
-            var childDatabaseContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .childDatabase)
-            try value.encode(to: childDatabaseContainer.superEncoder())
+            try container.encode(value, forKey: .childDatabase)
         case .childPage(let value):
-            var childPageContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .childPage)
-            try value.encode(to: childPageContainer.superEncoder())
+            try container.encode(value, forKey: .childPage)
         case .code(let value):
-            var codeContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .code)
-            try value.encode(to: codeContainer.superEncoder())
+            try container.encode(value, forKey: .code)
         case .column(let value):
-            var columnContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .column)
-            try value.encode(to: columnContainer.superEncoder())
+            try container.encode(value, forKey: .column)
         case .columnList(let value):
-            var columnListContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .columnList)
-            try value.encode(to: columnListContainer.superEncoder())
+            try container.encode(value, forKey: .columnList)
         case .divider(let value):
-            var dividerContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .divider)
-            try value.encode(to: dividerContainer.superEncoder())
+            try container.encode(value, forKey: .divider)
         case .embed(let value):
-            var embedContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .embed)
-            try value.encode(to: embedContainer.superEncoder())
+            try container.encode(value, forKey: .embed)
         case .equation(let value):
             try value.encode(to: encoder)
         case .file(let value):
-            var fileContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .file)
-            try value.encode(to: fileContainer.superEncoder())
+            try container.encode(value, forKey: .file)
         case .heading1(let value):
-            var heading1Container = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .heading1)
-            try value.encode(to: heading1Container.superEncoder())
+            try container.encode(value, forKey: .heading1)
         case .heading2(let value):
-            var heading2Container = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .heading2)
-            try value.encode(to: heading2Container.superEncoder())
+            try container.encode(value, forKey: .heading2)
         case .heading3(let value):
-            var heading3Container = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .heading3)
-            try value.encode(to: heading3Container.superEncoder())
+            try container.encode(value, forKey: .heading3)
         case .image(let value):
             try value.encode(to: encoder)
         case .linkPreview(let value):
-            var linkPreviewContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .linkPreview)
-            try value.encode(to: linkPreviewContainer.superEncoder())
+            try container.encode(value, forKey: .linkPreview)
         case .linkToPage(let value):
-            var linkToPageContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .linkToPage)
-            try value.encode(to: linkToPageContainer.superEncoder())
+            try container.encode(value, forKey: .linkToPage)
         case .numberedListItem(let value):
-            var numberedListItemContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .numberedListItem)
-            try value.encode(to: numberedListItemContainer.superEncoder())
+            try container.encode(value, forKey: .numberedListItem)
         case .paragraph(let value):
-            var paragraphContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .paragraph)
-            try value.encode(to: paragraphContainer.superEncoder())
+            try container.encode(value, forKey: .paragraph)
         case .pdf(let value):
-            var pdfContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .pdf)
-            try value.encode(to: pdfContainer.superEncoder())
+            try value.encode(to: encoder)
         case .quote(let value):
-            var quoteContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .quote)
-            try value.encode(to: quoteContainer.superEncoder())
-        case .syncedBlock:
-            fatalError("not yet supported")
+            try container.encode(value, forKey: .quote)
+        case .syncedBlock(let value):
+            try value.encode(to: encoder)
         case .table(let value):
-            var tableContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .table)
-            try value.encode(to: tableContainer.superEncoder())
-        case .tableOfContents:
-            fatalError("not yet supported")
+            try container.encode(value, forKey: .table)
+        case .tableOfContents(let value):
+            try value.encode(to: encoder)
         case .tableRow(let value):
-            var tableRowContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .tableRow)
-            try value.encode(to: tableRowContainer.superEncoder())
-        case .template:
-            fatalError("not yet supported")
+            try container.encode(value, forKey: .tableRow)
+        case .template(let value):
+            try value.encode(to: encoder)
         case .toDo(let value):
-            var toDoContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .todo)
-            try value.encode(to: toDoContainer.superEncoder())
+            try container.encode(value, forKey: .todo)
         case .toggle(let value):
-            var toggleContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .toggle)
-            try value.encode(to: toggleContainer.superEncoder())
+            try container.encode(value, forKey: .toggle)
         case .unsupported(let value):
             try value.encode(to: encoder)
         case .video(let value):
-            var videoContainer = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .video)
-            try value.encode(to: videoContainer.superEncoder())
+            try container.encode(value, forKey: .video)
         }
     }
 }
