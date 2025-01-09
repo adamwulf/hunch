@@ -184,8 +184,8 @@ struct ExportCommand: AsyncParsableCommand {
                     for moment in moments {
                         let seconds = Int(moment.start)
                         let timestamp = String(format: "[%d:%02d]", seconds / 60, seconds % 60)
-                        let timestampUrl = youtubeUrl + (youtubeUrl.contains("?") ? "&" : "?") + "t=\(seconds)"
-                        markdown += "[\(timestamp)](\(timestampUrl)) \(moment.text)\n"
+                        let timestampURL = addTimestamp(to: youtubeUrl, seconds: seconds)
+                        markdown += "[\(timestamp)](\(timestampURL)) \(moment.text)\n"
                     }
                 } catch {
                     print("Failed to fetch transcript for \(youtubeUrl): \(error)")
@@ -248,5 +248,16 @@ struct ExportCommand: AsyncParsableCommand {
             }
         }
         return nil
+    }
+
+    private func addTimestamp(to youtubeUrl: String, seconds: Int) -> String {
+        // Remove any existing t parameter
+        var urlComps = URLComponents(string: youtubeUrl)!
+        urlComps.queryItems = urlComps.queryItems?.filter { $0.name != "t" }
+        if urlComps.queryItems == nil {
+            urlComps.queryItems = []
+        }
+        urlComps.queryItems!.append(URLQueryItem(name: "t", value: String(seconds)))
+        return urlComps.url!.absoluteString
     }
 }
