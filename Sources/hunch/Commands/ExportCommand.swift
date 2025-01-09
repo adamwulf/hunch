@@ -1,6 +1,7 @@
 import Foundation
 import ArgumentParser
 import HunchKit
+import YouTubeTranscriptKit
 
 struct ExportCommand: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
@@ -173,7 +174,25 @@ struct ExportCommand: AsyncParsableCommand {
 
 
                 """ // format to ensure an newline between the metadata and page content
-            let markdown = titleHeader + (try renderer.render([page] + blocks))
+            var markdown = titleHeader + (try renderer.render([page] + blocks))
+
+            // Add transcript if YouTube URL exists
+            if let youtubeUrl = findYouTubeUrl(in: page.properties) {
+                markdown += "\n\n## Transcript\n\n"
+                do {
+                    let moments = try await YouTubeTranscriptKit.getTranscript(url: URL(string: youtubeUrl)!)
+                    for moment in moments {
+                        let seconds = Int(moment.start)
+                        let timestamp = String(format: "[%d:%02d]", seconds / 60, seconds % 60)
+                        let timestampURL = addTimestamp(to: youtubeUrl, seconds: seconds)
+                        let transcriptText = moment.text.replacingOccurrences(of: "\n", with: " ")
+                        markdown += "[\(timestamp)](\(timestampURL)) \(transcriptText)\n"
+                    }
+                } catch {
+                    print("Failed to fetch transcript for \(youtubeUrl): \(error)")
+                    markdown += "_Failed to fetch transcript_"
+                }
+            }
 
             // Write to file
             let filePath = (pageDir as NSString).appendingPathComponent("content.md")
@@ -218,5 +237,28 @@ struct ExportCommand: AsyncParsableCommand {
 
         let filePath = (directory as NSString).appendingPathComponent("\(filename.filenameSafe + ext)")
         try weblocContent.write(toFile: filePath, atomically: true, encoding: .utf8)
+    }
+
+    // Update helper to return the YouTube URL if found
+    private func findYouTubeUrl(in properties: [String: Property]) -> String? {
+        for (_, prop) in properties {
+            if case .url(_, let value) = prop {
+                if value.contains("youtube.com") {
+                    return value
+                }
+            }
+        }
+        return nil
+    }
+
+    private func addTimestamp(to youtubeUrl: String, seconds: Int) -> String {
+        // Remove any existing t parameter
+        var urlComps = URLComponents(string: youtubeUrl)!
+        urlComps.queryItems = urlComps.queryItems?.filter { $0.name != "t" }
+        if urlComps.queryItems == nil {
+            urlComps.queryItems = []
+        }
+        urlComps.queryItems!.append(URLQueryItem(name: "t", value: String(seconds)))
+        return urlComps.url!.absoluteString
     }
 }

@@ -13,15 +13,17 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
-        .package(url: "https://github.com/adamwulf/SwiftToolbox", .branch("main")),
-        .package(url: "https://github.com/adamwulf/Logfmt", .branch("main"))
+        .package(url: "https://github.com/adamwulf/SwiftToolbox", branch: "main"),
+        .package(url: "https://github.com/adamwulf/Logfmt", branch: "main"),
+        .package(url: "https://github.com/adamwulf/ytt", branch: "main")
     ],
     targets: [
         .target(
             name: "HunchKit",
             dependencies: [
                 .product(name: "SwiftToolbox", package: "SwiftToolbox"),
-                .product(name: "Logfmt", package: "Logfmt")
+                .product(name: "Logfmt", package: "Logfmt"),
+                .product(name: "YouTubeTranscriptKit", package: "ytt")
             ]
         ),
         .executableTarget(
@@ -30,7 +32,8 @@ let package = Package(
                 "HunchKit",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "SwiftToolbox", package: "SwiftToolbox"),
-                .product(name: "Logfmt", package: "Logfmt")
+                .product(name: "Logfmt", package: "Logfmt"),
+                .product(name: "YouTubeTranscriptKit", package: "ytt")
             ]
         ),
         .testTarget(
