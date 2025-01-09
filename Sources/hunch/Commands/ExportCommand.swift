@@ -71,6 +71,22 @@ struct ExportCommand: AsyncParsableCommand {
                 try jsonData.write(to: URL(fileURLWithPath: contentJsonPath))
             }
 
+            // Load or fetch transcript if YouTube URL exists
+            let transcript: [TranscriptMoment]?
+            let youtubeUrl = findYouTubeUrl(in: page.properties)
+            if let youtubeUrl = youtubeUrl {
+                let transcriptJsonPath = (pageDir as NSString).appendingPathComponent("transcript.json")
+                if fm.fileExists(atPath: transcriptJsonPath),
+                   let jsonData = try? Data(contentsOf: URL(fileURLWithPath: transcriptJsonPath)),
+                   let cachedMoments = try? JSONDecoder().decode([TranscriptMoment].self, from: jsonData) {
+                    transcript = cachedMoments
+                } else {
+                    transcript = await fetchAndCacheTranscript(for: youtubeUrl, to: transcriptJsonPath)
+                }
+            } else {
+                transcript = nil
+            }
+
             // Download assets and collect their local paths
             var downloadedAssets: [String: FileDownloader.DownloadedAsset] = [:]
             for block in blocks {
@@ -176,21 +192,15 @@ struct ExportCommand: AsyncParsableCommand {
                 """ // format to ensure an newline between the metadata and page content
             var markdown = titleHeader + (try renderer.render([page] + blocks))
 
-            // Add transcript if YouTube URL exists
-            if let youtubeUrl = findYouTubeUrl(in: page.properties) {
+            // Add transcript if we have moments
+            if let youtubeUrl = youtubeUrl, let transcript = transcript {
                 markdown += "\n\n## Transcript\n\n"
-                do {
-                    let moments = try await YouTubeTranscriptKit.getTranscript(url: URL(string: youtubeUrl)!)
-                    for moment in moments {
-                        let seconds = Int(moment.start)
-                        let timestamp = String(format: "[%d:%02d]", seconds / 60, seconds % 60)
-                        let timestampURL = addTimestamp(to: youtubeUrl, seconds: seconds)
-                        let transcriptText = moment.text.replacingOccurrences(of: "\n", with: " ")
-                        markdown += "[\(timestamp)](\(timestampURL)) \(transcriptText)\n"
-                    }
-                } catch {
-                    print("Failed to fetch transcript for \(youtubeUrl): \(error)")
-                    markdown += "_Failed to fetch transcript_"
+                for moment in transcript {
+                    let seconds = Int(moment.start)
+                    let timestamp = String(format: "[%d:%02d]", seconds / 60, seconds % 60)
+                    let timestampURL = addTimestamp(to: youtubeUrl, seconds: seconds)
+                    let transcriptText = moment.text.replacingOccurrences(of: "\n", with: " ")
+                    markdown += "[\(timestamp)](\(timestampURL)) \(transcriptText)\n"
                 }
             }
 
@@ -260,5 +270,19 @@ struct ExportCommand: AsyncParsableCommand {
         }
         urlComps.queryItems!.append(URLQueryItem(name: "t", value: String(seconds)))
         return urlComps.url!.absoluteString
+    }
+
+    private func fetchAndCacheTranscript(for url: String, to path: String) async -> [TranscriptMoment]? {
+        do {
+            let transcript = try await YouTubeTranscriptKit.getTranscript(url: URL(string: url)!)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let jsonData = try encoder.encode(transcript)
+            try jsonData.write(to: URL(fileURLWithPath: path))
+            return transcript
+        } catch {
+            print("Failed to fetch transcript for \(url): \(error)")
+            return nil
+        }
     }
 }

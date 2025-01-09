@@ -39,10 +39,10 @@
     {
       "identity" : "ytt",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/adamwulf/ytt.git",
+      "location" : "https://github.com/adamwulf/ytt",
       "state" : {
         "branch" : "main",
-        "revision" : "b96f7e48bdefa33ff7422fcc899de0dd9ee7871f"
+        "revision" : "5923c82e4edf1814900896ad7da44c10714842a8"
       }
     }
   ],
