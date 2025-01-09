@@ -185,7 +185,8 @@ struct ExportCommand: AsyncParsableCommand {
                         let seconds = Int(moment.start)
                         let timestamp = String(format: "[%d:%02d]", seconds / 60, seconds % 60)
                         let timestampURL = addTimestamp(to: youtubeUrl, seconds: seconds)
-                        markdown += "[\(timestamp)](\(timestampURL)) \(moment.text)\n"
+                        let transcriptText = moment.text.replacingOccurrences(of: "\n", with: " ")
+                        markdown += "[\(timestamp)](\(timestampURL)) \(transcriptText)\n"
                     }
                 } catch {
                     print("Failed to fetch transcript for \(youtubeUrl): \(error)")
