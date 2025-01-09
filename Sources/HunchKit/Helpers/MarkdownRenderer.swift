@@ -309,8 +309,18 @@ public class MarkdownRenderer: Renderer {
 
         let url = videoBlock.type.url
         if let asset = downloadedAssets[url] {
-            let name = URL(string: asset.localPath)?.lastPathComponent ?? asset.localPath
-            return "Video: [\(name)](assets/\(asset.localPath))\n\n" + caption
+            let name = URL(string: url)?.lastPathComponent ?? url
+            let fileExtension = URL(fileURLWithPath: asset.localPath).pathExtension.lowercased()
+
+            // Common video file extensions
+            let videoExtensions = ["mp4", "mov", "avi", "wmv", "m4v", "webm"]
+            if videoExtensions.contains(fileExtension) {
+                // Direct video file - link to local copy
+                return "Video: [\(name)](assets/\(asset.localPath))\n\n" + caption
+            } else {
+                // Likely a webpage/thumbnail - show image and link to original
+                return "![\(name)](assets/\(asset.localPath))\n[\(name)](\(url))\n\n" + caption
+            }
         }
 
         let name = URL(string: url)?.lastPathComponent ?? url
