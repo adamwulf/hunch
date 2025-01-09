@@ -35,6 +35,15 @@
         "branch" : "main",
         "revision" : "8f7c5716de552ddf319dfa98deec2e72f412c7a3"
       }
+    },
+    {
+      "identity" : "ytt",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/adamwulf/ytt.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "b96f7e48bdefa33ff7422fcc899de0dd9ee7871f"
+      }
     }
   ],
   "version" : 2
