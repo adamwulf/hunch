@@ -75,15 +75,30 @@ struct ActivityCommand: AsyncParsableCommand {
 
         // Process each video
         for video in sortedVideos {
-            let videoPath = (normalizedOutputPath as NSString).appendingPathComponent(video.id)
-            try fm.createDirectory(atPath: videoPath, withIntermediateDirectories: true)
+            let localizedName = video.title?.replacingOccurrences(of: "\n", with: " ")
+                .replacingOccurrences(of: "\r", with: "") ?? video.id
+            let videoDir = (normalizedOutputPath as NSString).appendingPathComponent(video.id + ".localized")
+            let localizedDir = (videoDir as NSString).appendingPathComponent(".localized")
+
+            // Create directories
+            try fm.createDirectory(atPath: videoDir, withIntermediateDirectories: true)
+            try fm.createDirectory(atPath: localizedDir, withIntermediateDirectories: true)
+
+            // Create Base.strings file
+            let escapedName = localizedName
+                .replacingOccurrences(of: "\\", with: "\\\\")  // Must escape backslashes first
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "\t", with: "\\t")
+            let stringsContent = "\"\(video.id)\" = \"\(escapedName)\";"
+            let stringsPath = (localizedDir as NSString).appendingPathComponent("Base.strings")
+            try stringsContent.write(toFile: stringsPath, atomically: true, encoding: .utf8)
 
             // Save activities as JSON array
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted]
             encoder.dateEncodingStrategy = .iso8601
             let jsonData = try encoder.encode(video.activities)
-            let jsonPath = (videoPath as NSString).appendingPathComponent("activities.json")
+            let jsonPath = (videoDir as NSString).appendingPathComponent("activities.json")
             try jsonData.write(to: URL(fileURLWithPath: jsonPath))
 
             // Set folder dates using first/last activity
@@ -91,7 +106,7 @@ struct ActivityCommand: AsyncParsableCommand {
                 .creationDate: video.firstSeen,
                 .modificationDate: video.lastSeen
             ]
-            try fm.setAttributes(attributes, ofItemAtPath: videoPath)
+            try fm.setAttributes(attributes, ofItemAtPath: videoDir)
         }
     }
 }
