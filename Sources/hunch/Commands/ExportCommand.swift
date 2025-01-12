@@ -12,7 +12,7 @@ struct ExportCommand: AsyncParsableCommand {
     @Argument(help: "The Notion database ID to export")
     var databaseId: String
 
-    @Option(name: .long, help: "Output directory path")
+    @Option(name: .shortAndLong, help: "Output directory path")
     var outputDir: String = "./notion_export"
 
     mutating func run() async throws {

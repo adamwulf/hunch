@@ -23,7 +23,7 @@ struct Hunch: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
         commandName: "hunch",
         version: "Hunch",
-        subcommands: [DatabaseCommand.self, PageCommand.self, BlocksCommand.self, ExportCommand.self]
+        subcommands: [DatabaseCommand.self, PageCommand.self, BlocksCommand.self, ExportCommand.self, ActivityCommand.self]
     )
 
     init() {
