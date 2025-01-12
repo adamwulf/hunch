@@ -69,29 +69,18 @@ struct ActivityCommand: AsyncParsableCommand {
         let videos = videoActivities.map { id, activities in
             VideoData(id: id, activities: activities)
         }
-
+        
         // Sort by most recent activity
         let sortedVideos = videos.sorted { $0.lastSeen > $1.lastSeen }
 
         // Process each video
-        for video in sortedVideos {
-            let localizedName = video.title?.replacingOccurrences(of: "\n", with: " ")
-                .replacingOccurrences(of: "\r", with: "") ?? video.id
+        for video in sortedVideos[...10] {
             let videoDir = (normalizedOutputPath as NSString).appendingPathComponent(video.id + ".localized")
             let localizedDir = (videoDir as NSString).appendingPathComponent(".localized")
 
             // Create directories
             try fm.createDirectory(atPath: videoDir, withIntermediateDirectories: true)
             try fm.createDirectory(atPath: localizedDir, withIntermediateDirectories: true)
-
-            // Create Base.strings file
-            let escapedName = localizedName
-                .replacingOccurrences(of: "\\", with: "\\\\")  // Must escape backslashes first
-                .replacingOccurrences(of: "\"", with: "\\\"")
-                .replacingOccurrences(of: "\t", with: "\\t")
-            let stringsContent = "\"\(video.id)\" = \"\(escapedName)\";"
-            let stringsPath = (localizedDir as NSString).appendingPathComponent("Base.strings")
-            try stringsContent.write(toFile: stringsPath, atomically: true, encoding: .utf8)
 
             // Save activities as JSON array
             let encoder = JSONEncoder()
@@ -104,24 +93,40 @@ struct ActivityCommand: AsyncParsableCommand {
             // Load or fetch video info and transcript
             let infoPath = (videoDir as NSString).appendingPathComponent("info.json")
             let transcriptPath = (videoDir as NSString).appendingPathComponent("transcript.json")
-
+            
+            var videoTitle = video.title
             if !fm.fileExists(atPath: infoPath) || !fm.fileExists(atPath: transcriptPath) {
                 do {
                     let info = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id)
+                    videoTitle = info.title ?? videoTitle
 
                     // Save transcript first if we have it
                     if let transcript = info.transcript {
                         let transcriptData = try encoder.encode(transcript)
                         try transcriptData.write(to: URL(fileURLWithPath: transcriptPath))
                     }
-
+                    
                     // Save info without transcript
                     let infoData = try encoder.encode(info.withoutTranscript())
                     try infoData.write(to: URL(fileURLWithPath: infoPath))
                 } catch {
                     print("Failed to fetch info/transcript for \(video.id): \(error)")
                 }
+            } else if let infoData = try? Data(contentsOf: URL(fileURLWithPath: infoPath)),
+                      let info = try? JSONDecoder().decode(VideoInfo.self, from: infoData) {
+                videoTitle = info.title ?? videoTitle
             }
+
+            // Create Base.strings file with best available title
+            let localizedName = videoTitle?.replacingOccurrences(of: "\n", with: " ")
+                .replacingOccurrences(of: "\r", with: "") ?? video.id
+            let escapedName = localizedName
+                .replacingOccurrences(of: "\\", with: "\\\\")  // Must escape backslashes first
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "\t", with: "\\t")
+            let stringsContent = "\"\(video.id)\" = \"\(escapedName)\";"
+            let stringsPath = (localizedDir as NSString).appendingPathComponent("Base.strings")
+            try stringsContent.write(toFile: stringsPath, atomically: true, encoding: .utf8)
 
             // Set folder dates using first/last activity
             let attributes: [FileAttributeKey: Any] = [
