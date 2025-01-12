@@ -95,11 +95,33 @@ struct ActivityCommand: AsyncParsableCommand {
 
             // Save activities as JSON array
             let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted]
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
-            let jsonData = try encoder.encode(video.activities)
-            let jsonPath = (videoDir as NSString).appendingPathComponent("activities.json")
-            try jsonData.write(to: URL(fileURLWithPath: jsonPath))
+            let activitiesData = try encoder.encode(video.activities)
+            let activitiesPath = (videoDir as NSString).appendingPathComponent("activities.json")
+            try activitiesData.write(to: URL(fileURLWithPath: activitiesPath))
+
+            // Load or fetch video info and transcript
+            let infoPath = (videoDir as NSString).appendingPathComponent("info.json")
+            let transcriptPath = (videoDir as NSString).appendingPathComponent("transcript.json")
+
+            if !fm.fileExists(atPath: infoPath) || !fm.fileExists(atPath: transcriptPath) {
+                do {
+                    let info = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id)
+
+                    // Save transcript first if we have it
+                    if let transcript = info.transcript {
+                        let transcriptData = try encoder.encode(transcript)
+                        try transcriptData.write(to: URL(fileURLWithPath: transcriptPath))
+                    }
+
+                    // Save info without transcript
+                    let infoData = try encoder.encode(info.withoutTranscript())
+                    try infoData.write(to: URL(fileURLWithPath: infoPath))
+                } catch {
+                    print("Failed to fetch info/transcript for \(video.id): \(error)")
+                }
+            }
 
             // Set folder dates using first/last activity
             let attributes: [FileAttributeKey: Any] = [
