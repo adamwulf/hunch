@@ -26,6 +26,30 @@ struct ActivityCommand: AsyncParsableCommand {
         }
     }
 
+    private func loadCachedInfo(from path: String) throws -> VideoInfo? {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
+        return try? JSONDecoder().decode(VideoInfo.self, from: data)
+    }
+
+    private func loadCachedTranscript(from path: String) throws -> [TranscriptMoment]? {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
+        return try? JSONDecoder().decode([TranscriptMoment].self, from: data)
+    }
+
+    private func saveInfo(_ info: VideoInfo, to path: String, using encoder: JSONEncoder) throws {
+        let data = try encoder.encode(info.withoutTranscript())
+        try data.write(to: URL(fileURLWithPath: path))
+    }
+
+    private func saveTranscript(_ transcript: [TranscriptMoment], to path: String, using encoder: JSONEncoder) throws {
+        let data = try encoder.encode(transcript)
+        try data.write(to: URL(fileURLWithPath: path))
+    }
+
+    private func fetchVideoData(id: String, needsInfo: Bool, needsTranscript: Bool) async throws -> VideoInfo {
+        try await YouTubeTranscriptKit.getVideoInfo(videoID: id, includeTranscript: needsTranscript)
+    }
+
     static var configuration = CommandConfiguration(
         commandName: "activity",
         abstract: "Parse Google Takeout MyActivity.html file"
@@ -69,7 +93,7 @@ struct ActivityCommand: AsyncParsableCommand {
         let videos = videoActivities.map { id, activities in
             VideoData(id: id, activities: activities)
         }
-        
+
         // Sort by most recent activity
         let sortedVideos = videos.sorted { $0.lastSeen > $1.lastSeen }
 
@@ -93,29 +117,40 @@ struct ActivityCommand: AsyncParsableCommand {
             // Load or fetch video info and transcript
             let infoPath = (videoDir as NSString).appendingPathComponent("info.json")
             let transcriptPath = (videoDir as NSString).appendingPathComponent("transcript.json")
-            
-            var videoTitle = video.title
-            if !fm.fileExists(atPath: infoPath) || !fm.fileExists(atPath: transcriptPath) {
-                do {
-                    let info = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id)
-                    videoTitle = info.title ?? videoTitle
 
-                    // Save transcript first if we have it
-                    if let transcript = info.transcript {
-                        let transcriptData = try encoder.encode(transcript)
-                        try transcriptData.write(to: URL(fileURLWithPath: transcriptPath))
-                    }
-                    
-                    // Save info without transcript
-                    let infoData = try encoder.encode(info.withoutTranscript())
-                    try infoData.write(to: URL(fileURLWithPath: infoPath))
-                } catch {
-                    print("Failed to fetch info/transcript for \(video.id): \(error)")
+            // Try loading from cache first
+            let info = try loadCachedInfo(from: infoPath)
+            let transcript = try loadCachedTranscript(from: transcriptPath)
+
+            // Fetch what we're missing based on cache state
+            let finalInfo: VideoInfo
+            let finalTranscript: [TranscriptMoment]?
+            switch (info, transcript) {
+            case (nil, nil):
+                let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
+                try saveInfo(fetched, to: infoPath, using: encoder)
+                if let fetchedTranscript = fetched.transcript {
+                    try saveTranscript(fetchedTranscript, to: transcriptPath, using: encoder)
                 }
-            } else if let infoData = try? Data(contentsOf: URL(fileURLWithPath: infoPath)),
-                      let info = try? JSONDecoder().decode(VideoInfo.self, from: infoData) {
-                videoTitle = info.title ?? videoTitle
+                finalInfo = fetched.withoutTranscript()
+                finalTranscript = fetched.transcript
+            case (nil, .some(let cached)):
+                let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
+                try saveInfo(fetched, to: infoPath, using: encoder)
+                finalInfo = fetched.withoutTranscript()
+                finalTranscript = cached
+            case (.some(let cached), nil):
+                let moments = try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
+                try saveTranscript(moments, to: transcriptPath, using: encoder)
+                finalInfo = cached
+                finalTranscript = moments
+            case (.some(let cached), .some(let cachedTranscript)):
+                finalInfo = cached
+                finalTranscript = cachedTranscript
             }
+
+            // Calculate best available title
+            let videoTitle = finalInfo.title ?? video.title
 
             // Create Base.strings file with best available title
             let localizedName = videoTitle?.replacingOccurrences(of: "\n", with: " ")
