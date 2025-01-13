@@ -67,13 +67,20 @@ struct ActivityCommand: AsyncParsableCommand {
         let progressDateFormatter = DateFormatter()
         progressDateFormatter.dateFormat = "yyyy MMM"
 
+        let skip = 2200
+
         // Process each video with rate limiting
-        for (index, video) in sortedVideos.enumerated() {
+        for (index, video) in sortedVideos[skip...].enumerated() {
+            if index > 0, index % 50 == 0 {
+                print("Resting...")
+                try await Task.sleep(for: .seconds(5))
+            }
             // Only print progress every 100 items
             if index % 100 == 0 {
-                let progress = Double(index) / Double(sortedVideos.count) * 100
+                let trueIndex = index + skip
+                let progress = Double(trueIndex) / Double(sortedVideos.count) * 100
                 let dateStr = progressDateFormatter.string(from: video.lastSeen)
-                let indexStr = "[\(index)/\(sortedVideos.count)]".padding(toLength: 15, withPad: " ", startingAt: 0)
+                let indexStr = "[\(trueIndex)/\(sortedVideos.count)]".padding(toLength: 15, withPad: " ", startingAt: 0)
                 let dateColumn = dateStr.padding(toLength: 10, withPad: " ", startingAt: 0)
                 let percentStr = String(format: "%6.1f%%", progress)
                 print("\(indexStr) \(dateColumn) \(percentStr)")
@@ -108,8 +115,11 @@ struct ActivityCommand: AsyncParsableCommand {
             }()
 
             let transcript: [TranscriptMoment]? = {
-                guard let data = try? Data(contentsOf: transcriptURL) else { return nil }
-                return try? decoder.decode([TranscriptMoment].self, from: data)
+                guard
+                    let data = try? Data(contentsOf: transcriptURL),
+                    let loaded = try? decoder.decode([TranscriptMoment].self, from: data)
+                else { return nil}
+                return loaded.isEmpty ? nil : loaded
             }()
 
             // Process data with exponential backoff on failure
@@ -118,23 +128,32 @@ struct ActivityCommand: AsyncParsableCommand {
             do {
                 switch (info, transcript) {
                 case (nil, nil):
+                    try await Task.sleep(for: .seconds(1))
+                    print("Fetching info and transcript: \(video.id)")
                     let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = fetched.transcript
                 case (nil, .some(let cached)):
+                    try await Task.sleep(for: .seconds(1))
+                    print("Fetching info: \(video.id)")
                     let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = cached
                 case (.some(let cached), nil):
+                    try await Task.sleep(for: .seconds(1))
                     // Skip fetching transcript if we already have info
+                    print("Fetching transcript: \(video.id)")
+                    let moments = try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
                     finalInfo = cached
-                    finalTranscript = nil
+                    finalTranscript = moments.isEmpty ? nil : moments
+                    if !moments.isEmpty {
+                        print("  recovered")
+                    }
                 case (.some(let cached), .some(let cachedTranscript)):
                     finalInfo = cached
                     finalTranscript = cachedTranscript
                 }
             } catch {
-
                 if case YouTubeTranscriptKit.TranscriptError.noCaptionData = error {
                     // noop
                 } else {
