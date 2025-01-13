@@ -75,9 +75,18 @@ struct ActivityCommand: AsyncParsableCommand {
             let transcriptURL = videoURL.appendingPathComponent("transcript.json")
             let stringsURL = localizedURL.appendingPathComponent("Base.strings")
 
-            // Create directories
+            // Create all directories first
             try fm.createDirectory(at: videoURL, withIntermediateDirectories: true)
             try fm.createDirectory(at: localizedURL, withIntermediateDirectories: true)
+
+            // Verify directories were created
+            var isDirectory: ObjCBool = false
+            guard
+                fm.fileExists(atPath: videoURL.path, isDirectory: &isDirectory), isDirectory.boolValue,
+                fm.fileExists(atPath: localizedURL.path, isDirectory: &isDirectory), isDirectory.boolValue
+            else {
+                throw NSError(domain: "ActivityCommand", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create directories for video \(video.id)"])
+            }
 
             // Load cached data
             let info: VideoInfo? = {
