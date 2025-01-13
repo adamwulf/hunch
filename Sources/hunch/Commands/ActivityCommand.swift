@@ -54,6 +54,14 @@ struct ActivityCommand: AsyncParsableCommand {
         // Parse activities and get sorted videos
         let sortedVideos = try await parseActivities(from: inputURL)
 
+        // Configure encoder/decoder
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .secondsSince1970
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+
         // Process each video
         for video in sortedVideos[...10] {
             // Build all URLs
@@ -68,44 +76,47 @@ struct ActivityCommand: AsyncParsableCommand {
             try fm.createDirectory(at: videoURL, withIntermediateDirectories: true)
             try fm.createDirectory(at: localizedURL, withIntermediateDirectories: true)
 
-            // Configure encoder
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-
             // Load cached data
             let info: VideoInfo? = {
                 guard let data = try? Data(contentsOf: infoURL) else { return nil }
-                return try? JSONDecoder().decode(VideoInfo.self, from: data)
+                return try? decoder.decode(VideoInfo.self, from: data)
             }()
 
             let transcript: [TranscriptMoment]? = {
                 guard let data = try? Data(contentsOf: transcriptURL) else { return nil }
-                return try? JSONDecoder().decode([TranscriptMoment].self, from: data)
+                return try? decoder.decode([TranscriptMoment].self, from: data)
             }()
 
             // Process data
-            let finalInfo: VideoInfo
+            let finalInfo: VideoInfo?
             let finalTranscript: [TranscriptMoment]?
-            switch (info, transcript) {
-            case (nil, nil):
-                let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
-                finalInfo = fetched.withoutTranscript()
-                finalTranscript = fetched.transcript
-            case (nil, .some(let cached)):
-                let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
-                finalInfo = fetched.withoutTranscript()
-                finalTranscript = cached
-            case (.some(let cached), nil):
-                let moments = try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
-                finalInfo = cached
-                finalTranscript = moments
-            case (.some(let cached), .some(let cachedTranscript)):
-                finalInfo = cached
-                finalTranscript = cachedTranscript
+            do {
+                switch (info, transcript) {
+                case (nil, nil):
+                    print("Fetching info and transcript: \(video.id)")
+                    let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
+                    finalInfo = fetched.withoutTranscript()
+                    finalTranscript = fetched.transcript
+                case (nil, .some(let cached)):
+                    print("Fetching info: \(video.id)")
+                    let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
+                    finalInfo = fetched.withoutTranscript()
+                    finalTranscript = cached
+                case (.some(let cached), nil):
+                    print("Fetching transcript: \(video.id)")
+                    let moments = try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
+                    finalInfo = cached
+                    finalTranscript = moments
+                case (.some(let cached), .some(let cachedTranscript)):
+                    finalInfo = cached
+                    finalTranscript = cachedTranscript
+                }
+            } catch {
+                finalInfo = nil
+                finalTranscript = nil
             }
 
-            let videoTitle = finalInfo.title ?? video.title
+            let videoTitle = finalInfo?.title ?? video.title
             let localizedName = videoTitle?.replacingOccurrences(of: "\n", with: " ")
                 .replacingOccurrences(of: "\r", with: "") ?? video.id
             let escapedName = localizedName
@@ -116,10 +127,10 @@ struct ActivityCommand: AsyncParsableCommand {
 
             // Write all data to disk
             try encoder.encode(video.activities).write(to: activitiesURL)
-            if !FileManager.default.fileExists(atPath: infoURL.path) {
+            if let finalInfo = finalInfo {
                 try encoder.encode(finalInfo).write(to: infoURL)
             }
-            if let finalTranscript = finalTranscript, !FileManager.default.fileExists(atPath: transcriptURL.path) {
+            if let finalTranscript = finalTranscript {
                 try encoder.encode(finalTranscript).write(to: transcriptURL)
             }
             try stringsContent.write(to: stringsURL, atomically: true, encoding: .utf8)
