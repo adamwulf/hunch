@@ -40,74 +40,64 @@ struct ActivityCommand: AsyncParsableCommand {
     mutating func run() async throws {
         let fm = FileManager.default
 
-        // Normalize input path
-        let normalizedInputPath = ((activityPath as NSString)
+        // Normalize paths and convert to URLs
+        let inputURL = URL(fileURLWithPath: ((activityPath as NSString)
             .expandingTildeInPath as NSString)
-            .standardizingPath
-
-        // Normalize output path
-        let normalizedOutputPath = ((outputDir as NSString)
+            .standardizingPath)
+        let outputURL = URL(fileURLWithPath: ((outputDir as NSString)
             .expandingTildeInPath as NSString)
-            .standardizingPath
+            .standardizingPath)
 
         // Create output directory if it doesn't exist
-        try fm.createDirectory(atPath: normalizedOutputPath, withIntermediateDirectories: true)
+        try fm.createDirectory(at: outputURL, withIntermediateDirectories: true)
 
         // Parse activities and get sorted videos
-        let sortedVideos = try await parseActivities(from: normalizedInputPath)
+        let sortedVideos = try await parseActivities(from: inputURL)
 
         // Process each video
         for video in sortedVideos[...10] {
-            let videoDir = (normalizedOutputPath as NSString).appendingPathComponent(video.id + ".localized")
-            let localizedDir = (videoDir as NSString).appendingPathComponent(".localized")
+            // Build all URLs
+            let videoURL = outputURL.appendingPathComponent(video.id + ".localized")
+            let localizedURL = videoURL.appendingPathComponent(".localized")
+            let activitiesURL = videoURL.appendingPathComponent("activities.json")
+            let infoURL = videoURL.appendingPathComponent("info.json")
+            let transcriptURL = videoURL.appendingPathComponent("transcript.json")
+            let stringsURL = localizedURL.appendingPathComponent("Base.strings")
 
             // Create directories
-            try fm.createDirectory(atPath: videoDir, withIntermediateDirectories: true)
-            try fm.createDirectory(atPath: localizedDir, withIntermediateDirectories: true)
+            try fm.createDirectory(at: videoURL, withIntermediateDirectories: true)
+            try fm.createDirectory(at: localizedURL, withIntermediateDirectories: true)
 
-            // Save activities as JSON array
+            // Configure encoder
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
-            let activitiesData = try encoder.encode(video.activities)
-            let activitiesPath = (videoDir as NSString).appendingPathComponent("activities.json")
-            try activitiesData.write(to: URL(fileURLWithPath: activitiesPath))
 
-            // Load or fetch video info and transcript
-            let infoPath = (videoDir as NSString).appendingPathComponent("info.json")
-            let transcriptPath = (videoDir as NSString).appendingPathComponent("transcript.json")
-
-            // Try loading from cache first
+            // Load cached data
             let info: VideoInfo? = {
-                guard let data = try? Data(contentsOf: URL(fileURLWithPath: infoPath)) else { return nil }
+                guard let data = try? Data(contentsOf: infoURL) else { return nil }
                 return try? JSONDecoder().decode(VideoInfo.self, from: data)
             }()
 
             let transcript: [TranscriptMoment]? = {
-                guard let data = try? Data(contentsOf: URL(fileURLWithPath: transcriptPath)) else { return nil }
+                guard let data = try? Data(contentsOf: transcriptURL) else { return nil }
                 return try? JSONDecoder().decode([TranscriptMoment].self, from: data)
             }()
 
-            // Fetch what we're missing based on cache state
+            // Process data
             let finalInfo: VideoInfo
             let finalTranscript: [TranscriptMoment]?
             switch (info, transcript) {
             case (nil, nil):
                 let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
-                try encoder.encode(fetched.withoutTranscript()).write(to: URL(fileURLWithPath: infoPath))
-                if let fetchedTranscript = fetched.transcript {
-                    try encoder.encode(fetchedTranscript).write(to: URL(fileURLWithPath: transcriptPath))
-                }
                 finalInfo = fetched.withoutTranscript()
                 finalTranscript = fetched.transcript
             case (nil, .some(let cached)):
                 let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
-                try encoder.encode(fetched.withoutTranscript()).write(to: URL(fileURLWithPath: infoPath))
                 finalInfo = fetched.withoutTranscript()
                 finalTranscript = cached
             case (.some(let cached), nil):
                 let moments = try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
-                try encoder.encode(moments).write(to: URL(fileURLWithPath: transcriptPath))
                 finalInfo = cached
                 finalTranscript = moments
             case (.some(let cached), .some(let cachedTranscript)):
@@ -115,10 +105,7 @@ struct ActivityCommand: AsyncParsableCommand {
                 finalTranscript = cachedTranscript
             }
 
-            // Calculate best available title
             let videoTitle = finalInfo.title ?? video.title
-
-            // Create Base.strings file with best available title
             let localizedName = videoTitle?.replacingOccurrences(of: "\n", with: " ")
                 .replacingOccurrences(of: "\r", with: "") ?? video.id
             let escapedName = localizedName
@@ -126,21 +113,29 @@ struct ActivityCommand: AsyncParsableCommand {
                 .replacingOccurrences(of: "\"", with: "\\\"")
                 .replacingOccurrences(of: "\t", with: "\\t")
             let stringsContent = "\"\(video.id)\" = \"\(escapedName)\";"
-            let stringsPath = (localizedDir as NSString).appendingPathComponent("Base.strings")
-            try stringsContent.write(toFile: stringsPath, atomically: true, encoding: .utf8)
 
-            // Set folder dates using first/last activity
+            // Write all data to disk
+            try encoder.encode(video.activities).write(to: activitiesURL)
+            if !FileManager.default.fileExists(atPath: infoURL.path) {
+                try encoder.encode(finalInfo).write(to: infoURL)
+            }
+            if let finalTranscript = finalTranscript, !FileManager.default.fileExists(atPath: transcriptURL.path) {
+                try encoder.encode(finalTranscript).write(to: transcriptURL)
+            }
+            try stringsContent.write(to: stringsURL, atomically: true, encoding: .utf8)
+
+            // Set folder dates
             let attributes: [FileAttributeKey: Any] = [
                 .creationDate: video.firstSeen,
                 .modificationDate: video.lastSeen
             ]
-            try fm.setAttributes(attributes, ofItemAtPath: videoDir)
+            try fm.setAttributes(attributes, ofItemAtPath: videoURL.path)
         }
     }
 
-    private func parseActivities(from path: String) async throws -> [VideoData] {
+    private func parseActivities(from url: URL) async throws -> [VideoData] {
         // Parse activity file
-        let activities = try await YouTubeTranscriptKit.getActivity(fileURL: URL(fileURLWithPath: path))
+        let activities = try await YouTubeTranscriptKit.getActivity(fileURL: url)
 
         // Filter and group video activities by ID
         var videoActivities: [String: [Activity]] = [:]
