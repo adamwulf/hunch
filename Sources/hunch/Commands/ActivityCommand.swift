@@ -65,10 +65,10 @@ struct ActivityCommand: AsyncParsableCommand {
 
         // Process each video with rate limiting
         for (index, video) in sortedVideos.enumerated() {
-            print("[\(index + 1)/\(sortedVideos.count)] Processing \(video.id)")
-
-            if video.id == "e6t7MlE7hj0" {
-                print("here")
+            // Only print progress every 100 items
+            if index % 100 == 0 {
+                let progress = Double(index) / Double(sortedVideos.count) * 100
+                print("[\(index)/\(sortedVideos.count)] Processing videos... \(String(format: "%.1f%%", progress))")
             }
 
             // Build all URLs
@@ -89,6 +89,7 @@ struct ActivityCommand: AsyncParsableCommand {
                 fm.fileExists(atPath: videoURL.path, isDirectory: &isDirectory), isDirectory.boolValue,
                 fm.fileExists(atPath: localizedURL.path, isDirectory: &isDirectory), isDirectory.boolValue
             else {
+                print("Error: Failed to create directories for video \(video.id)")
                 throw NSError(domain: "ActivityCommand", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create directories for video \(video.id)"])
             }
 
@@ -109,31 +110,32 @@ struct ActivityCommand: AsyncParsableCommand {
             do {
                 switch (info, transcript) {
                 case (nil, nil):
-                    print("  Fetching info and transcript")
                     let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = fetched.transcript
                 case (nil, .some(let cached)):
-                    print("  Fetching info")
                     let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = cached
                 case (.some(let cached), nil):
-                    print("  Fetching transcript")
                     let moments = try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
                     finalInfo = cached
                     finalTranscript = moments
                 case (.some(let cached), .some(let cachedTranscript)):
-                    print("  Using cached data")
                     finalInfo = cached
                     finalTranscript = cachedTranscript
                 }
             } catch {
-                print("  Error: \(error)")
+
+                if case YouTubeTranscriptKit.TranscriptError.noCaptionData = error {
+                    // noop
+                } else {
+                    print("Error processing \(video.id): \(error)")
+                }
 
                 // Only sleep on network errors
-                if case YouTubeTranscriptKit.TranscriptError.networkError = error {
-                    print("  Network error - backing off for 5s")
+                if case YouTubeTranscriptKit.TranscriptError.networkError(let nwError) = error {
+                    print("  backing off for 5s: \(nwError)")
                     try await Task.sleep(for: .seconds(5))
                 }
 
