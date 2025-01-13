@@ -63,12 +63,17 @@ struct ActivityCommand: AsyncParsableCommand {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
+        // Configure date formatter for progress
+        let progressDateFormatter = DateFormatter()
+        progressDateFormatter.dateFormat = "yyyy MMM"
+
         // Process each video with rate limiting
         for (index, video) in sortedVideos.enumerated() {
             // Only print progress every 100 items
             if index % 100 == 0 {
                 let progress = Double(index) / Double(sortedVideos.count) * 100
-                print("[\(index)/\(sortedVideos.count)] Processing videos... \(String(format: "%.1f%%", progress))")
+                let dateStr = progressDateFormatter.string(from: video.lastSeen)
+                print("[\(index)/\(sortedVideos.count)] \(dateStr) Processing videos... \(String(format: "%.1f%%", progress))")
             }
 
             // Build all URLs
