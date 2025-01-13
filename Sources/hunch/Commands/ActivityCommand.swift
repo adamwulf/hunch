@@ -118,9 +118,9 @@ struct ActivityCommand: AsyncParsableCommand {
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = cached
                 case (.some(let cached), nil):
-                    let moments = try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
+                    // Skip fetching transcript if we already have info
                     finalInfo = cached
-                    finalTranscript = moments
+                    finalTranscript = nil
                 case (.some(let cached), .some(let cachedTranscript)):
                     finalInfo = cached
                     finalTranscript = cachedTranscript
@@ -165,11 +165,11 @@ struct ActivityCommand: AsyncParsableCommand {
 
             // Write all data to disk
             try encoder.encode(video.activities).write(to: activitiesURL)
-            if let finalInfo = finalInfo {
-                try encoder.encode(finalInfo).write(to: infoURL)
-            }
             if let finalTranscript = finalTranscript {
                 try encoder.encode(finalTranscript).write(to: transcriptURL)
+            }
+            if let finalInfo = finalInfo {
+                try encoder.encode(finalInfo).write(to: infoURL)
             }
             try stringsContent.write(to: stringsURL, atomically: true, encoding: .utf8)
 
