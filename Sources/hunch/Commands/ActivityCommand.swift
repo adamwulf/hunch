@@ -53,6 +53,7 @@ struct ActivityCommand: AsyncParsableCommand {
 
         // Parse activities and get sorted videos
         let sortedVideos = try await parseActivities(from: inputURL)
+        print("Found \(sortedVideos.count) videos to process")
 
         // Configure encoder/decoder
         let encoder = JSONEncoder()
@@ -62,8 +63,10 @@ struct ActivityCommand: AsyncParsableCommand {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
-        // Process each video
-        for video in sortedVideos[...10] {
+        // Process each video with rate limiting
+        for (index, video) in sortedVideos.enumerated() {
+            print("[\(index + 1)/\(sortedVideos.count)] Processing \(video.id)")
+
             // Build all URLs
             let videoURL = outputURL.appendingPathComponent(video.id + ".localized")
             let localizedURL = videoURL.appendingPathComponent(".localized")
@@ -87,32 +90,40 @@ struct ActivityCommand: AsyncParsableCommand {
                 return try? decoder.decode([TranscriptMoment].self, from: data)
             }()
 
-            // Process data
+            // Process data with exponential backoff on failure
             let finalInfo: VideoInfo?
             let finalTranscript: [TranscriptMoment]?
             do {
                 switch (info, transcript) {
                 case (nil, nil):
-                    print("Fetching info and transcript: \(video.id)")
+                    print("  Fetching info and transcript")
                     let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = fetched.transcript
                 case (nil, .some(let cached)):
-                    print("Fetching info: \(video.id)")
+                    print("  Fetching info")
                     let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = cached
                 case (.some(let cached), nil):
-                    print("Fetching transcript: \(video.id)")
+                    print("  Fetching transcript")
                     let moments = try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
                     finalInfo = cached
                     finalTranscript = moments
                 case (.some(let cached), .some(let cachedTranscript)):
+                    print("  Using cached data")
                     finalInfo = cached
                     finalTranscript = cachedTranscript
                 }
             } catch {
-                print("Error fetching transcript: \(video.id) \(error)")
+                print("  Error: \(error)")
+
+                // Only sleep on network errors
+                if case YouTubeTranscriptKit.TranscriptError.networkError = error {
+                    print("  Network error - backing off for 5s")
+                    try await Task.sleep(for: .seconds(5))
+                }
+
                 finalInfo = nil
                 finalTranscript = nil
             }
