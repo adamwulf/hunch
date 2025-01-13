@@ -67,6 +67,10 @@ struct ActivityCommand: AsyncParsableCommand {
         for (index, video) in sortedVideos.enumerated() {
             print("[\(index + 1)/\(sortedVideos.count)] Processing \(video.id)")
 
+            if video.id == "e6t7MlE7hj0" {
+                print("here")
+            }
+
             // Build all URLs
             let videoURL = outputURL.appendingPathComponent(video.id + ".localized")
             let localizedURL = videoURL.appendingPathComponent(".localized")
@@ -133,14 +137,25 @@ struct ActivityCommand: AsyncParsableCommand {
                     try await Task.sleep(for: .seconds(5))
                 }
 
-                finalInfo = nil
-                finalTranscript = nil
+                finalInfo = info
+                finalTranscript = transcript
             }
 
-            let videoTitle = finalInfo?.title ?? video.title
-            let localizedName = videoTitle?.replacingOccurrences(of: "\n", with: " ")
-                .replacingOccurrences(of: "\r", with: "") ?? video.id
+            let videoTitle = finalInfo?.title ?? video.title ?? video.id
+
+            // Build localized name with channel if available
+            let localizedName: String
+            if let channelName = finalInfo?.channelName {
+                localizedName = "\(channelName) - \(videoTitle)"
+            } else {
+                localizedName = videoTitle
+            }
+
             let escapedName = localizedName
+            // verify title does not have newlines
+                .replacingOccurrences(of: "\n", with: " ")
+                .replacingOccurrences(of: "\r", with: "")
+            // escape for strings
                 .replacingOccurrences(of: "\\", with: "\\\\")  // Must escape backslashes first
                 .replacingOccurrences(of: "\"", with: "\\\"")
                 .replacingOccurrences(of: "\t", with: "\\t")
