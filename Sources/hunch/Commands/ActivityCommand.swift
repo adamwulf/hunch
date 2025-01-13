@@ -26,30 +26,6 @@ struct ActivityCommand: AsyncParsableCommand {
         }
     }
 
-    private func loadCachedInfo(from path: String) throws -> VideoInfo? {
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
-        return try? JSONDecoder().decode(VideoInfo.self, from: data)
-    }
-
-    private func loadCachedTranscript(from path: String) throws -> [TranscriptMoment]? {
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
-        return try? JSONDecoder().decode([TranscriptMoment].self, from: data)
-    }
-
-    private func saveInfo(_ info: VideoInfo, to path: String, using encoder: JSONEncoder) throws {
-        let data = try encoder.encode(info.withoutTranscript())
-        try data.write(to: URL(fileURLWithPath: path))
-    }
-
-    private func saveTranscript(_ transcript: [TranscriptMoment], to path: String, using encoder: JSONEncoder) throws {
-        let data = try encoder.encode(transcript)
-        try data.write(to: URL(fileURLWithPath: path))
-    }
-
-    private func fetchVideoData(id: String, needsInfo: Bool, needsTranscript: Bool) async throws -> VideoInfo {
-        try await YouTubeTranscriptKit.getVideoInfo(videoID: id, includeTranscript: needsTranscript)
-    }
-
     static var configuration = CommandConfiguration(
         commandName: "activity",
         abstract: "Parse Google Takeout MyActivity.html file"
@@ -77,25 +53,8 @@ struct ActivityCommand: AsyncParsableCommand {
         // Create output directory if it doesn't exist
         try fm.createDirectory(atPath: normalizedOutputPath, withIntermediateDirectories: true)
 
-        // Parse activity file
-        let activities = try await YouTubeTranscriptKit.getActivity(fileURL: URL(fileURLWithPath: normalizedInputPath))
-
-        // Filter and group video activities by ID
-        var videoActivities: [String: [Activity]] = [:]
-
-        for activity in activities {
-            if case .video(let id, _) = activity.link {
-                videoActivities[id, default: []].append(activity)
-            }
-        }
-
-        // Convert to array of VideoData
-        let videos = videoActivities.map { id, activities in
-            VideoData(id: id, activities: activities)
-        }
-
-        // Sort by most recent activity
-        let sortedVideos = videos.sorted { $0.lastSeen > $1.lastSeen }
+        // Parse activities and get sorted videos
+        let sortedVideos = try await parseActivities(from: normalizedInputPath)
 
         // Process each video
         for video in sortedVideos[...10] {
@@ -119,8 +78,15 @@ struct ActivityCommand: AsyncParsableCommand {
             let transcriptPath = (videoDir as NSString).appendingPathComponent("transcript.json")
 
             // Try loading from cache first
-            let info = try loadCachedInfo(from: infoPath)
-            let transcript = try loadCachedTranscript(from: transcriptPath)
+            let info: VideoInfo? = {
+                guard let data = try? Data(contentsOf: URL(fileURLWithPath: infoPath)) else { return nil }
+                return try? JSONDecoder().decode(VideoInfo.self, from: data)
+            }()
+
+            let transcript: [TranscriptMoment]? = {
+                guard let data = try? Data(contentsOf: URL(fileURLWithPath: transcriptPath)) else { return nil }
+                return try? JSONDecoder().decode([TranscriptMoment].self, from: data)
+            }()
 
             // Fetch what we're missing based on cache state
             let finalInfo: VideoInfo
@@ -128,20 +94,20 @@ struct ActivityCommand: AsyncParsableCommand {
             switch (info, transcript) {
             case (nil, nil):
                 let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
-                try saveInfo(fetched, to: infoPath, using: encoder)
+                try encoder.encode(fetched.withoutTranscript()).write(to: URL(fileURLWithPath: infoPath))
                 if let fetchedTranscript = fetched.transcript {
-                    try saveTranscript(fetchedTranscript, to: transcriptPath, using: encoder)
+                    try encoder.encode(fetchedTranscript).write(to: URL(fileURLWithPath: transcriptPath))
                 }
                 finalInfo = fetched.withoutTranscript()
                 finalTranscript = fetched.transcript
             case (nil, .some(let cached)):
                 let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
-                try saveInfo(fetched, to: infoPath, using: encoder)
+                try encoder.encode(fetched.withoutTranscript()).write(to: URL(fileURLWithPath: infoPath))
                 finalInfo = fetched.withoutTranscript()
                 finalTranscript = cached
             case (.some(let cached), nil):
                 let moments = try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
-                try saveTranscript(moments, to: transcriptPath, using: encoder)
+                try encoder.encode(moments).write(to: URL(fileURLWithPath: transcriptPath))
                 finalInfo = cached
                 finalTranscript = moments
             case (.some(let cached), .some(let cachedTranscript)):
@@ -170,5 +136,27 @@ struct ActivityCommand: AsyncParsableCommand {
             ]
             try fm.setAttributes(attributes, ofItemAtPath: videoDir)
         }
+    }
+
+    private func parseActivities(from path: String) async throws -> [VideoData] {
+        // Parse activity file
+        let activities = try await YouTubeTranscriptKit.getActivity(fileURL: URL(fileURLWithPath: path))
+
+        // Filter and group video activities by ID
+        var videoActivities: [String: [Activity]] = [:]
+
+        for activity in activities {
+            if case .video(let id, _) = activity.link {
+                videoActivities[id, default: []].append(activity)
+            }
+        }
+
+        // Convert to array of VideoData
+        let videos = videoActivities.map { id, activities in
+            VideoData(id: id, activities: activities)
+        }
+
+        // Sort by most recent activity
+        return videos.sorted { $0.lastSeen > $1.lastSeen }
     }
 }
