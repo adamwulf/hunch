@@ -73,7 +73,10 @@ struct ActivityCommand: AsyncParsableCommand {
             if index % 100 == 0 {
                 let progress = Double(index) / Double(sortedVideos.count) * 100
                 let dateStr = progressDateFormatter.string(from: video.lastSeen)
-                print("[\(index)/\(sortedVideos.count)] \(dateStr) Processing videos... \(String(format: "%.1f%%", progress))")
+                let indexStr = "[\(index)/\(sortedVideos.count)]".padding(toLength: 15, withPad: " ", startingAt: 0)
+                let dateColumn = dateStr.padding(toLength: 10, withPad: " ", startingAt: 0)
+                let percentStr = String(format: "%6.1f%%", progress)
+                print("\(indexStr) \(dateColumn) \(percentStr)")
             }
 
             // Build all URLs
