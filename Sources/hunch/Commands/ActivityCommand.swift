@@ -112,6 +112,7 @@ struct ActivityCommand: AsyncParsableCommand {
                     finalTranscript = cachedTranscript
                 }
             } catch {
+                print("Error fetching transcript: \(video.id) \(error)")
                 finalInfo = nil
                 finalTranscript = nil
             }
