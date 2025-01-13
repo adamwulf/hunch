@@ -57,10 +57,10 @@ struct ActivityCommand: AsyncParsableCommand {
         // Configure encoder/decoder
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .secondsSince1970
+        encoder.dateEncodingStrategy = .iso8601
 
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .secondsSince1970
+        decoder.dateDecodingStrategy = .iso8601
 
         // Process each video
         for video in sortedVideos[...10] {
