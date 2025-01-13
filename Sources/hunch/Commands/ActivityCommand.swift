@@ -129,10 +129,10 @@ struct ActivityCommand: AsyncParsableCommand {
                 switch (info, transcript) {
                 case (nil, nil):
                     try await Task.sleep(for: .seconds(1))
-                    print("Fetching info and transcript: \(video.id)")
                     let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = fetched.transcript
+                    print("Fetched \(video.id)\(fetched.transcript == nil ? "" : " with transcript")")
                 case (nil, .some(let cached)):
                     try await Task.sleep(for: .seconds(1))
                     print("Fetching info: \(video.id)")
