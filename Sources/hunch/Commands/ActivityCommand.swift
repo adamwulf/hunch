@@ -67,7 +67,7 @@ struct ActivityCommand: AsyncParsableCommand {
         let progressDateFormatter = DateFormatter()
         progressDateFormatter.dateFormat = "yyyy MMM"
 
-        let confident = 7600
+        let confident = 7000
         let skip = confident + 0
 
         // Process each video with rate limiting
