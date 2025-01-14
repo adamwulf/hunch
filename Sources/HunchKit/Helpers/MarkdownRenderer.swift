@@ -35,7 +35,12 @@ public class MarkdownRenderer: Renderer {
     }
 
     private func childRenderer(level levelOverride: Int? = nil) -> MarkdownRenderer {
-        return MarkdownRenderer(level: levelOverride ?? (level + 1), ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline, downloadedAssets: downloadedAssets)
+        return MarkdownRenderer(
+            level: levelOverride ?? (level + 1),
+            ignoreColor: ignoreColor,
+            ignoreUnderline: ignoreUnderline,
+            downloadedAssets: downloadedAssets
+        )
     }
 
     private func renderBlocksToMarkdown(_ blocks: [Block]) -> String {
