@@ -67,13 +67,20 @@ struct ActivityCommand: AsyncParsableCommand {
         let progressDateFormatter = DateFormatter()
         progressDateFormatter.dateFormat = "yyyy MMM"
 
-        let skip = 2200
+        let confident = 1000
+        let skip = confident + 0
 
         // Process each video with rate limiting
         for (index, video) in sortedVideos[skip...].enumerated() {
-            if index > 0, index % 50 == 0 {
-                print("Resting...")
+            if index > 0, index % 17 == 0 {
+                print("Resting for 2 seconds...")
+                try await Task.sleep(for: .seconds(2))
+            } else if index > 0, index % 50 == 0 {
+                print("Resting for 5 seconds...")
                 try await Task.sleep(for: .seconds(5))
+            } else if index > 0, index % (37 * 7) == 0 {
+                print("Resting for 37 seconds...")
+                try await Task.sleep(for: .seconds(17))
             }
             // Only print progress every 100 items
             if index % 100 == 0 {
@@ -128,7 +135,7 @@ struct ActivityCommand: AsyncParsableCommand {
             do {
                 switch (info, transcript) {
                 case (nil, nil):
-                    try await Task.sleep(for: .seconds(1))
+                    try await Task.sleep(for: .milliseconds(300))
                     let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = fetched.transcript
