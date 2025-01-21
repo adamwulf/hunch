@@ -307,30 +307,28 @@ struct ActivityCommand: AsyncParsableCommand {
         // Create renderer with our downloaded assets
         let renderer = MarkdownRenderer(level: 0, ignoreColor: false, ignoreUnderline: false, downloadedAssets: downloadedAssets)
 
-        // Add thumbnails sorted by size (smallest to largest)
-        if let thumbnails = info?.thumbnails?.sorted(by: { $0.width * $0.height < $1.width * $1.height }) {
-            for thumb in thumbnails {
-                let imageBlock = Block(
-                    object: "block",
-                    id: video.id,
-                    parent: nil,
-                    type: .image,
-                    createdTime: dateFormatter.string(from: video.firstSeen),
-                    createdBy: PartialUser(object: "user", id: video.id),
-                    lastEditedTime: dateFormatter.string(from: video.lastSeen),
-                    lastEditedBy: PartialUser(object: "user", id: video.id),
-                    archived: false,
-                    inTrash: false,
-                    hasChildren: false,
-                    blockTypeObject: .image(ImageBlock(
-                        image: FileBlock(
-                            caption: nil,
-                            type: .external(FileBlock.FileType.External(url: thumb.url))
-                        )
-                    ))
-                )
-                markdown += try renderer.render([imageBlock])
-            }
+        // Add largest thumbnail if available
+        if let thumbnails = info?.thumbnails?.sorted(by: { $0.width * $0.height > $1.width * $1.height }), let thumb = thumbnails.first {
+            let imageBlock = Block(
+                object: "block",
+                id: video.id,
+                parent: nil,
+                type: .image,
+                createdTime: dateFormatter.string(from: video.firstSeen),
+                createdBy: PartialUser(object: "user", id: video.id),
+                lastEditedTime: dateFormatter.string(from: video.lastSeen),
+                lastEditedBy: PartialUser(object: "user", id: video.id),
+                archived: false,
+                inTrash: false,
+                hasChildren: false,
+                blockTypeObject: .image(ImageBlock(
+                    image: FileBlock(
+                        caption: nil,
+                        type: .external(FileBlock.FileType.External(url: thumb.url))
+                    )
+                ))
+            )
+            markdown += try renderer.render([imageBlock])
         }
 
         // Add video block
