@@ -1,6 +1,7 @@
 import Foundation
 import ArgumentParser
 import YouTubeTranscriptKit
+import HunchKit
 
 struct ActivityCommand: AsyncParsableCommand {
     private struct VideoData {
@@ -67,8 +68,8 @@ struct ActivityCommand: AsyncParsableCommand {
         let progressDateFormatter = DateFormatter()
         progressDateFormatter.dateFormat = "yyyy MMM"
 
-        let confident = 23600 // -> 21800
-        let skip = confident + 0
+//        let confident = 23600 // -> 26900
+        let skip = 0
 
         // Process each video with rate limiting
         for (index, video) in sortedVideos[skip...].enumerated() {
@@ -100,8 +101,9 @@ struct ActivityCommand: AsyncParsableCommand {
             let infoURL = videoURL.appendingPathComponent("info.json")
             let transcriptURL = videoURL.appendingPathComponent("transcript.json")
             let stringsURL = localizedURL.appendingPathComponent("Base.strings")
+            let assetsDir = videoURL.appendingPathComponent("assets")
 
-            // Create all directories first
+            // Create initial directories
             try fm.createDirectory(at: videoURL, withIntermediateDirectories: true)
             try fm.createDirectory(at: localizedURL, withIntermediateDirectories: true)
 
@@ -114,6 +116,8 @@ struct ActivityCommand: AsyncParsableCommand {
                 print("Error: Failed to create directories for video \(video.id)")
                 throw NSError(domain: "ActivityCommand", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create directories for video \(video.id)"])
             }
+
+            var downloadedAssets: [String: FileDownloader.DownloadedAsset] = [:]
 
             // Load cached data
             let info: VideoInfo? = {
@@ -177,6 +181,23 @@ struct ActivityCommand: AsyncParsableCommand {
                 finalTranscript = transcript
             }
 
+            // Now download thumbnails after we have finalInfo
+            if let thumbnails = finalInfo?.thumbnails {
+                // Create assets directory only if we have thumbnails
+                try fm.createDirectory(at: assetsDir, withIntermediateDirectories: true)
+
+                for thumbnail in thumbnails {
+                    if let url = URL(string: thumbnail.url) {
+                        do {
+                            let asset = try await FileDownloader.downloadFile(from: url, to: assetsDir.path(percentEncoded: false))
+                            downloadedAssets[thumbnail.url] = asset
+                        } catch {
+                            print("Failed to download thumbnail: \(url)")
+                        }
+                    }
+                }
+            }
+
             let videoTitle = finalInfo?.title ?? video.title ?? video.id
 
             // Build localized name with channel if available
@@ -214,8 +235,8 @@ struct ActivityCommand: AsyncParsableCommand {
             ]
             try fm.setAttributes(attributes, ofItemAtPath: videoURL.path)
 
-            // Add after writing stringsContent in the main loop
-            try writeMarkdown(video: video, info: finalInfo, transcript: finalTranscript, to: videoURL.path)
+            try writeMarkdown(video: video, info: finalInfo, transcript: finalTranscript,
+                             downloadedAssets: downloadedAssets, to: videoURL.path)
         }
     }
 
@@ -241,7 +262,8 @@ struct ActivityCommand: AsyncParsableCommand {
         return videos.sorted { $0.lastSeen > $1.lastSeen }
     }
 
-    private func writeMarkdown(video: VideoData, info: VideoInfo?, transcript: [TranscriptMoment]?, to directory: String) throws {
+    private func writeMarkdown(video: VideoData, info: VideoInfo?, transcript: [TranscriptMoment]?,
+                             downloadedAssets: [String: FileDownloader.DownloadedAsset], to directory: String) throws {
         let dateFormatter = ISO8601DateFormatter()
         dateFormatter.timeZone = .utc
         dateFormatter.formatOptions = [.withInternetDateTime]
@@ -266,25 +288,75 @@ struct ActivityCommand: AsyncParsableCommand {
             \(info?.publishedAt.map { "published: \(dateFormatter.string(from: $0))" } ?? "")
             \(info?.uploadedAt.map { "uploaded: \(dateFormatter.string(from: $0))" } ?? "")
             \(info?.viewCount.map { "views: \($0)" } ?? "")
-            \(info?.duration.map { "duration: \($0)" } ?? "")
+            \(info?.duration.map { seconds -> String in
+                let hours = seconds / 3600
+                let minutes = (seconds % 3600) / 60
+                let remainingSeconds = seconds % 60
+                if hours > 0 {
+                    return "duration: \(hours):\(String(format: "%02d:%02d", minutes, remainingSeconds))"
+                } else {
+                    return "duration: \(String(format: "%d:%02d", minutes, remainingSeconds))"
+                }
+            } ?? "")
             \(info?.category.map { "category: \($0)" } ?? "")
             \(info?.isLive.map { "isLive: \($0)" } ?? "")
-            \(info?.thumbnails?.map { thumb in
-                "thumbnail_\(thumb.width)x\(thumb.height): \(thumb.url)"
-            }.joined(separator: "\n") ?? "")
             ---
 
             """
 
+        // Create renderer with our downloaded assets
+        let renderer = MarkdownRenderer(level: 0, ignoreColor: false, ignoreUnderline: false, downloadedAssets: downloadedAssets)
+
         // Add thumbnails sorted by size (smallest to largest)
         if let thumbnails = info?.thumbnails?.sorted(by: { $0.width * $0.height < $1.width * $1.height }) {
             for thumb in thumbnails {
-                markdown += "![Thumbnail \(thumb.width)x\(thumb.height)](\(thumb.url))\n"
+                let imageBlock = Block(
+                    object: "block",
+                    id: video.id,
+                    parent: nil,
+                    type: .image,
+                    createdTime: dateFormatter.string(from: video.firstSeen),
+                    createdBy: PartialUser(object: "user", id: video.id),
+                    lastEditedTime: dateFormatter.string(from: video.lastSeen),
+                    lastEditedBy: PartialUser(object: "user", id: video.id),
+                    archived: false,
+                    inTrash: false,
+                    hasChildren: false,
+                    blockTypeObject: .image(ImageBlock(
+                        image: FileBlock(
+                            caption: nil,
+                            type: .external(FileBlock.FileType.External(url: thumb.url))
+                        )
+                    ))
+                )
+                markdown += try renderer.render([imageBlock])
             }
-            markdown += "\n"
         }
 
-        markdown += "[\(title)](\(videoUrl))"
+        // Add video block
+        let videoBlock = Block(
+            object: "block",
+            id: video.id,
+            parent: nil,
+            type: .video,
+            createdTime: dateFormatter.string(from: video.firstSeen),
+            createdBy: PartialUser(object: "user", id: video.id),
+            lastEditedTime: dateFormatter.string(from: video.lastSeen),
+            lastEditedBy: PartialUser(object: "user", id: video.id),
+            archived: false,
+            inTrash: false,
+            hasChildren: false,
+            blockTypeObject: .video(VideoBlock(
+                caption: [RichText(
+                    plainText: title,
+                    annotations: .plain,
+                    type: "text",
+                    text: RichText.Text(content: title)
+                )],
+                type: .external(FileBlock.FileType.External(url: videoUrl))
+            ))
+        )
+        markdown += try renderer.render([videoBlock])
 
         // Add channel link if we have both name and ID
         if let channelName = info?.channelName, let channelId = info?.channelId {

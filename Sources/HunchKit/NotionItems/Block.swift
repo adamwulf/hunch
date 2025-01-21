@@ -414,6 +414,10 @@ public struct FileBlock: Codable {
 
         public struct External: Codable {
             public let url: String
+
+            public init(url: String) {
+                self.url = url
+            }
         }
 
         public struct File: Codable {
@@ -485,6 +489,10 @@ public struct Heading3Block: Codable {
 
 public struct ImageBlock: Codable {
     public let image: FileBlock
+
+    public init(image: FileBlock) {
+        self.image = image
+    }
 }
 
 public struct LinkPreviewBlock: Codable {
@@ -560,4 +568,9 @@ public struct UnsupportedBlock: Codable {}
 public struct PartialUser: Codable {
     public let object: String
     public let id: String
+
+    public init(object: String, id: String) {
+        self.object = object
+        self.id = id
+    }
 }
