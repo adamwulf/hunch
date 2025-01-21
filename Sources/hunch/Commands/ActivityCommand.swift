@@ -345,9 +345,24 @@ struct ActivityCommand: AsyncParsableCommand {
 
         if let transcript = transcript {
             markdown += "\n## Transcript\n\n"
+            let hasHours = (info?.duration ?? 0) > 3600
+            var lastTimeBlock = -1
             for moment in transcript {
                 let seconds = Int(moment.start)
-                let timestamp = String(format: "[%d:%02d]", seconds / 60, seconds % 60)
+                let timeBlock = seconds / 1800  // 1800 seconds = 30 minutes
+                if timeBlock > lastTimeBlock && lastTimeBlock >= 0 {
+                    // Add extra newline between 30-minute blocks
+                    // This helps Typora markdown parsing
+                    markdown += "\n"
+                }
+                lastTimeBlock = timeBlock
+
+                let hours = seconds / 3600
+                let minutes = (seconds % 3600) / 60
+                let remainingSeconds = seconds % 60
+                let timestamp = hasHours ?
+                    String(format: "[%d:%02d:%02d]", hours, minutes, remainingSeconds) :
+                    String(format: "[%d:%02d]", minutes, remainingSeconds)
                 let timestampURL = "\(videoUrl)&t=\(seconds)"
                 let transcriptText = moment.text.replacingOccurrences(of: "\n", with: " ")
                 markdown += "[\(timestamp)](\(timestampURL)) \(transcriptText)\n"
