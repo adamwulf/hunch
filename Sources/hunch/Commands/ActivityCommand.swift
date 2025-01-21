@@ -67,7 +67,7 @@ struct ActivityCommand: AsyncParsableCommand {
         let progressDateFormatter = DateFormatter()
         progressDateFormatter.dateFormat = "yyyy MMM"
 
-        let confident = 15100 // -> 21800
+        let confident = 23600 // -> 21800
         let skip = confident + 0
 
         // Process each video with rate limiting
@@ -213,6 +213,9 @@ struct ActivityCommand: AsyncParsableCommand {
                 .modificationDate: video.lastSeen
             ]
             try fm.setAttributes(attributes, ofItemAtPath: videoURL.path)
+
+            // Add after writing stringsContent in the main loop
+            try writeMarkdown(video: video, info: finalInfo, transcript: finalTranscript, to: videoURL.path)
         }
     }
 
@@ -236,5 +239,74 @@ struct ActivityCommand: AsyncParsableCommand {
 
         // Sort by most recent activity
         return videos.sorted { $0.lastSeen > $1.lastSeen }
+    }
+
+    private func writeMarkdown(video: VideoData, info: VideoInfo?, transcript: [TranscriptMoment]?, to directory: String) throws {
+        let dateFormatter = ISO8601DateFormatter()
+        dateFormatter.timeZone = .utc
+        dateFormatter.formatOptions = [.withInternetDateTime]
+
+        let title = info?.title ?? video.title ?? video.id
+        let videoUrl = info?.videoURL?.absoluteString ?? "https://www.youtube.com/watch?v=\(video.id)"
+
+        // Format channel info
+        let channelUrl = info?.channelId.map { "https://www.youtube.com/channel/\($0)" }
+        let channelMention = info?.channelId.map { "@\($0)" }
+
+        var markdown = """
+            ---
+            title: "\(title)"
+            videoId: \(video.id)
+            firstSeen: \(dateFormatter.string(from: video.firstSeen))
+            lastSeen: \(dateFormatter.string(from: video.lastSeen))
+            \(info?.channelId.map { "channelId: \($0)" } ?? "")
+            \(info?.channelName.map { "channel: \($0)" } ?? "")
+            \(channelMention.map { "channelMention: \($0)" } ?? "")
+            \(channelUrl.map { "channelURL: \($0)" } ?? "")
+            \(info?.publishedAt.map { "published: \(dateFormatter.string(from: $0))" } ?? "")
+            \(info?.uploadedAt.map { "uploaded: \(dateFormatter.string(from: $0))" } ?? "")
+            \(info?.viewCount.map { "views: \($0)" } ?? "")
+            \(info?.duration.map { "duration: \($0)" } ?? "")
+            \(info?.category.map { "category: \($0)" } ?? "")
+            \(info?.isLive.map { "isLive: \($0)" } ?? "")
+            \(info?.thumbnails?.map { thumb in
+                "thumbnail_\(thumb.width)x\(thumb.height): \(thumb.url)"
+            }.joined(separator: "\n") ?? "")
+            ---
+
+            """
+
+        // Add thumbnails sorted by size (smallest to largest)
+        if let thumbnails = info?.thumbnails?.sorted(by: { $0.width * $0.height < $1.width * $1.height }) {
+            for thumb in thumbnails {
+                markdown += "![Thumbnail \(thumb.width)x\(thumb.height)](\(thumb.url))\n"
+            }
+            markdown += "\n"
+        }
+
+        markdown += "[\(title)](\(videoUrl))"
+
+        // Add channel link if we have both name and ID
+        if let channelName = info?.channelName, let channelId = info?.channelId {
+            markdown += "\nby [\(channelName)](https://www.youtube.com/channel/\(channelId))"
+        }
+
+        if let description = info?.description {
+            markdown += "\n\n## Description\n\n\(description)\n"
+        }
+
+        if let transcript = transcript {
+            markdown += "\n## Transcript\n\n"
+            for moment in transcript {
+                let seconds = Int(moment.start)
+                let timestamp = String(format: "[%d:%02d]", seconds / 60, seconds % 60)
+                let timestampURL = "\(videoUrl)&t=\(seconds)"
+                let transcriptText = moment.text.replacingOccurrences(of: "\n", with: " ")
+                markdown += "[\(timestamp)](\(timestampURL)) \(transcriptText)\n"
+            }
+        }
+
+        let filePath = (directory as NSString).appendingPathComponent("content.md")
+        try markdown.write(toFile: filePath, atomically: true, encoding: .utf8)
     }
 }
