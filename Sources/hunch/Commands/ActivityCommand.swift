@@ -68,7 +68,7 @@ struct ActivityCommand: AsyncParsableCommand {
         let progressDateFormatter = DateFormatter()
         progressDateFormatter.dateFormat = "yyyy MMM"
 
-//        let confident = 23600 // -> 26900
+        //        let confident = 23600 // -> 26900
         let skip = 0
 
         // Process each video with rate limiting
@@ -228,15 +228,15 @@ struct ActivityCommand: AsyncParsableCommand {
             }
             try stringsContent.write(to: stringsURL, atomically: true, encoding: .utf8)
 
+            try writeMarkdown(video: video, info: finalInfo, transcript: finalTranscript,
+                              downloadedAssets: downloadedAssets, to: videoURL.path)
+
             // Set folder dates
             let attributes: [FileAttributeKey: Any] = [
                 .creationDate: video.firstSeen,
                 .modificationDate: video.lastSeen
             ]
             try fm.setAttributes(attributes, ofItemAtPath: videoURL.path)
-
-            try writeMarkdown(video: video, info: finalInfo, transcript: finalTranscript,
-                             downloadedAssets: downloadedAssets, to: videoURL.path)
         }
     }
 
@@ -263,7 +263,7 @@ struct ActivityCommand: AsyncParsableCommand {
     }
 
     private func writeMarkdown(video: VideoData, info: VideoInfo?, transcript: [TranscriptMoment]?,
-                             downloadedAssets: [String: FileDownloader.DownloadedAsset], to directory: String) throws {
+                               downloadedAssets: [String: FileDownloader.DownloadedAsset], to directory: String) throws {
         let dateFormatter = ISO8601DateFormatter()
         dateFormatter.timeZone = .utc
         dateFormatter.formatOptions = [.withInternetDateTime]
