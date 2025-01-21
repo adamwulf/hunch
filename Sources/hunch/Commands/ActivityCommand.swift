@@ -331,34 +331,12 @@ struct ActivityCommand: AsyncParsableCommand {
             markdown += try renderer.render([imageBlock])
         }
 
-        // Add video block
-        let videoBlock = Block(
-            object: "block",
-            id: video.id,
-            parent: nil,
-            type: .video,
-            createdTime: dateFormatter.string(from: video.firstSeen),
-            createdBy: PartialUser(object: "user", id: video.id),
-            lastEditedTime: dateFormatter.string(from: video.lastSeen),
-            lastEditedBy: PartialUser(object: "user", id: video.id),
-            archived: false,
-            inTrash: false,
-            hasChildren: false,
-            blockTypeObject: .video(VideoBlock(
-                caption: [RichText(
-                    plainText: title,
-                    annotations: .plain,
-                    type: "text",
-                    text: RichText.Text(content: title)
-                )],
-                type: .external(FileBlock.FileType.External(url: videoUrl))
-            ))
-        )
-        markdown += try renderer.render([videoBlock])
+        // Add video title link
+        markdown += "[\(title)](\(videoUrl))"
 
         // Add channel link if we have both name and ID
         if let channelName = info?.channelName, let channelId = info?.channelId {
-            markdown += "\nby [\(channelName)](https://www.youtube.com/channel/\(channelId))"
+            markdown += " by [\(channelName)](https://www.youtube.com/channel/\(channelId))"
         }
 
         if let description = info?.description {
