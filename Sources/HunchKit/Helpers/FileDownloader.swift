@@ -26,8 +26,8 @@ public struct FileDownloader {
     }
 
     public static func downloadFile(from url: URL, to directory: String, retryCount: Int = 0) async throws -> DownloadedAsset {
-        let fileName = url.lastPathComponent
-        let localPath = (directory as NSString).appendingPathComponent(fileName)
+        var fileName = url.lastPathComponent
+        var localPath = (directory as NSString).appendingPathComponent(fileName)
 
         // Check if file already exists
         if FileManager.default.fileExists(atPath: localPath) {
@@ -61,6 +61,10 @@ public struct FileDownloader {
                         NotionAPI.logHandler?(.fault, "Download rate limit retries exhausted", ["max_attempts": maxRetries])
                         throw DownloadError.rateLimitExceeded(retryAfter: retryAfter)
                     }
+                }
+                if let name = response.suggestedFilename {
+                    fileName = name
+                    localPath = (directory as NSString).appendingPathComponent(fileName)
                 }
             }
 
