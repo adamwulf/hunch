@@ -96,6 +96,8 @@ struct ExportCommand: AsyncParsableCommand {
                         return image.image.type.url
                     case .video(let video):
                         return video.type.url
+                    case .audio(let audio):
+                        return audio.type.url
                     case .file(let file):
                         return file.type.url
                     case .pdf(let pdf):

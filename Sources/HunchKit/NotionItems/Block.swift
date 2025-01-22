@@ -65,6 +65,7 @@ public struct Block: NotionItem {
 
     enum CodingKeys: String, CodingKey {
         case archived
+        case audio
         case bookmark
         case breadcrumb
         case bulletedListItem = "bulleted_list_item"
@@ -188,6 +189,8 @@ public struct Block: NotionItem {
             blockTypeObject = .unsupported(UnsupportedBlock())
         case .video:
             blockTypeObject = .video(try container.decode(VideoBlock.self, forKey: .video))
+        case .audio:
+            blockTypeObject = .audio(try container.decode(AudioBlock.self, forKey: .audio))
         }
     }
 
@@ -209,6 +212,8 @@ public struct Block: NotionItem {
         }
 
         switch blockTypeObject {
+        case .audio(let value):
+            try container.encode(value, forKey: .audio)
         case .bookmark(let value):
             try container.encode(value, forKey: .bookmark)
         case .breadcrumb(let value):
@@ -278,6 +283,7 @@ public struct Block: NotionItem {
 }
 
 public enum BlockType: String, Codable {
+    case audio
     case bookmark
     case breadcrumb
     case bulletedListItem = "bulleted_list_item"
@@ -313,6 +319,7 @@ public enum BlockType: String, Codable {
 }
 
 public enum BlockTypeObject: Codable {
+    case audio(AudioBlock)
     case bookmark(BookmarkBlock)
     case breadcrumb(BreadcrumbBlock)
     case bulletedListItem(BulletedListItemBlock)
@@ -471,6 +478,7 @@ public struct FileBlock: Codable {
 }
 
 public typealias VideoBlock = FileBlock
+public typealias AudioBlock = FileBlock
 
 public struct Heading1Block: Codable {
     public let text: [RichText]
