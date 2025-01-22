@@ -68,8 +68,7 @@ struct ActivityCommand: AsyncParsableCommand {
         let progressDateFormatter = DateFormatter()
         progressDateFormatter.dateFormat = "yyyy MMM"
 
-        let confident = 29600 // -> 27100
-        let skip = confident + 0
+        let skip = 0
 
         // Process each video with rate limiting
         for (index, video) in sortedVideos[skip...].enumerated() {
