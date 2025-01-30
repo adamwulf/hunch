@@ -24,6 +24,7 @@ public struct FileDownloader {
     public enum DownloadError: LocalizedError {
         case networkError(_ error: Error)
         case rateLimitExceeded(retryAfter: TimeInterval)
+        case httpError(code: Int, url: String, headers: [AnyHashable: Any], body: String?)
 
         var localizedDescription: String {
             switch self {
@@ -31,6 +32,12 @@ public struct FileDownloader {
                 return "Network error: \(error.localizedDescription)"
             case .rateLimitExceeded(let retryAfter):
                 return "Rate limit exceeded. Retry after \(retryAfter) seconds"
+            case .httpError(let code, let url, let headers, let body):
+                return """
+                    HTTP \(code): \(url)
+                    Headers: \(headers)
+                    Body: \(body ?? "<no body>")
+                    """
             }
         }
     }
@@ -68,7 +75,7 @@ public struct FileDownloader {
                         let delayInterval = 1 + max(retryAfter, backoffDelay)
 
                         NotionAPI.logHandler?(.error, "Download rate limit hit, retrying after \(delayInterval) seconds",
-                            ["attempt": retryCount + 1, "max_attempts": maxRetries])
+                                              ["attempt": retryCount + 1, "max_attempts": maxRetries])
 
                         try? FileManager.default.removeItem(at: downloadedURL)
                         try await Task.sleep(nanoseconds: UInt64(delayInterval * 1_000_000_000))
@@ -77,6 +84,15 @@ public struct FileDownloader {
                         NotionAPI.logHandler?(.fault, "Download rate limit retries exhausted", ["max_attempts": maxRetries])
                         throw DownloadError.rateLimitExceeded(retryAfter: retryAfter)
                     }
+                } else if httpResponse.statusCode < 200 || httpResponse.statusCode > 299 {
+                    let data = try? await session.data(from: url).0
+                    let body = data.flatMap { String(data: $0, encoding: .utf8) }
+                    throw DownloadError.httpError(
+                        code: httpResponse.statusCode,
+                        url: url.absoluteString,
+                        headers: httpResponse.allHeaderFields,
+                        body: body
+                    )
                 }
                 if let contentType = httpResponse.value(forHTTPHeaderField: "content-type"),
                    let utType = UTType(mimeType: contentType),
