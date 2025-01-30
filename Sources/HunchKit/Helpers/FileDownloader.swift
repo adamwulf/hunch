@@ -4,6 +4,14 @@ import UniformTypeIdentifiers
 import CryptoKit
 
 public struct FileDownloader {
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        config.httpCookieStorage = nil
+        config.urlCache = nil
+        return URLSession(configuration: config)
+    }()
+
     public struct DownloadedAsset {
         let originalUrl: String
         let localPath: String
@@ -44,7 +52,7 @@ public struct FileDownloader {
 
         do {
             // Download the file
-            let (downloadedURL, response) = try await URLSession.shared.download(from: url)
+            let (downloadedURL, response) = try await session.download(from: url)
 
             if let httpResponse = response as? HTTPURLResponse {
                 // Handle rate limit response
