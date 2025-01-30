@@ -1,5 +1,7 @@
 import Foundation
 import OSLog
+import UniformTypeIdentifiers
+import CryptoKit
 
 public struct FileDownloader {
     public struct DownloadedAsset {
@@ -26,12 +28,18 @@ public struct FileDownloader {
     }
 
     public static func downloadFile(from url: URL, to directory: String, retryCount: Int = 0) async throws -> DownloadedAsset {
-        var fileName = url.lastPathComponent
+        let urlString = url.absoluteString
+        let sha = SHA256.hash(data: Data(urlString.utf8))
+            .compactMap { String(format: "%02x", $0) }
+            .joined()
+
+        var fileName = url.pathExtension.isEmpty ? sha : "\(sha).\(url.pathExtension)"
         var localPath = (directory as NSString).appendingPathComponent(fileName)
 
-        // Check if file already exists
-        if FileManager.default.fileExists(atPath: localPath) {
-            return DownloadedAsset(originalUrl: url.absoluteString, localPath: fileName)
+        // Check if file exists with any extension
+        if let existingFile = try? FileManager.default.contentsOfDirectory(atPath: directory)
+            .first(where: { $0.starts(with: sha) }) {
+            return DownloadedAsset(originalUrl: url.absoluteString, localPath: existingFile)
         }
 
         do {
@@ -62,10 +70,15 @@ public struct FileDownloader {
                         throw DownloadError.rateLimitExceeded(retryAfter: retryAfter)
                     }
                 }
-                if let name = response.suggestedFilename {
-                    fileName = name
-                    localPath = (directory as NSString).appendingPathComponent(fileName)
+                if let contentType = httpResponse.value(forHTTPHeaderField: "content-type"),
+                   let utType = UTType(mimeType: contentType),
+                   let ext = utType.preferredFilenameExtension {
+                    fileName = "\(sha).\(ext)"
+                } else if let suggestedExt = response.suggestedFilename?.components(separatedBy: ".").last {
+                    fileName = "\(sha).\(suggestedExt)"
                 }
+
+                localPath = (directory as NSString).appendingPathComponent(fileName)
             }
 
             try FileManager.default.moveItem(at: downloadedURL, to: URL(fileURLWithPath: localPath))
