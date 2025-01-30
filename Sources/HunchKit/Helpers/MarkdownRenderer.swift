@@ -35,7 +35,12 @@ public class MarkdownRenderer: Renderer {
     }
 
     private func childRenderer(level levelOverride: Int? = nil) -> MarkdownRenderer {
-        return MarkdownRenderer(level: levelOverride ?? (level + 1), ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline, downloadedAssets: downloadedAssets)
+        return MarkdownRenderer(
+            level: levelOverride ?? (level + 1),
+            ignoreColor: ignoreColor,
+            ignoreUnderline: ignoreUnderline,
+            downloadedAssets: downloadedAssets
+        )
     }
 
     private func renderBlocksToMarkdown(_ blocks: [Block]) -> String {
@@ -64,6 +69,8 @@ public class MarkdownRenderer: Renderer {
 
     private func renderBlockToMarkdown(_ block: Block) -> String {
         switch block.type {
+        case .audio:
+            return renderAudio(block)
         case .paragraph:
             return renderParagraph(block)
         case .heading1:
@@ -325,6 +332,24 @@ public class MarkdownRenderer: Renderer {
 
         let name = URL(string: url)?.lastPathComponent ?? url
         return "Video: [\(name)](\(url))\n\n" + caption
+    }
+
+    private func renderAudio(_ block: Block) -> String {
+        guard case let .audio(audioBlock) = block.blockTypeObject else { return "" }
+        var caption = audioBlock.caption?.map { renderRichText($0) }.joined() ?? ""
+        if !caption.isEmpty {
+            caption += "\n\n"
+        }
+
+        let url = audioBlock.type.url
+        if let asset = downloadedAssets[url] {
+            let name = URL(string: url)?.lastPathComponent ?? url
+
+            return "Audio: [\(name)](assets/\(asset.localPath))\n\n" + caption
+        }
+
+        let name = URL(string: url)?.lastPathComponent ?? url
+        return "Audio: [\(name)](\(url))\n\n" + caption
     }
 
     private func renderFile(_ block: Block) -> String {
