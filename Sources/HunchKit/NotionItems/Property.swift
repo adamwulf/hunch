@@ -127,8 +127,13 @@ public enum Property: Codable {
                 let value = try container.decode(SelectOption.self, forKey: .select)
                 self = .select(id: id, value: value)
             case .multiSelect:
-                let value = try container.decode([SelectOption].self, forKey: .multiSelect)
-                self = .multiSelect(id: id, value: value)
+                do {
+                    let value = try container.decode([SelectOption].self, forKey: .multiSelect)
+                    self = .multiSelect(id: id, value: value)
+                } catch {
+                    let value = try container.decode(MultiSelect.self, forKey: .multiSelect)
+                    self = .multiSelect(id: id, value: value.options)
+                }
             case .date:
                 let value = try container.decode(DateRange.self, forKey: .date)
                 self = .date(id: id, value: value)
@@ -211,7 +216,7 @@ public enum Property: Codable {
         case .multiSelect(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.multiSelect, forKey: .type)
-            try container.encode(["options": value], forKey: .multiSelect)
+            try container.encode(value, forKey: .multiSelect)
         case .date(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.date, forKey: .type)
@@ -388,4 +393,9 @@ public struct Relation: Codable {
 
 public struct Rollup: Codable {
     public internal(set) var value: String
+}
+
+// This property is specific to the multi-select definition in a database
+private struct MultiSelect: Codable {
+    public internal(set) var options: [SelectOption]
 }
