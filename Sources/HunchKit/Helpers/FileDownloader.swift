@@ -1,7 +1,17 @@
 import Foundation
 import OSLog
+import UniformTypeIdentifiers
+import CryptoKit
 
 public struct FileDownloader {
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        config.httpCookieStorage = nil
+        config.urlCache = nil
+        return URLSession(configuration: config)
+    }()
+
     public struct DownloadedAsset {
         let originalUrl: String
         let localPath: String
@@ -14,6 +24,7 @@ public struct FileDownloader {
     public enum DownloadError: LocalizedError {
         case networkError(_ error: Error)
         case rateLimitExceeded(retryAfter: TimeInterval)
+        case httpError(code: Int, url: String, headers: [AnyHashable: Any], body: String?)
 
         var localizedDescription: String {
             switch self {
@@ -21,22 +32,34 @@ public struct FileDownloader {
                 return "Network error: \(error.localizedDescription)"
             case .rateLimitExceeded(let retryAfter):
                 return "Rate limit exceeded. Retry after \(retryAfter) seconds"
+            case .httpError(let code, let url, let headers, let body):
+                return """
+                    HTTP \(code): \(url)
+                    Headers: \(headers)
+                    Body: \(body ?? "<no body>")
+                    """
             }
         }
     }
 
     public static func downloadFile(from url: URL, to directory: String, retryCount: Int = 0) async throws -> DownloadedAsset {
-        var fileName = url.lastPathComponent
+        let urlString = url.absoluteString
+        let sha = SHA256.hash(data: Data(urlString.utf8))
+            .compactMap { String(format: "%02x", $0) }
+            .joined()
+
+        var fileName = url.pathExtension.isEmpty ? sha : "\(sha).\(url.pathExtension)"
         var localPath = (directory as NSString).appendingPathComponent(fileName)
 
-        // Check if file already exists
-        if FileManager.default.fileExists(atPath: localPath) {
-            return DownloadedAsset(originalUrl: url.absoluteString, localPath: fileName)
+        // Check if file exists with any extension
+        if let existingFile = try? FileManager.default.contentsOfDirectory(atPath: directory)
+            .first(where: { $0.starts(with: sha) }) {
+            return DownloadedAsset(originalUrl: url.absoluteString, localPath: existingFile)
         }
 
         do {
             // Download the file
-            let (downloadedURL, response) = try await URLSession.shared.download(from: url)
+            let (downloadedURL, response) = try await session.download(from: url)
 
             if let httpResponse = response as? HTTPURLResponse {
                 // Handle rate limit response
@@ -52,7 +75,7 @@ public struct FileDownloader {
                         let delayInterval = 1 + max(retryAfter, backoffDelay)
 
                         NotionAPI.logHandler?(.error, "Download rate limit hit, retrying after \(delayInterval) seconds",
-                            ["attempt": retryCount + 1, "max_attempts": maxRetries])
+                                              ["attempt": retryCount + 1, "max_attempts": maxRetries])
 
                         try? FileManager.default.removeItem(at: downloadedURL)
                         try await Task.sleep(nanoseconds: UInt64(delayInterval * 1_000_000_000))
@@ -61,11 +84,25 @@ public struct FileDownloader {
                         NotionAPI.logHandler?(.fault, "Download rate limit retries exhausted", ["max_attempts": maxRetries])
                         throw DownloadError.rateLimitExceeded(retryAfter: retryAfter)
                     }
+                } else if httpResponse.statusCode < 200 || httpResponse.statusCode > 299 {
+                    let data = try? await session.data(from: url).0
+                    let body = data.flatMap { String(data: $0, encoding: .utf8) }
+                    throw DownloadError.httpError(
+                        code: httpResponse.statusCode,
+                        url: url.absoluteString,
+                        headers: httpResponse.allHeaderFields,
+                        body: body
+                    )
                 }
-                if let name = response.suggestedFilename {
-                    fileName = name
-                    localPath = (directory as NSString).appendingPathComponent(fileName)
+                if let contentType = httpResponse.value(forHTTPHeaderField: "content-type"),
+                   let utType = UTType(mimeType: contentType),
+                   let ext = utType.preferredFilenameExtension {
+                    fileName = "\(sha).\(ext)"
+                } else if let suggestedExt = response.suggestedFilename?.components(separatedBy: ".").last {
+                    fileName = "\(sha).\(suggestedExt)"
                 }
+
+                localPath = (directory as NSString).appendingPathComponent(fileName)
             }
 
             try FileManager.default.moveItem(at: downloadedURL, to: URL(fileURLWithPath: localPath))
