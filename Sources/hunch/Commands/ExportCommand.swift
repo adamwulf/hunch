@@ -89,38 +89,47 @@ struct ExportCommand: AsyncParsableCommand {
 
             // Download assets and collect their local paths
             var downloadedAssets: [String: FileDownloader.DownloadedAsset] = [:]
-            for block in blocks {
-                let assetUrl: String? = {
-                    switch block.blockTypeObject {
-                    case .image(let image):
-                        return image.image.type.url
-                    case .video(let video):
-                        return video.type.url
-                    case .audio(let audio):
-                        return audio.type.url
-                    case .file(let file):
-                        return file.type.url
-                    case .pdf(let pdf):
-                        return pdf.pdf.type.url
-                    default:
-                        return nil
-                    }
-                }()
 
-                if let urlString = assetUrl, let url = URL(string: urlString) {
-                    if !didCreateAssetsDir {
-                        // only create the assets directory if we actuallly need it
-                        didCreateAssetsDir = true
-                        try fm.createDirectory(atPath: assetsDir, withIntermediateDirectories: true)
+            func checkAssetsIn(blocks: [Block]) async throws {
+                for block in blocks {
+                    let assetUrl: String? = {
+                        switch block.blockTypeObject {
+                        case .image(let image):
+                            return image.image.type.url
+                        case .video(let video):
+                            return video.type.url
+                        case .audio(let audio):
+                            return audio.type.url
+                        case .file(let file):
+                            return file.type.url
+                        case .pdf(let pdf):
+                            return pdf.pdf.type.url
+                        default:
+                            return nil
+                        }
+                    }()
+
+                    if let urlString = assetUrl, let url = URL(string: urlString) {
+                        if !didCreateAssetsDir {
+                            // only create the assets directory if we actuallly need it
+                            didCreateAssetsDir = true
+                            try fm.createDirectory(atPath: assetsDir, withIntermediateDirectories: true)
+                        }
+                        do {
+                            let asset = try await FileDownloader.downloadFile(from: url, to: assetsDir)
+                            downloadedAssets[urlString] = asset
+                        } catch {
+                            print("Failed to download asset for page \(page.id):\n\(url)")
+                        }
                     }
-                    do {
-                        let asset = try await FileDownloader.downloadFile(from: url, to: assetsDir)
-                        downloadedAssets[urlString] = asset
-                    } catch {
-                        print("Failed to download asset: \(url)")
+
+                    if !block.children.isEmpty {
+                        try await checkAssetsIn(blocks: block.children)
                     }
                 }
             }
+
+            try await checkAssetsIn(blocks: blocks)
 
             // Create renderer with downloaded assets
             let renderer = MarkdownRenderer(
