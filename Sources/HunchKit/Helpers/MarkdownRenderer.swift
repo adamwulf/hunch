@@ -267,7 +267,7 @@ public class MarkdownRenderer: Renderer {
     // since markdown doesn't have a native callout style, use a quote style and insert the emoji on the first line
     private func renderCallout(_ block: Block) -> String {
         guard case let .callout(calloutBlock) = block.blockTypeObject else { return "" }
-        let icon = calloutBlock.icon.emoji ?? "ℹ️"
+        let icon = calloutBlock.icon?.emoji ?? "ℹ️"
         let formattedText = calloutBlock.text.map { renderRichText($0) }.joined()
         var childrenText = ""
         if block.hasChildren {

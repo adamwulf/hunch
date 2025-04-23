@@ -367,7 +367,7 @@ public struct BulletedListItemBlock: Codable {
 }
 
 public struct CalloutBlock: Codable {
-    public let icon: Icon
+    public let icon: Icon?
     public let text: [RichText]
 }
 
