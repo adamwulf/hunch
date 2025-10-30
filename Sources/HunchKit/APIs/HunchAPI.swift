@@ -75,6 +75,16 @@ public class HunchAPI {
         return pages
     }
 
+    public func retrievePage(pageId: String) async throws -> Page {
+        let result = await notion.retrievePage(pageId: pageId)
+        switch result {
+        case .success(let page):
+            return page
+        case .failure(let error):
+            throw HunchAPIError.apiError(error)
+        }
+    }
+
     public func fetchBlocks(in blockOrPageId: String) async throws -> [Block] {
         var blocks: [Block] = []
         var cursor: String?

@@ -16,7 +16,9 @@ struct PageCommand: AsyncParsableCommand {
         abstract: "Fetch pages from Notion"
     )
 
-    @Option(name: .shortAndLong, help: "The Notion id of the object") var database: String?
+    @Option(name: .shortAndLong, help: "The Notion id of a specific page") var id: String?
+
+    @Option(name: .shortAndLong, help: "The Notion id of a database") var database: String?
 
     @Option(name: .shortAndLong, help: "The maxiumum number of results to return")
     var limit: Int?
@@ -26,9 +28,16 @@ struct PageCommand: AsyncParsableCommand {
 
     func run() async {
         do {
-            let limit = limit ?? .max
-            let pages = try await HunchAPI.shared.fetchPages(databaseId: database, limit: limit)
-            Hunch.output(list: pages, format: format)
+            if let pageId = id {
+                // Fetch single page by ID
+                let page = try await HunchAPI.shared.retrievePage(pageId: pageId)
+                Hunch.output(list: [page], format: format)
+            } else {
+                // Fetch pages from database
+                let limit = limit ?? .max
+                let pages = try await HunchAPI.shared.fetchPages(databaseId: database, limit: limit)
+                Hunch.output(list: pages, format: format)
+            }
         } catch {
             fatalError("error: \(error.localizedDescription)")
         }

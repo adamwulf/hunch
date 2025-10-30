@@ -198,7 +198,7 @@ public class NotionAPI {
                         .appendingPathComponent("query")
                     fetchResources(method: "POST",
                                    url: targetURL,
-                                   query: ["filter_properties": ""].compactMapValues({ $0 }),
+                                   query: [:],
                                    body: bodyData) { result in
                         continuation.resume(returning: result)
                     }
@@ -213,6 +213,18 @@ public class NotionAPI {
                 }
             } catch {
                 continuation.resume(returning: .failure(.encodeError(error)))
+            }
+        }
+    }
+
+    internal func retrievePage(pageId: String) async -> Result<Page, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let url = baseURL.appendingPathComponent("pages").appendingPathComponent(pageId)
+            fetchResources(method: "GET",
+                           url: url,
+                           query: [:],
+                           body: nil) { result in
+                continuation.resume(returning: result)
             }
         }
     }

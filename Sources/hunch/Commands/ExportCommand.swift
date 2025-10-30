@@ -53,6 +53,13 @@ struct ExportCommand: AsyncParsableCommand {
             let stringsPath = (localizedDir as NSString).appendingPathComponent("Base.strings")
             try stringsContent.write(toFile: stringsPath, atomically: true, encoding: .utf8)
 
+            // Cache page properties
+            let propertiesJsonPath = (pageDir as NSString).appendingPathComponent("properties.json")
+            let propertiesEncoder = JSONEncoder()
+            propertiesEncoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let propertiesData = try propertiesEncoder.encode(page.properties)
+            try propertiesData.write(to: URL(fileURLWithPath: propertiesJsonPath))
+
             // After creating pageDir
             let contentJsonPath = (pageDir as NSString).appendingPathComponent("content.json")
 
