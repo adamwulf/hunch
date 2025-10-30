@@ -123,6 +123,8 @@ public class MarkdownRenderer: Renderer {
             return renderColumnList(block)
         case .column:
             return renderColumn(block)
+        case .syncedBlock:
+            return renderSyncedBlock(block)
         // Add more cases for other block types as needed
         default:
             return "Unsupported block type: \(block.type.rawValue)\n"
@@ -456,5 +458,16 @@ public class MarkdownRenderer: Renderer {
     private func renderColumn(_ block: Block) -> String {
         guard case .column = block.blockTypeObject else { return "" }
         return block.children.map { renderBlockToMarkdown($0) }.joined()
+    }
+
+    private func renderSyncedBlock(_ block: Block) -> String {
+        guard case .syncedBlock = block.blockTypeObject else { return "" }
+
+        // For markdown export, just render the children directly
+        // Whether it's an original or reference doesn't matter - we want the content
+        if block.hasChildren {
+            return block.children.map { renderBlockToMarkdown($0) }.joined()
+        }
+        return ""
     }
 }

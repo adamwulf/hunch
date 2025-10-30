@@ -122,8 +122,8 @@ final class BlockTests: XCTestCase {
         if case .callout(let original) = block.blockTypeObject,
            case .callout(let decoded) = decoded.blockTypeObject {
             XCTAssertEqual(original.text.first?.plainText, decoded.text.first?.plainText)
-            XCTAssertEqual(original.icon.type, decoded.icon.type)
-            XCTAssertEqual(original.icon.emoji, decoded.icon.emoji)
+            XCTAssertEqual(original.icon?.type, decoded.icon?.type)
+            XCTAssertEqual(original.icon?.emoji, decoded.icon?.emoji)
         } else {
             XCTFail("Wrong block type")
         }
@@ -829,6 +829,68 @@ final class BlockTests: XCTestCase {
         if case .unsupported = block.blockTypeObject,
            case .unsupported = decoded.blockTypeObject {
             // Success - both are unsupported blocks
+        } else {
+            XCTFail("Wrong block type")
+        }
+    }
+
+    func testOriginalSyncedBlock() throws {
+        let block = Block(
+            object: "block",
+            id: "test-id",
+            parent: nil,
+            type: .syncedBlock,
+            createdTime: "2024-01-01",
+            createdBy: PartialUser(object: "user", id: "user-id"),
+            lastEditedTime: "2024-01-01",
+            lastEditedBy: PartialUser(object: "user", id: "user-id"),
+            archived: false,
+            inTrash: false,
+            hasChildren: true,
+            blockTypeObject: .syncedBlock(SyncedBlock(syncedFrom: nil))
+        )
+
+        let data = try encoder.encode(block)
+        let decoded = try decoder.decode(Block.self, from: data)
+
+        XCTAssertEqual(block.type, decoded.type)
+        if case .syncedBlock(let original) = block.blockTypeObject,
+           case .syncedBlock(let decoded) = decoded.blockTypeObject {
+            XCTAssertNil(original.syncedFrom)
+            XCTAssertNil(decoded.syncedFrom)
+        } else {
+            XCTFail("Wrong block type")
+        }
+    }
+
+    func testReferenceSyncedBlock() throws {
+        let block = Block(
+            object: "block",
+            id: "test-id",
+            parent: nil,
+            type: .syncedBlock,
+            createdTime: "2024-01-01",
+            createdBy: PartialUser(object: "user", id: "user-id"),
+            lastEditedTime: "2024-01-01",
+            lastEditedBy: PartialUser(object: "user", id: "user-id"),
+            archived: false,
+            inTrash: false,
+            hasChildren: true,
+            blockTypeObject: .syncedBlock(SyncedBlock(
+                syncedFrom: SyncedBlock.SyncedFrom(blockId: "original-block-id")
+            ))
+        )
+
+        let data = try encoder.encode(block)
+        let decoded = try decoder.decode(Block.self, from: data)
+
+        XCTAssertEqual(block.type, decoded.type)
+        if case .syncedBlock(let original) = block.blockTypeObject,
+           case .syncedBlock(let decoded) = decoded.blockTypeObject {
+            XCTAssertNotNil(original.syncedFrom)
+            XCTAssertNotNil(decoded.syncedFrom)
+            XCTAssertEqual(original.syncedFrom?.blockId, "original-block-id")
+            XCTAssertEqual(decoded.syncedFrom?.blockId, "original-block-id")
         } else {
             XCTFail("Wrong block type")
         }

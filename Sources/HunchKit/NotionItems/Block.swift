@@ -95,6 +95,7 @@ public struct Block: NotionItem {
         case parent
         case pdf
         case quote
+        case syncedBlock = "synced_block"
         case table
         case tableRow = "table_row"
         case todo = "to_do"
@@ -169,8 +170,7 @@ public struct Block: NotionItem {
         case .quote:
             blockTypeObject = .quote(try container.decode(QuoteBlock.self, forKey: .quote))
         case .syncedBlock:
-            fatalError("not yet supported")
-            blockTypeObject = .syncedBlock(try SyncedBlock(from: decoder))
+            blockTypeObject = .syncedBlock(try container.decode(SyncedBlock.self, forKey: .syncedBlock))
         case .table:
             blockTypeObject = .table(try container.decode(TableBlock.self, forKey: .table))
         case .tableOfContents:
@@ -261,7 +261,7 @@ public struct Block: NotionItem {
         case .quote(let value):
             try container.encode(value, forKey: .quote)
         case .syncedBlock(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .syncedBlock)
         case .table(let value):
             try container.encode(value, forKey: .table)
         case .tableOfContents(let value):
@@ -535,7 +535,19 @@ public struct QuoteBlock: Codable {
 }
 
 public struct SyncedBlock: Codable {
-    public let syncedFrom: String
+    public let syncedFrom: SyncedFrom?
+
+    public struct SyncedFrom: Codable {
+        public let blockId: String
+
+        enum CodingKeys: String, CodingKey {
+            case blockId = "block_id"
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case syncedFrom = "synced_from"
+    }
 }
 
 public struct TableBlock: Codable {
