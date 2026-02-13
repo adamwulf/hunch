@@ -62,13 +62,13 @@ public class HunchAPI {
         }
     }
 
-    public func fetchPages(databaseId: String?, limit: Int = .max) async throws -> [Page] {
+    public func fetchPages(databaseId: String?, limit: Int = .max, filter: DatabaseFilter? = nil, sorts: [DatabaseSort]? = nil) async throws -> [Page] {
         var pages: [Page] = []
         var cursor: String?
         var count = 0
 
         repeat {
-            let result = await notion.fetchPages(cursor: cursor, databaseId: databaseId)
+            let result = await notion.fetchPages(cursor: cursor, databaseId: databaseId, filter: filter, sorts: sorts)
             switch result {
             case .success(let pageList):
                 for page in pageList.results {
@@ -116,5 +116,116 @@ public class HunchAPI {
         } while cursor != nil
 
         return blocks
+    }
+
+    // MARK: - Update Page
+
+    public func updatePage(pageId: String, properties: [String: Any]) async throws -> Page {
+        let result = await notion.updatePage(pageId: pageId, properties: properties)
+        switch result {
+        case .success(let page):
+            return page
+        case .failure(let error):
+            throw HunchAPIError.apiError(error)
+        }
+    }
+
+    // MARK: - Create Page
+
+    public func createPage(parentDatabaseId: String, properties: [String: Any], children: [[String: Any]]? = nil) async throws -> Page {
+        let result = await notion.createPage(parentDatabaseId: parentDatabaseId, properties: properties, children: children)
+        switch result {
+        case .success(let page):
+            return page
+        case .failure(let error):
+            throw HunchAPIError.apiError(error)
+        }
+    }
+
+    // MARK: - Block Operations
+
+    public func appendBlockChildren(blockId: String, children: Data) async throws -> [Block] {
+        let result = await notion.appendBlockChildren(blockId: blockId, children: children)
+        switch result {
+        case .success(let blockList):
+            return blockList.results
+        case .failure(let error):
+            throw HunchAPIError.apiError(error)
+        }
+    }
+
+    public func updateBlock(blockId: String, body: Data) async throws -> Block {
+        let result = await notion.updateBlock(blockId: blockId, body: body)
+        switch result {
+        case .success(let block):
+            return block
+        case .failure(let error):
+            throw HunchAPIError.apiError(error)
+        }
+    }
+
+    public func deleteBlock(blockId: String) async throws -> Block {
+        let result = await notion.deleteBlock(blockId: blockId)
+        switch result {
+        case .success(let block):
+            return block
+        case .failure(let error):
+            throw HunchAPIError.apiError(error)
+        }
+    }
+
+    // MARK: - Comments
+
+    public func fetchComments(blockId: String) async throws -> [Comment] {
+        var comments: [Comment] = []
+        var cursor: String?
+
+        repeat {
+            let result = await notion.fetchComments(blockId: blockId, cursor: cursor)
+            switch result {
+            case .success(let commentList):
+                comments.append(contentsOf: commentList.results)
+                cursor = commentList.hasMore ? commentList.nextCursor : nil
+            case .failure(let error):
+                throw HunchAPIError.apiError(error)
+            }
+        } while cursor != nil
+
+        return comments
+    }
+
+    public func createComment(body: Data) async throws -> Comment {
+        let result = await notion.createComment(body: body)
+        switch result {
+        case .success(let comment):
+            return comment
+        case .failure(let error):
+            throw HunchAPIError.apiError(error)
+        }
+    }
+
+    // MARK: - Search
+
+    public func search(query: String? = nil, filter: SearchFilter? = nil, sort: SearchSort? = nil, limit: Int = .max) async throws -> [NotionItem] {
+        var items: [NotionItem] = []
+        var cursor: String?
+        var count = 0
+
+        repeat {
+            let result = await notion.search(query: query, filter: filter, sort: sort, cursor: cursor)
+            switch result {
+            case .success(let searchResults):
+                for item in searchResults.results {
+                    items.append(item.asNotionItem)
+                    count += 1
+                    guard count < limit else { return items }
+                }
+                cursor = searchResults.hasMore ? searchResults.nextCursor : nil
+            case .failure(let error):
+                throw HunchAPIError.apiError(error)
+            }
+        } while cursor != nil
+
+        return items
     }
 }

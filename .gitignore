@@ -1,2 +1,13 @@
 .build
 .ittybitty
+.git-tmp-ignore
+# TEMP: hiding new files from pre-commit hook
+Sources/HunchKit/Lists/CommentList.swift
+Sources/HunchKit/NotionItems/Comment.swift
+Sources/HunchKit/NotionItems/DatabaseFilter.swift
+Sources/HunchKit/NotionItems/Search.swift
+Sources/hunch/Commands/BlockOperationsCommand.swift
+Sources/hunch/Commands/CommentsCommand.swift
+Sources/hunch/Commands/CreatePageCommand.swift
+Sources/hunch/Commands/SearchCommand.swift
+Sources/hunch/Commands/UpdatePageCommand.swift

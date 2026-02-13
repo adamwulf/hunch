@@ -23,7 +23,7 @@ struct Hunch: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
         commandName: "hunch",
         version: "Hunch",
-        subcommands: [DatabaseCommand.self, PageCommand.self, BlocksCommand.self, ExportCommand.self, ExportPageCommand.self, ActivityCommand.self]
+        subcommands: [DatabaseCommand.self, PageCommand.self, BlocksCommand.self, ExportCommand.self, ExportPageCommand.self, ActivityCommand.self, UpdatePageCommand.self, CreatePageCommand.self, CommentsCommand.self, SearchCommand.self, AppendBlocksCommand.self, DeleteBlockCommand.self]
     )
 
     static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) {

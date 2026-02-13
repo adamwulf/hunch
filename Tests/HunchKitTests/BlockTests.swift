@@ -896,5 +896,94 @@ final class BlockTests: XCTestCase {
         }
     }
 
-    // Add more tests for each block type...
+    func testEquationBlock() throws {
+        let block = Block(
+            object: "block",
+            id: "test-id",
+            parent: nil,
+            type: .equation,
+            createdTime: "2024-01-01",
+            createdBy: PartialUser(object: "user", id: "user-id"),
+            lastEditedTime: "2024-01-01",
+            lastEditedBy: PartialUser(object: "user", id: "user-id"),
+            archived: false,
+            inTrash: false,
+            hasChildren: false,
+            blockTypeObject: .equation(EquationBlock(expression: "E = mc^2"))
+        )
+
+        let data = try encoder.encode(block)
+        let decoded = try decoder.decode(Block.self, from: data)
+
+        XCTAssertEqual(block.type, decoded.type)
+        if case .equation(let original) = block.blockTypeObject,
+           case .equation(let decoded) = decoded.blockTypeObject {
+            XCTAssertEqual(original.expression, decoded.expression)
+        } else {
+            XCTFail("Wrong block type")
+        }
+    }
+
+    func testTableOfContentsBlock() throws {
+        let block = Block(
+            object: "block",
+            id: "test-id",
+            parent: nil,
+            type: .tableOfContents,
+            createdTime: "2024-01-01",
+            createdBy: PartialUser(object: "user", id: "user-id"),
+            lastEditedTime: "2024-01-01",
+            lastEditedBy: PartialUser(object: "user", id: "user-id"),
+            archived: false,
+            inTrash: false,
+            hasChildren: false,
+            blockTypeObject: .tableOfContents(TableOfContentsBlock(color: .plain))
+        )
+
+        let data = try encoder.encode(block)
+        let decoded = try decoder.decode(Block.self, from: data)
+
+        XCTAssertEqual(block.type, decoded.type)
+        if case .tableOfContents(let original) = block.blockTypeObject,
+           case .tableOfContents(let decoded) = decoded.blockTypeObject {
+            XCTAssertEqual(original.color, decoded.color)
+        } else {
+            XCTFail("Wrong block type")
+        }
+    }
+
+    func testTemplateBlock() throws {
+        let block = Block(
+            object: "block",
+            id: "test-id",
+            parent: nil,
+            type: .template,
+            createdTime: "2024-01-01",
+            createdBy: PartialUser(object: "user", id: "user-id"),
+            lastEditedTime: "2024-01-01",
+            lastEditedBy: PartialUser(object: "user", id: "user-id"),
+            archived: false,
+            inTrash: false,
+            hasChildren: false,
+            blockTypeObject: .template(TemplateBlock(
+                text: [RichText(
+                    plainText: "template text",
+                    annotations: .plain,
+                    type: "text",
+                    text: RichText.Text(content: "template text")
+                )]
+            ))
+        )
+
+        let data = try encoder.encode(block)
+        let decoded = try decoder.decode(Block.self, from: data)
+
+        XCTAssertEqual(block.type, decoded.type)
+        if case .template(let original) = block.blockTypeObject,
+           case .template(let decoded) = decoded.blockTypeObject {
+            XCTAssertEqual(original.text.first?.plainText, decoded.text.first?.plainText)
+        } else {
+            XCTFail("Wrong block type")
+        }
+    }
 }
