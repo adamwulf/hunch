@@ -52,6 +52,16 @@ public class HunchAPI {
         return databases
     }
 
+    public func retrieveDatabase(databaseId: String) async throws -> Database {
+        let result = await notion.retrieveDatabase(databaseId: databaseId)
+        switch result {
+        case .success(let database):
+            return database
+        case .failure(let error):
+            throw HunchAPIError.apiError(error)
+        }
+    }
+
     public func fetchPages(databaseId: String?, limit: Int = .max) async throws -> [Page] {
         var pages: [Page] = []
         var cursor: String?

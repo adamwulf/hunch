@@ -24,11 +24,23 @@ struct DatabaseCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "The format of the output")
     var format: Hunch.Format = .id
 
+    @Flag(name: .long, help: "Retrieve a single database schema by ID (requires entityId)")
+    var schema: Bool = false
+
     func run() async {
         do {
-            let limit = limit ?? .max
-            let databases = try await HunchAPI.shared.fetchDatabases(parentId: entityId, limit: limit)
-            Hunch.output(list: databases, format: format)
+            if schema {
+                guard let databaseId = entityId else {
+                    print("error: --schema requires a database ID as argument")
+                    return
+                }
+                let database = try await HunchAPI.shared.retrieveDatabase(databaseId: databaseId)
+                Hunch.output(list: [database], format: format)
+            } else {
+                let limit = limit ?? .max
+                let databases = try await HunchAPI.shared.fetchDatabases(parentId: entityId, limit: limit)
+                Hunch.output(list: databases, format: format)
+            }
         } catch {
             fatalError("error: \(error.localizedDescription)")
         }

@@ -232,6 +232,18 @@ public class NotionAPI {
         }
     }
 
+    internal func retrieveDatabase(databaseId: String) async -> Result<Database, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let url = baseURL.appendingPathComponent("databases").appendingPathComponent(databaseId)
+            fetchResources(method: "GET",
+                           url: url,
+                           query: [:],
+                           body: nil) { result in
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
     internal func fetchBlockList(cursor: String?, in pageOrBlockId: String) async -> Result<BlockList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             let url = baseURL.appendingPathComponent("blocks").appendingPathComponent(pageOrBlockId).appendingPathComponent("children")
