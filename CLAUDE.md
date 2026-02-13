@@ -4,105 +4,75 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Hunch is a Swift command-line tool and library for interacting with the Notion.so API. It provides both a library (`HunchKit`) for programmatic access and a CLI tool (`hunch`) for command-line operations.
+Hunch is a Swift command-line tool and library for interacting with the Notion.so API. It provides a library (`HunchKit`) for programmatic access and a CLI tool (`hunch`) for command-line operations.
 
 ## Build and Development Commands
 
-### Building
 ```bash
-swift build                    # Debug build
-swift build -c release         # Release build
-swift build --platform macos   # Platform-specific build
+swift build                          # Debug build
+swift test                           # Run all tests
+swift test --filter BlockTests       # Run specific test class
+swift test --filter testBookmarkBlock # Run a single test
+./format-files.sh                    # SwiftLint auto-fix then lint check
 ```
 
-### Testing
+The CLI requires `NOTION_KEY` environment variable set to a Notion API token:
 ```bash
-swift test                     # Run all tests
-swift test --verbose           # Run with verbose output
-swift test --filter BlockTests # Run specific test class
+swift run hunch database [--limit N] [--format jsonl]
+swift run hunch page --id <pageId>
+swift run hunch blocks <pageId> [--format markdown]
+swift run hunch export <databaseId> --output-dir <path>
 ```
 
-### Running
-```bash
-# Set your Notion API key first
-export NOTION_KEY="your_notion_api_key"
+## Architecture
 
-# Run the CLI tool
-swift run hunch [command] [options]
+### Two-Layer API Design
 
-# Available commands:
-# - database: Query and list Notion databases
-# - page: Work with individual Notion pages
-# - blocks: Work with Notion blocks
-# - export: Export database pages to markdown files
-# - activity: Track Notion activity
-```
+- **`NotionAPI`** (singleton) — Low-level HTTP client. Handles auth headers, rate limiting with exponential backoff (max 3 retries), and JSON encoding/decoding. Uses `withCheckedContinuation` to bridge callback-based URLSession to async/await. Targets Notion API version `2021-05-13`.
+- **`HunchAPI`** (singleton, wraps `NotionAPI`) — High-level facade. Handles cursor-based pagination automatically and recursive block tree fetching (populates `Block.children` when `hasChildren` is true).
 
-### Linting
-```bash
-./format-files.sh              # Run SwiftLint with auto-fix
-swiftlint                      # Check for lint issues only
-```
+### Discriminated Union Pattern
 
-## Architecture Overview
+The codebase models Notion's polymorphic types using Swift enums with associated values:
 
-### Package Structure
-- **Sources/HunchKit/**: Core library with API client and models
-  - `APIs/`: API client implementations (HunchAPI, NotionAPI)
-  - `NotionItems/`: Model types for Notion objects (Block, Page, Database, etc.)
-  - `Helpers/`: Utilities including file downloaders and renderers
-  - `Lists/`: Collection types for paginated results
-  
-- **Sources/hunch/**: CLI executable
-  - `Commands/`: Individual command implementations using ArgumentParser
-  - `Hunch.swift`: Main entry point with command registration
+- **`Block`** has a `BlockType` enum (determines which JSON field to decode) and a `BlockTypeObject` enum (wraps the type-specific struct like `ParagraphBlock`, `CodeBlock`, etc.). Custom `Codable` implementation switches on `BlockType` to encode/decode the correct field.
+- **`Property`** uses the same pattern for 23+ property types. Decoding failures produce `.null` instead of throwing, allowing partial data loading.
+- **`Parent`** discriminates between `database`, `page`, `block`, and `workspace` parent types.
 
-### Key Design Patterns
-1. **Async/Await**: All API calls use Swift's modern concurrency
-2. **Command Pattern**: CLI commands implemented as ArgumentParser ParsableCommands
-3. **Repository Pattern**: NotionAPI serves as centralized API access point
-4. **Renderer Pattern**: Multiple renderer implementations for different output formats
+### Adding a New Block Type
 
-### API Integration
-- Uses Notion API version 2021-05-13
-- Token-based authentication via NOTION_KEY environment variable
-- Built-in rate limiting and retry logic with exponential backoff
-- Comprehensive error handling with descriptive error types
+Six changes in `Block.swift` plus a test:
 
-### Output Formats
-The tool supports multiple output formats via the `--format` option:
-- `id`: Simple ID listing
-- `smalljsonl`: Minimal JSON Lines format
-- `jsonl`: Full JSON Lines format (default)
-- `markdown`: Rich markdown with asset downloading
+1. Add case to `BlockType` enum (e.g., `case myType = "my_type"`)
+2. Create the block struct (e.g., `public struct MyTypeBlock: Codable { ... }`)
+3. Add case to `BlockTypeObject` enum (e.g., `case myType(MyTypeBlock)`)
+4. Add `CodingKey` (e.g., `case myType = "my_type"`)
+5. Add decode branch in `init(from:)` switch
+6. Add encode branch in `encode(to:)` switch
+7. Add encode/decode test in `Tests/HunchKitTests/BlockTests.swift`
 
-### Export Feature
-The export command (`hunch export`) is the most complex feature:
-- Downloads all assets (images, videos, files) to local directories
-- Fetches YouTube transcripts when YouTube URLs are found
-- Creates `.localized` folders with Base.strings files
-- Preserves page metadata in markdown frontmatter
-- Creates `.webloc` files for easy access to original Notion pages
-- Handles nested block structures recursively
+### Renderer Strategy
 
-## Testing Approach
+The `Renderer` protocol has a single `render(_ items: [NotionItem]) -> String` method. Four implementations: `IDRenderer`, `SmallJSONRenderer`, `FullJSONRenderer`, `MarkdownRenderer`. The CLI's `--format` option selects which renderer to use.
 
-Tests are organized by feature in the Tests/HunchKitTests directory. Key testing patterns:
-- Comprehensive encoding/decoding tests for all block types
-- Helper methods for common assertions (e.g., `assertRoundtrip`)
-- Focus on model serialization and API response handling
+`MarkdownRenderer` is the most complex — it recursively renders block trees, tracks nesting depth for indentation, manages list state transitions, and maps downloaded asset URLs to local paths.
 
-## Development Tips
+### CLI Commands
 
-1. **Environment Setup**: Always set `NOTION_KEY` before running the tool
-2. **API Rate Limits**: The tool handles rate limiting automatically, but be mindful of Notion's API limits
-3. **Asset Downloads**: When working on export features, assets are downloaded to `assets/` subdirectories
-4. **Error Handling**: Check error types in NotionAPI for comprehensive error cases
-5. **Adding New Block Types**: Follow the pattern in `NotionItems/Block.swift` and add corresponding tests
+Commands use Swift ArgumentParser's `AsyncParsableCommand`. The entry point (`Sources/hunch/Hunch.swift`) registers all subcommands and provides a shared `output()` method that selects the renderer.
+
+`ExportCommand` and `ExportPageCommand` are the most complex commands — they orchestrate fetching pages/blocks, downloading assets via `FileDownloader` (SHA256-hashed filenames for caching), fetching YouTube transcripts, generating markdown with frontmatter, and creating `.localized` folder structures.
+
+### Pagination Lists
+
+`PageList`, `BlockList`, and `DatabaseList` share the same structure: `results` array, `nextCursor`, and `hasMore`. `HunchAPI` loops on these until `nextCursor` is nil.
+
+## Testing Patterns
+
+Tests focus on model serialization roundtrips. `BlockTests` creates a `Block` with a specific `BlockTypeObject`, encodes to JSON, decodes back, and asserts key properties match. `PropertyTests` verifies property type decoding including null/missing value handling. Use `assertEncodeDecode` helper for simple Codable roundtrip checks.
 
 ## Code Style
 
-- SwiftLint is configured with custom rules (see .swiftlint.yml)
-- Line length warning at 140 characters
-- Use descriptive variable names (identifier_name rule is disabled for flexibility)
-- Follow existing patterns for consistency
+- SwiftLint configured in `.swiftlint.yml` — line length warning at 140, error at 500
+- Many strict rules disabled (see `.swiftlint.yml`): `identifier_name`, `force_cast`, `force_try`, `cyclomatic_complexity`, `type_body_length`, `file_length`, `nesting`, etc.
+- `public internal(set)` is used extensively on model properties to allow mutation within the package while keeping the public API read-only
