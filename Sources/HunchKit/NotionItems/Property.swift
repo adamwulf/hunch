@@ -29,6 +29,8 @@ public enum Property: Codable {
     case createdBy(id: String, value: User)
     case lastEditedTime(id: String, value: Date)
     case lastEditedBy(id: String, value: User)
+    case status(id: String, value: StatusOption)
+    case uniqueId(id: String, value: UniqueId)
     case null(id: String, type: Kind)
 
     enum CodingKeys: String, CodingKey {
@@ -55,6 +57,8 @@ public enum Property: Codable {
         case createdBy = "created_by"
         case lastEditedTime = "last_edited_time"
         case lastEditedBy = "last_edited_by"
+        case status
+        case uniqueId = "unique_id"
     }
 
     public enum Kind: String, Codable {
@@ -78,6 +82,8 @@ public enum Property: Codable {
         case createdBy = "created_by"
         case lastEditedTime = "last_edited_time"
         case lastEditedBy = "last_edited_by"
+        case status
+        case uniqueId = "unique_id"
         case null
     }
 
@@ -103,6 +109,8 @@ public enum Property: Codable {
         case .createdBy: .createdBy
         case .lastEditedTime: .lastEditedTime
         case .lastEditedBy: .lastEditedBy
+        case .status: .status
+        case .uniqueId: .uniqueId
         case .null: .null
         }
     }
@@ -178,6 +186,12 @@ public enum Property: Codable {
             case .lastEditedBy:
                 let value = try container.decode(User.self, forKey: .lastEditedBy)
                 self = .lastEditedBy(id: id, value: value)
+            case .status:
+                let value = try container.decode(StatusOption.self, forKey: .status)
+                self = .status(id: id, value: value)
+            case .uniqueId:
+                let value = try container.decode(UniqueId.self, forKey: .uniqueId)
+                self = .uniqueId(id: id, value: value)
             case .null:
                 self = .null(id: id, type: kind)
             }
@@ -277,6 +291,14 @@ public enum Property: Codable {
             try container.encode(id, forKey: .id)
             try container.encode(Kind.lastEditedBy, forKey: .type)
             try container.encode(value, forKey: .value)
+        case .status(let id, let value):
+            try container.encode(id, forKey: .id)
+            try container.encode(Kind.status, forKey: .type)
+            try container.encode(value, forKey: .status)
+        case .uniqueId(let id, let value):
+            try container.encode(id, forKey: .id)
+            try container.encode(Kind.uniqueId, forKey: .type)
+            try container.encode(value, forKey: .uniqueId)
         }
     }
 }
@@ -393,6 +415,17 @@ public struct Relation: Codable {
 
 public struct Rollup: Codable {
     public internal(set) var value: String
+}
+
+public struct StatusOption: Codable {
+    public internal(set) var id: String?
+    public internal(set) var name: String
+    public internal(set) var color: Color?
+}
+
+public struct UniqueId: Codable {
+    public internal(set) var number: Int
+    public internal(set) var prefix: String?
 }
 
 // This property is specific to the multi-select definition in a database
