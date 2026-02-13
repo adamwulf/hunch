@@ -364,11 +364,21 @@ public struct BreadcrumbBlock: Codable {}
 public struct BulletedListItemBlock: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct CalloutBlock: Codable {
     public let icon: Icon?
     public let text: [RichText]
+
+    enum CodingKeys: String, CodingKey {
+        case icon
+        case text = "rich_text"
+    }
 }
 
 public struct ChildDatabaseBlock: Codable {
@@ -383,6 +393,12 @@ public struct CodeBlock: Codable {
     public let caption: [RichText]
     public let text: [RichText]
     public let language: String
+
+    enum CodingKeys: String, CodingKey {
+        case caption
+        case text = "rich_text"
+        case language
+    }
 }
 
 public struct ColumnBlock: Codable {}
@@ -483,16 +499,31 @@ public typealias AudioBlock = FileBlock
 public struct Heading1Block: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct Heading2Block: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct Heading3Block: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct ImageBlock: Codable {
@@ -518,11 +549,21 @@ public struct LinkToPageBlock: Codable {
 public struct NumberedListItemBlock: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct ParagraphBlock: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct PdfBlock: Codable {
@@ -532,6 +573,11 @@ public struct PdfBlock: Codable {
 public struct QuoteBlock: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct SyncedBlock: Codable {
@@ -576,11 +622,22 @@ public struct ToDoBlock: Codable {
     public let text: [RichText]
     public let checked: Bool
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case checked
+        case color
+    }
 }
 
 public struct ToggleBlock: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct UnsupportedBlock: Codable {}

@@ -111,7 +111,7 @@ public class NotionAPI {
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("2021-05-13", forHTTPHeaderField: "Notion-Version")
+        request.setValue("2022-06-28", forHTTPHeaderField: "Notion-Version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpMethod = method
         request.httpBody = body
