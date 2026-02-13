@@ -26,14 +26,6 @@ struct Hunch: AsyncParsableCommand {
         subcommands: [DatabaseCommand.self, PageCommand.self, BlocksCommand.self, ExportCommand.self, ExportPageCommand.self, ActivityCommand.self]
     )
 
-    init() {
-        guard let key = ProcessInfo.processInfo.environment["NOTION_KEY"] else {
-            fatalError("NOTION_KEY must be defined in environment")
-        }
-        Logging.configure()
-        NotionAPI.shared.token = key
-    }
-
     static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) {
         let flattenedList = flatten(items: list)
 

@@ -13,7 +13,10 @@ public class NotionAPI {
     public static var logHandler: ((_ level: OSLogType, _ message: String, _ context: [String: Any]?) -> Void)?
     public static let shared = NotionAPI()
     public var token: String?
-    private init() {}
+    private init() {
+        self.token = ProcessInfo.processInfo.environment["NOTION_KEY"]
+        Logging.configure()
+    }
 
     private let urlSession = URLSession(configuration: .ephemeral)
     private let baseURL = URL(string: "https://api.notion.com/v1")!
