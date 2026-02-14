@@ -930,4 +930,468 @@ final class IntegrationTests: XCTestCase {
             XCTFail("\(errors.count) error(s) during export:\n" + errors.joined(separator: "\n"))
         }
     }
+
+    // MARK: - Database Schema Tests
+
+    /// Test retrieving the Example database schema and verifying all property definitions
+    func testRetrieveDatabaseSchema() async throws {
+        print("\n=== testRetrieveDatabaseSchema ===")
+
+        let db = try await HunchAPI.shared.retrieveDatabase(databaseId: "991fa39f-779b-4424-a7c5-d00479a94fe8")
+        let title = db.title.map { $0.plainText }.joined()
+        print("  Database: '\(title)' (\(db.id))")
+        XCTAssertEqual(title, "Example db")
+        XCTAssertFalse(db.archived)
+
+        // Verify schema properties
+        print("  Properties:")
+        for (name, prop) in db.properties.sorted(by: { $0.key < $1.key }) {
+            print("    '\(name)': \(prop.kind.rawValue)")
+        }
+
+        // The Example db should have these properties
+        XCTAssertNotNil(db.properties["Name"], "Expected 'Name' property in schema")
+        XCTAssertNotNil(db.properties["Tags"], "Expected 'Tags' property in schema")
+        XCTAssertNotNil(db.properties["URL"], "Expected 'URL' property in schema")
+        XCTAssertNotNil(db.properties["Count"], "Expected 'Count' property in schema")
+
+        // Verify property types from schema
+        // Database schema properties with {} values decode as .null(id:type:) preserving the original type
+        // Multi-select decodes successfully because the schema has {"options": [...]}
+        for (name, prop) in db.properties.sorted(by: { $0.key < $1.key }) {
+            let originalType: Property.Kind
+            if case .null(_, let type) = prop {
+                originalType = type
+            } else {
+                originalType = prop.kind
+            }
+            print("    '\(name)': kind=\(prop.kind.rawValue), originalType=\(originalType.rawValue)")
+        }
+
+        // Name should be title type (decodes as .null with type .title since schema returns {})
+        if let nameProp = db.properties["Name"] {
+            if case .null(_, let type) = nameProp {
+                XCTAssertEqual(type, .title, "Name should have original type .title")
+            } else {
+                XCTAssertEqual(nameProp.kind, .title, "Name should be title type")
+            }
+        }
+        // Tags should be multi_select type (decodes fully because schema has options array)
+        if let tagsProp = db.properties["Tags"] {
+            XCTAssertEqual(tagsProp.kind, .multiSelect, "Tags should be multi_select type")
+        }
+        // URL should be url type (decodes as .null with type .url since schema returns {})
+        if let urlProp = db.properties["URL"] {
+            if case .null(_, let type) = urlProp {
+                XCTAssertEqual(type, .url, "URL should have original type .url")
+            } else {
+                XCTAssertEqual(urlProp.kind, .url, "URL should be url type")
+            }
+        }
+        // Count should be formula type
+        if let countProp = db.properties["Count"] {
+            if case .null(_, let type) = countProp {
+                XCTAssertEqual(type, .formula, "Count should have original type .formula")
+            } else {
+                XCTAssertEqual(countProp.kind, .formula, "Count should be formula type")
+            }
+        }
+
+        // Test encoding the database
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(db)
+        print("  Database encoded to \(data.count) bytes")
+
+        // Roundtrip
+        let decoded = try JSONDecoder().decode(Database.self, from: data)
+        XCTAssertEqual(decoded.id, db.id)
+        XCTAssertEqual(decoded.title.map { $0.plainText }.joined(), title)
+        print("  ✓ Database encode/decode roundtrip OK")
+    }
+
+    // MARK: - Filter and Sort Tests
+
+    /// Test querying pages with a property filter
+    func testFilterPagesByProperty() async throws {
+        print("\n=== testFilterPagesByProperty ===")
+        let databaseId = "991fa39f-779b-4424-a7c5-d00479a94fe8"
+
+        // Filter: Tags contains "example"
+        let filter = DatabaseFilter(from: JSONValue.object([
+            "property": .string("Tags"),
+            "multi_select": .object([
+                "contains": .string("example")
+            ])
+        ]))
+        let pages = try await HunchAPI.shared.fetchPages(databaseId: databaseId, filter: filter)
+        print("  Filter 'Tags contains example': \(pages.count) pages")
+        for page in pages {
+            print("    - '\(page.description)' (\(page.id))")
+            // Verify every returned page has the "example" tag
+            if case .multiSelect(_, let tags) = page.properties["Tags"] {
+                let tagNames = tags.map { $0.name }
+                XCTAssertTrue(tagNames.contains("example"), "Page '\(page.description)' should have 'example' tag, got: \(tagNames)")
+                print("      Tags: \(tagNames.joined(separator: ", "))")
+            }
+        }
+        XCTAssertGreaterThan(pages.count, 0, "Expected at least one page with 'example' tag")
+
+        // Filter: URL is not empty
+        let urlFilter = DatabaseFilter(from: JSONValue.object([
+            "property": .string("URL"),
+            "url": .object([
+                "is_not_empty": .bool(true)
+            ])
+        ]))
+        let urlPages = try await HunchAPI.shared.fetchPages(databaseId: databaseId, filter: urlFilter)
+        print("  Filter 'URL is not empty': \(urlPages.count) pages")
+        for page in urlPages {
+            if case .url(_, let url) = page.properties["URL"] {
+                print("    - '\(page.description)': \(url)")
+                XCTAssertFalse(url.isEmpty, "URL should not be empty for page '\(page.description)'")
+            } else {
+                XCTFail("Expected url property for page '\(page.description)' but got \(page.properties["URL"]?.kind.rawValue ?? "nil")")
+            }
+        }
+    }
+
+    /// Test querying pages with sorts
+    func testSortPagesByProperty() async throws {
+        print("\n=== testSortPagesByProperty ===")
+        let databaseId = "991fa39f-779b-4424-a7c5-d00479a94fe8"
+
+        // Sort by created_time ascending
+        let ascSort = DatabaseSort(timestamp: .createdTime, direction: .ascending)
+        let ascPages = try await HunchAPI.shared.fetchPages(databaseId: databaseId, sorts: [ascSort])
+        print("  Sort by created_time ascending: \(ascPages.count) pages")
+        var prevDate: Date?
+        for page in ascPages {
+            print("    - '\(page.description)' created: \(page.created)")
+            if let prev = prevDate {
+                XCTAssertLessThanOrEqual(prev, page.created,
+                    "Pages should be in ascending order by created time")
+            }
+            prevDate = page.created
+        }
+
+        // Sort by created_time descending
+        let descSort = DatabaseSort(timestamp: .createdTime, direction: .descending)
+        let descPages = try await HunchAPI.shared.fetchPages(databaseId: databaseId, sorts: [descSort])
+        print("  Sort by created_time descending: \(descPages.count) pages")
+        prevDate = nil
+        for page in descPages {
+            print("    - '\(page.description)' created: \(page.created)")
+            if let prev = prevDate {
+                XCTAssertGreaterThanOrEqual(prev, page.created,
+                    "Pages should be in descending order by created time")
+            }
+            prevDate = page.created
+        }
+
+        // Sort by property name (verify API accepts the sort -- Notion's Unicode sort may differ from Swift's)
+        let nameSort = DatabaseSort(property: "Name", direction: .ascending)
+        let namePages = try await HunchAPI.shared.fetchPages(databaseId: databaseId, sorts: [nameSort])
+        print("  Sort by Name ascending: \(namePages.count) pages")
+        XCTAssertEqual(namePages.count, ascPages.count, "Same number of pages regardless of sort")
+        for page in namePages {
+            let title = page.title.map { $0.plainText }.joined()
+            print("    - '\(title)'")
+        }
+    }
+
+    // MARK: - Create, Update, Archive Tests
+
+    /// Test creating a new page, updating its properties, then archiving it
+    func testCreateUpdateArchivePage() async throws {
+        print("\n=== testCreateUpdateArchivePage ===")
+        let databaseId = "991fa39f-779b-4424-a7c5-d00479a94fe8"
+
+        // Step 1: Create a new page with properties
+        let testTitle = "Integration Test Page \(Int(Date().timeIntervalSince1970))"
+        let createProperties = JSONValue.object([
+            "Name": .object([
+                "title": .array([
+                    .object([
+                        "text": .object([
+                            "content": .string(testTitle)
+                        ])
+                    ])
+                ])
+            ]),
+            "Tags": .object([
+                "multi_select": .array([
+                    .object(["name": .string("test")]),
+                    .object(["name": .string("integration")])
+                ])
+            ]),
+            "URL": .object([
+                "url": .string("https://example.com/test")
+            ])
+        ])
+
+        print("  Creating page: '\(testTitle)'")
+        let createdPage = try await HunchAPI.shared.createPage(
+            parentDatabaseId: databaseId,
+            properties: createProperties
+        )
+        print("  ✓ Created page: \(createdPage.id)")
+
+        // Verify the created page's properties
+        let createdTitle = createdPage.title.map { $0.plainText }.joined()
+        XCTAssertEqual(createdTitle, testTitle, "Created page title should match")
+        print("    Title: '\(createdTitle)'")
+
+        if case .multiSelect(_, let tags) = createdPage.properties["Tags"] {
+            let tagNames = tags.map { $0.name }.sorted()
+            XCTAssertEqual(tagNames, ["integration", "test"], "Tags should match")
+            print("    Tags: \(tagNames.joined(separator: ", "))")
+        } else {
+            XCTFail("Expected multi_select for Tags property")
+        }
+
+        if case .url(_, let url) = createdPage.properties["URL"] {
+            XCTAssertEqual(url, "https://example.com/test", "URL should match")
+            print("    URL: \(url)")
+        } else {
+            XCTFail("Expected url for URL property")
+        }
+
+        // Formula (Count) should be computed by Notion
+        if case .formula(_, let formula) = createdPage.properties["Count"] {
+            print("    Count (formula): \(formula.type.stringValue ?? "nil")")
+        }
+
+        // Step 2: Retrieve the created page to verify it's persisted
+        print("\n  Retrieving created page...")
+        let retrievedPage = try await HunchAPI.shared.retrievePage(pageId: createdPage.id)
+        let retrievedTitle = retrievedPage.title.map { $0.plainText }.joined()
+        XCTAssertEqual(retrievedTitle, testTitle, "Retrieved page title should match")
+        print("  ✓ Retrieved page matches: '\(retrievedTitle)'")
+
+        // Step 3: Update the page properties
+        let updatedTitle = testTitle + " (updated)"
+        let updateProperties = JSONValue.object([
+            "Name": .object([
+                "title": .array([
+                    .object([
+                        "text": .object([
+                            "content": .string(updatedTitle)
+                        ])
+                    ])
+                ])
+            ]),
+            "Tags": .object([
+                "multi_select": .array([
+                    .object(["name": .string("test")]),
+                    .object(["name": .string("updated")])
+                ])
+            ]),
+            "URL": .object([
+                "url": .string("https://example.com/updated")
+            ])
+        ])
+
+        print("\n  Updating page properties...")
+        let updatedPage = try await HunchAPI.shared.updatePage(
+            pageId: createdPage.id,
+            properties: updateProperties
+        )
+        print("  ✓ Updated page: \(updatedPage.id)")
+
+        let updatedPageTitle = updatedPage.title.map { $0.plainText }.joined()
+        XCTAssertEqual(updatedPageTitle, updatedTitle, "Updated title should match")
+        print("    Title: '\(updatedPageTitle)'")
+
+        if case .multiSelect(_, let tags) = updatedPage.properties["Tags"] {
+            let tagNames = tags.map { $0.name }.sorted()
+            XCTAssertEqual(tagNames, ["test", "updated"], "Updated tags should match")
+            print("    Tags: \(tagNames.joined(separator: ", "))")
+        } else {
+            XCTFail("Expected multi_select for Tags after update")
+        }
+
+        if case .url(_, let url) = updatedPage.properties["URL"] {
+            XCTAssertEqual(url, "https://example.com/updated", "Updated URL should match")
+            print("    URL: \(url)")
+        } else {
+            XCTFail("Expected url for URL after update")
+        }
+
+        // Step 4: Verify the update persisted via a fresh retrieve
+        print("\n  Verifying update persisted...")
+        let verifiedPage = try await HunchAPI.shared.retrievePage(pageId: createdPage.id)
+        let verifiedTitle = verifiedPage.title.map { $0.plainText }.joined()
+        XCTAssertEqual(verifiedTitle, updatedTitle, "Verified title should match updated title")
+        print("  ✓ Update verified: '\(verifiedTitle)'")
+
+        // Step 5: Test filtering for our created page by its unique URL
+        print("\n  Filtering for our test page...")
+        let testFilter = DatabaseFilter(from: JSONValue.object([
+            "property": .string("URL"),
+            "url": .object([
+                "equals": .string("https://example.com/updated")
+            ])
+        ]))
+        let filteredPages = try await HunchAPI.shared.fetchPages(databaseId: databaseId, filter: testFilter)
+        print("  Found \(filteredPages.count) page(s) with URL = 'https://example.com/updated'")
+        XCTAssertEqual(filteredPages.count, 1, "Should find exactly our test page")
+        if let foundPage = filteredPages.first {
+            XCTAssertEqual(foundPage.id, createdPage.id, "Found page should be our created page")
+            print("  ✓ Filter found our test page: \(foundPage.id)")
+        }
+
+        // Step 6: Archive (soft-delete) the test page
+        print("\n  Archiving test page...")
+        let archivedPage = try await HunchAPI.shared.updatePage(
+            pageId: createdPage.id,
+            archived: true
+        )
+        XCTAssertTrue(archivedPage.archived, "Page should be archived")
+        print("  ✓ Page archived: \(archivedPage.id)")
+
+        // Verify it no longer appears in normal queries
+        let postArchivePages = try await HunchAPI.shared.fetchPages(databaseId: databaseId, filter: testFilter)
+        XCTAssertEqual(postArchivePages.count, 0, "Archived page should not appear in queries")
+        print("  ✓ Archived page no longer appears in database queries")
+    }
+
+    /// Test creating a page with block children
+    func testCreatePageWithChildren() async throws {
+        print("\n=== testCreatePageWithChildren ===")
+        let databaseId = "991fa39f-779b-4424-a7c5-d00479a94fe8"
+
+        let testTitle = "Page With Children \(Int(Date().timeIntervalSince1970))"
+        let createProperties = JSONValue.object([
+            "Name": .object([
+                "title": .array([
+                    .object([
+                        "text": .object([
+                            "content": .string(testTitle)
+                        ])
+                    ])
+                ])
+            ]),
+            "Tags": .object([
+                "multi_select": .array([
+                    .object(["name": .string("test")])
+                ])
+            ])
+        ])
+
+        let children: [JSONValue] = [
+            .object([
+                "object": .string("block"),
+                "type": .string("paragraph"),
+                "paragraph": .object([
+                    "rich_text": .array([
+                        .object([
+                            "type": .string("text"),
+                            "text": .object([
+                                "content": .string("This is a test paragraph from integration tests.")
+                            ])
+                        ])
+                    ])
+                ])
+            ]),
+            .object([
+                "object": .string("block"),
+                "type": .string("heading_2"),
+                "heading_2": .object([
+                    "rich_text": .array([
+                        .object([
+                            "type": .string("text"),
+                            "text": .object([
+                                "content": .string("Test Heading")
+                            ])
+                        ])
+                    ])
+                ])
+            ]),
+            .object([
+                "object": .string("block"),
+                "type": .string("bulleted_list_item"),
+                "bulleted_list_item": .object([
+                    "rich_text": .array([
+                        .object([
+                            "type": .string("text"),
+                            "text": .object([
+                                "content": .string("First bullet point")
+                            ])
+                        ])
+                    ])
+                ])
+            ]),
+            .object([
+                "object": .string("block"),
+                "type": .string("bulleted_list_item"),
+                "bulleted_list_item": .object([
+                    "rich_text": .array([
+                        .object([
+                            "type": .string("text"),
+                            "text": .object([
+                                "content": .string("Second bullet point")
+                            ])
+                        ])
+                    ])
+                ])
+            ])
+        ]
+
+        print("  Creating page with children: '\(testTitle)'")
+        let createdPage = try await HunchAPI.shared.createPage(
+            parentDatabaseId: databaseId,
+            properties: createProperties,
+            children: children
+        )
+        print("  ✓ Created page: \(createdPage.id)")
+
+        // Fetch blocks to verify children were created
+        let blocks = try await HunchAPI.shared.fetchBlocks(in: createdPage.id)
+        print("  Fetched \(blocks.count) blocks")
+        XCTAssertEqual(blocks.count, 4, "Should have 4 child blocks")
+
+        let blockTypes = blocks.map { $0.type }
+        XCTAssertEqual(blockTypes[0], .paragraph)
+        XCTAssertEqual(blockTypes[1], .heading2)
+        XCTAssertEqual(blockTypes[2], .bulletedListItem)
+        XCTAssertEqual(blockTypes[3], .bulletedListItem)
+
+        // Verify paragraph content
+        if case .paragraph(let para) = blocks[0].blockTypeObject {
+            let text = para.text.map { $0.plainText }.joined()
+            XCTAssertEqual(text, "This is a test paragraph from integration tests.")
+            print("    ✓ Paragraph: '\(text)'")
+        }
+
+        // Verify heading content
+        if case .heading2(let heading) = blocks[1].blockTypeObject {
+            let text = heading.text.map { $0.plainText }.joined()
+            XCTAssertEqual(text, "Test Heading")
+            print("    ✓ Heading: '\(text)'")
+        }
+
+        // Test block encode/decode roundtrip
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let blockData = try encoder.encode(blocks)
+        let decoded = try JSONDecoder().decode([Block].self, from: blockData)
+        XCTAssertEqual(decoded.count, blocks.count)
+        print("  ✓ Block roundtrip verified")
+
+        // Test markdown rendering
+        let renderer = MarkdownRenderer(level: 0, ignoreColor: false, ignoreUnderline: false)
+        let markdown = try renderer.render(blocks)
+        print("  Rendered markdown:")
+        print(markdown.split(separator: "\n").map { "    \($0)" }.joined(separator: "\n"))
+        XCTAssertTrue(markdown.contains("test paragraph"), "Markdown should contain paragraph text")
+        XCTAssertTrue(markdown.contains("## Test Heading"), "Markdown should contain h2")
+        XCTAssertTrue(markdown.contains("- First bullet"), "Markdown should contain bullet")
+
+        // Clean up: archive the page
+        print("\n  Archiving test page...")
+        let archived = try await HunchAPI.shared.updatePage(pageId: createdPage.id, archived: true)
+        XCTAssertTrue(archived.archived)
+        print("  ✓ Test page archived")
+    }
 }

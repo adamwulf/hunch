@@ -12,6 +12,10 @@ import Foundation
 public struct DatabaseFilter: Codable {
     private let value: JSONValue
 
+    public init(from value: JSONValue) {
+        self.value = value
+    }
+
     public init(from decoder: Decoder) throws {
         value = try JSONValue(from: decoder)
     }

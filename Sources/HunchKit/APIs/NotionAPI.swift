@@ -285,14 +285,15 @@ public class NotionAPI {
     // MARK: - Update Page (PATCH /v1/pages/{id})
 
     private struct UpdatePageBody: Encodable {
-        let properties: JSONValue
+        let properties: JSONValue?
+        let archived: Bool?
     }
 
-    internal func updatePage(pageId: String, properties: JSONValue) async -> Result<Page, NotionAPIServiceError> {
+    internal func updatePage(pageId: String, properties: JSONValue? = nil, archived: Bool? = nil) async -> Result<Page, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             let url = baseURL.appendingPathComponent("pages").appendingPathComponent(pageId)
             do {
-                let bodyData = try jsonEncoder.encode(UpdatePageBody(properties: properties))
+                let bodyData = try jsonEncoder.encode(UpdatePageBody(properties: properties, archived: archived))
                 fetchResources(method: "PATCH",
                                url: url,
                                query: [:],
