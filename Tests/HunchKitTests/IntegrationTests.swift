@@ -1256,6 +1256,323 @@ final class IntegrationTests: XCTestCase {
         print("  ✓ Archived page no longer appears in database queries")
     }
 
+    // MARK: - Comment Tests
+
+    /// Test creating a comment on a page and fetching it back
+    /// Requires the Notion integration to have "Insert comments" and "Read comments" capabilities.
+    func testCommentCreateAndFetch() async throws {
+        print("\n=== testCommentCreateAndFetch ===")
+        let databaseId = "991fa39f-779b-4424-a7c5-d00479a94fe8"
+
+        // Step 1: Create a temporary page to comment on
+        let testTitle = "Comment Test Page \(Int(Date().timeIntervalSince1970))"
+        let createProperties = JSONValue.object([
+            "Name": .object([
+                "title": .array([
+                    .object([
+                        "text": .object([
+                            "content": .string(testTitle)
+                        ])
+                    ])
+                ])
+            ])
+        ])
+
+        let page = try await HunchAPI.shared.createPage(
+            parentDatabaseId: databaseId,
+            properties: createProperties
+        )
+        print("  Created test page: \(page.id)")
+
+        // Ensure cleanup happens even if the test fails
+        defer {
+            Task {
+                _ = try? await HunchAPI.shared.updatePage(pageId: page.id, archived: true)
+            }
+        }
+
+        // Step 2: Try to fetch comments first (read permissions)
+        do {
+            let existingComments = try await HunchAPI.shared.fetchComments(blockId: page.id)
+            print("  Fetched \(existingComments.count) existing comment(s) - read permission OK")
+        } catch {
+            print("  fetchComments failed: \(error)")
+            // Archive and skip if we don't have read comment permissions
+            let archived = try await HunchAPI.shared.updatePage(pageId: page.id, archived: true)
+            XCTAssertTrue(archived.archived)
+            throw XCTSkip("Comment read permission not available (403). Enable 'Read comments' in integration settings.")
+        }
+
+        // Step 3: Create a comment on the page
+        let commentBody: [String: Any] = [
+            "parent": ["page_id": page.id],
+            "rich_text": [
+                [
+                    "text": ["content": "Integration test comment"]
+                ]
+            ]
+        ]
+        let commentData = try JSONSerialization.data(withJSONObject: commentBody)
+
+        let comment: Comment
+        do {
+            comment = try await HunchAPI.shared.createComment(body: commentData)
+        } catch {
+            print("  createComment failed: \(error)")
+            let archived = try await HunchAPI.shared.updatePage(pageId: page.id, archived: true)
+            XCTAssertTrue(archived.archived)
+            throw XCTSkip("Comment create permission not available (403). Enable 'Insert comments' in integration settings.")
+        }
+
+        print("  Created comment: \(comment.id)")
+        XCTAssertEqual(comment.richText.first?.plainText, "Integration test comment")
+        XCTAssertFalse(comment.discussionId.isEmpty, "Comment should have a discussion ID")
+
+        // Step 4: Fetch comments on the page and verify
+        let comments = try await HunchAPI.shared.fetchComments(blockId: page.id)
+        print("  Fetched \(comments.count) comment(s)")
+        XCTAssertGreaterThanOrEqual(comments.count, 1, "Should have at least one comment")
+
+        let found = comments.first(where: { $0.id == comment.id })
+        XCTAssertNotNil(found, "Created comment should appear in fetch results")
+        if let found = found {
+            XCTAssertEqual(found.richText.first?.plainText, "Integration test comment")
+            XCTAssertEqual(found.discussionId, comment.discussionId)
+            print("  Verified comment content matches")
+
+            // Verify encode/decode roundtrip
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let encoded = try encoder.encode(found)
+            let decoded = try JSONDecoder().decode(Comment.self, from: encoded)
+            XCTAssertEqual(decoded.id, found.id)
+            XCTAssertEqual(decoded.richText.first?.plainText, "Integration test comment")
+            print("  Comment roundtrip verified")
+        }
+
+        // Cleanup: archive the page
+        let archived = try await HunchAPI.shared.updatePage(pageId: page.id, archived: true)
+        XCTAssertTrue(archived.archived)
+        print("  Test page archived")
+    }
+
+    // MARK: - Block Mutation Tests
+
+    /// Test appending blocks to an existing page
+    func testAppendBlockChildren() async throws {
+        print("\n=== testAppendBlockChildren ===")
+        let databaseId = "991fa39f-779b-4424-a7c5-d00479a94fe8"
+
+        // Create a temporary page
+        let testTitle = "Append Blocks Test \(Int(Date().timeIntervalSince1970))"
+        let page = try await HunchAPI.shared.createPage(
+            parentDatabaseId: databaseId,
+            properties: JSONValue.object([
+                "Name": .object([
+                    "title": .array([
+                        .object(["text": .object(["content": .string(testTitle)])])
+                    ])
+                ])
+            ])
+        )
+        print("  Created test page: \(page.id)")
+
+        // Append blocks using the raw Data API
+        let appendBody: [String: Any] = [
+            "children": [
+                [
+                    "object": "block",
+                    "type": "paragraph",
+                    "paragraph": [
+                        "rich_text": [
+                            ["type": "text", "text": ["content": "Appended paragraph"]]
+                        ]
+                    ]
+                ],
+                [
+                    "object": "block",
+                    "type": "heading_3",
+                    "heading_3": [
+                        "rich_text": [
+                            ["type": "text", "text": ["content": "Appended heading"]]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        let appendData = try JSONSerialization.data(withJSONObject: appendBody)
+        let appended = try await HunchAPI.shared.appendBlockChildren(blockId: page.id, children: appendData)
+        print("  Appended \(appended.count) blocks")
+        XCTAssertEqual(appended.count, 2)
+        XCTAssertEqual(appended[0].type, .paragraph)
+        XCTAssertEqual(appended[1].type, .heading3)
+
+        // Verify by fetching blocks
+        let blocks = try await HunchAPI.shared.fetchBlocks(in: page.id)
+        print("  Fetched \(blocks.count) blocks from page")
+        XCTAssertEqual(blocks.count, 2)
+
+        if case .paragraph(let para) = blocks[0].blockTypeObject {
+            XCTAssertEqual(para.text.first?.plainText, "Appended paragraph")
+            print("    Paragraph text verified")
+        } else {
+            XCTFail("Expected paragraph block")
+        }
+
+        if case .heading3(let heading) = blocks[1].blockTypeObject {
+            XCTAssertEqual(heading.text.first?.plainText, "Appended heading")
+            print("    Heading text verified")
+        } else {
+            XCTFail("Expected heading_3 block")
+        }
+
+        // Verify roundtrip
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let blockData = try encoder.encode(blocks)
+        let decoded = try JSONDecoder().decode([Block].self, from: blockData)
+        XCTAssertEqual(decoded.count, blocks.count)
+        print("  Block roundtrip verified")
+
+        // Cleanup
+        let archived = try await HunchAPI.shared.updatePage(pageId: page.id, archived: true)
+        XCTAssertTrue(archived.archived)
+        print("  Test page archived")
+    }
+
+    /// Test updating an existing block's content
+    func testUpdateBlock() async throws {
+        print("\n=== testUpdateBlock ===")
+        let databaseId = "991fa39f-779b-4424-a7c5-d00479a94fe8"
+
+        // Create a page with a paragraph
+        let page = try await HunchAPI.shared.createPage(
+            parentDatabaseId: databaseId,
+            properties: JSONValue.object([
+                "Name": .object([
+                    "title": .array([
+                        .object(["text": .object(["content": .string("Update Block Test \(Int(Date().timeIntervalSince1970))")])])
+                    ])
+                ])
+            ]),
+            children: [
+                .object([
+                    "object": .string("block"),
+                    "type": .string("paragraph"),
+                    "paragraph": .object([
+                        "rich_text": .array([
+                            .object(["type": .string("text"), "text": .object(["content": .string("Original text")])])
+                        ])
+                    ])
+                ])
+            ]
+        )
+        print("  Created page: \(page.id)")
+
+        // Get the block ID
+        let blocks = try await HunchAPI.shared.fetchBlocks(in: page.id)
+        XCTAssertEqual(blocks.count, 1)
+        let blockId = blocks[0].id
+        print("  Block to update: \(blockId)")
+
+        // Update the block
+        let updateBody: [String: Any] = [
+            "paragraph": [
+                "rich_text": [
+                    ["type": "text", "text": ["content": "Updated text"]]
+                ]
+            ]
+        ]
+        let updateData = try JSONSerialization.data(withJSONObject: updateBody)
+        let updated = try await HunchAPI.shared.updateBlock(blockId: blockId, body: updateData)
+        print("  Block updated: \(updated.id)")
+        XCTAssertEqual(updated.type, .paragraph)
+
+        if case .paragraph(let para) = updated.blockTypeObject {
+            XCTAssertEqual(para.text.first?.plainText, "Updated text")
+            print("    Updated text verified")
+        } else {
+            XCTFail("Expected paragraph block after update")
+        }
+
+        // Verify by re-fetching
+        let refreshed = try await HunchAPI.shared.fetchBlocks(in: page.id)
+        XCTAssertEqual(refreshed.count, 1)
+        if case .paragraph(let para) = refreshed[0].blockTypeObject {
+            XCTAssertEqual(para.text.first?.plainText, "Updated text")
+            print("    Re-fetched text verified")
+        }
+
+        // Cleanup
+        let archived = try await HunchAPI.shared.updatePage(pageId: page.id, archived: true)
+        XCTAssertTrue(archived.archived)
+        print("  Test page archived")
+    }
+
+    /// Test deleting a block from a page
+    func testDeleteBlock() async throws {
+        print("\n=== testDeleteBlock ===")
+        let databaseId = "991fa39f-779b-4424-a7c5-d00479a94fe8"
+
+        // Create a page with multiple blocks
+        let page = try await HunchAPI.shared.createPage(
+            parentDatabaseId: databaseId,
+            properties: JSONValue.object([
+                "Name": .object([
+                    "title": .array([
+                        .object(["text": .object(["content": .string("Delete Block Test \(Int(Date().timeIntervalSince1970))")])])
+                    ])
+                ])
+            ]),
+            children: [
+                .object([
+                    "object": .string("block"),
+                    "type": .string("paragraph"),
+                    "paragraph": .object([
+                        "rich_text": .array([
+                            .object(["type": .string("text"), "text": .object(["content": .string("Keep this")])])
+                        ])
+                    ])
+                ]),
+                .object([
+                    "object": .string("block"),
+                    "type": .string("paragraph"),
+                    "paragraph": .object([
+                        "rich_text": .array([
+                            .object(["type": .string("text"), "text": .object(["content": .string("Delete this")])])
+                        ])
+                    ])
+                ])
+            ]
+        )
+        print("  Created page with 2 blocks: \(page.id)")
+
+        let blocks = try await HunchAPI.shared.fetchBlocks(in: page.id)
+        XCTAssertEqual(blocks.count, 2)
+        let deleteBlockId = blocks[1].id
+        print("  Block to delete: \(deleteBlockId)")
+
+        // Delete the second block
+        let deleted = try await HunchAPI.shared.deleteBlock(blockId: deleteBlockId)
+        XCTAssertTrue(deleted.archived || deleted.inTrash, "Deleted block should be archived or in trash")
+        print("  Block deleted")
+
+        // Verify only one block remains
+        let remaining = try await HunchAPI.shared.fetchBlocks(in: page.id)
+        XCTAssertEqual(remaining.count, 1, "Should have 1 block remaining after delete")
+        if case .paragraph(let para) = remaining[0].blockTypeObject {
+            XCTAssertEqual(para.text.first?.plainText, "Keep this")
+            print("    Remaining block verified: '\(para.text.first?.plainText ?? "")'")
+        }
+
+        // Cleanup
+        let archived = try await HunchAPI.shared.updatePage(pageId: page.id, archived: true)
+        XCTAssertTrue(archived.archived)
+        print("  Test page archived")
+    }
+
+    // MARK: - Page with Block Children Tests
+
     /// Test creating a page with block children
     func testCreatePageWithChildren() async throws {
         print("\n=== testCreatePageWithChildren ===")
