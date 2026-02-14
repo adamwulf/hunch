@@ -617,4 +617,317 @@ final class IntegrationTests: XCTestCase {
             XCTFail("\(errors.count) error(s) during export simulation:\n" + errors.joined(separator: "\n"))
         }
     }
+
+    // MARK: - Real Export to /tmp
+
+    /// Searches for the "Example" database and runs a real export to /tmp,
+    /// replicating the ExportCommand flow: properties.json, content.json, content.md, .webloc
+    func testExportExampleDatabaseToTmp() async throws {
+        print("\n=== testExportExampleDatabaseToTmp ===")
+
+        // Search for the "Example" database by name
+        let searchResults = try await HunchAPI.shared.search(
+            query: "Example",
+            filter: SearchFilter(value: "database"),
+            limit: 20
+        )
+
+        let exampleDB: Database? = searchResults.compactMap { item -> Database? in
+            guard let db = item as? Database else { return nil }
+            let title = db.title.map { $0.plainText }.joined()
+            print("  Found database: '\(title)' (\(db.id))")
+            if title.lowercased().contains("example") {
+                return db
+            }
+            return nil
+        }.first
+
+        guard let db = exampleDB else {
+            // Fallback: try fetching all databases with a higher limit
+            print("  Search didn't find 'Example'. Trying fetchDatabases with higher limit...")
+            let allDBs = try await HunchAPI.shared.fetchDatabases(parentId: nil, limit: 50)
+            let found = allDBs.first { db in
+                let title = db.title.map { $0.plainText }.joined()
+                print("  Database: '\(title)' (\(db.id))")
+                return title.lowercased().contains("example")
+            }
+            guard let found = found else {
+                throw XCTSkip("No 'Example' database found in this Notion workspace")
+            }
+            try await runExportToTmp(database: found)
+            return
+        }
+
+        try await runExportToTmp(database: db)
+    }
+
+    /// Runs the full export flow for a database, writing files to /tmp/notion_export_test/
+    private func runExportToTmp(database db: Database) async throws {
+        let fm = FileManager.default
+        let outputDir = "/tmp/notion_export_test"
+
+        // Clean up any previous test output
+        if fm.fileExists(atPath: outputDir) {
+            try fm.removeItem(atPath: outputDir)
+        }
+        try fm.createDirectory(atPath: outputDir, withIntermediateDirectories: true)
+
+        let dbTitle = db.title.map { $0.plainText }.joined()
+        print("\n  Exporting database: '\(dbTitle)' (\(db.id))")
+        print("  Output directory: \(outputDir)")
+
+        // Fetch all pages from the database
+        let pages = try await HunchAPI.shared.fetchPages(databaseId: db.id)
+        print("  Fetched \(pages.count) pages")
+        XCTAssertGreaterThan(pages.count, 0, "Expected at least one page in the Example database")
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let dateFormatter = ISO8601DateFormatter()
+        dateFormatter.timeZone = .init(secondsFromGMT: 0)
+        dateFormatter.formatOptions = [.withInternetDateTime]
+
+        var errors: [String] = []
+        var allPropertyTypes: Set<String> = []
+        var allBlockTypes: [String: Int] = [:]
+
+        for page in pages {
+            Self.propertyDecodingErrors = []
+            let pageTitle = page.title.map { $0.plainText }.joined().replacingOccurrences(of: "\n", with: " ")
+            print("\n    Page: '\(pageTitle)' (\(page.id))")
+
+            // Track property types
+            for (name, prop) in page.properties {
+                allPropertyTypes.insert(prop.kind.rawValue)
+                if case .null(_, let type) = prop {
+                    print("      null property: '\(name)' (type: \(type.rawValue))")
+                }
+            }
+
+            // Create page directory structure (matches ExportCommand)
+            let pageDir = (outputDir as NSString).appendingPathComponent(page.id + ".localized")
+            let localizedDir = (pageDir as NSString).appendingPathComponent(".localized")
+            try fm.createDirectory(atPath: pageDir, withIntermediateDirectories: true)
+            try fm.createDirectory(atPath: localizedDir, withIntermediateDirectories: true)
+
+            // Step 1: Write Base.strings
+            let escapedName = pageTitle
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "\t", with: "\\t")
+            let semi = "\u{003B}"
+            let stringsContent = "\"\(page.id)\" = \"\(escapedName)\"\(semi)"
+            let stringsPath = (localizedDir as NSString).appendingPathComponent("Base.strings")
+            try stringsContent.write(toFile: stringsPath, atomically: true, encoding: .utf8)
+            print("      ✓ Base.strings written")
+
+            // Step 2: Write properties.json
+            do {
+                let propertiesData = try encoder.encode(page.properties)
+                let propertiesPath = (pageDir as NSString).appendingPathComponent("properties.json")
+                try propertiesData.write(to: URL(fileURLWithPath: propertiesPath))
+                print("      ✓ properties.json written (\(propertiesData.count) bytes)")
+            } catch {
+                errors.append("properties.json(\(page.id)): \(error)")
+                print("      ✗ properties.json failed: \(error)")
+            }
+
+            // Step 3: Fetch blocks
+            let blocks: [Block]
+            do {
+                blocks = try await HunchAPI.shared.fetchBlocks(in: page.id)
+                print("      ✓ Fetched \(blocks.count) blocks")
+
+                // Track block types
+                let typeCounts = Self.collectBlockTypes(from: blocks)
+                for (blockType, count) in typeCounts {
+                    allBlockTypes[blockType, default: 0] += count
+                }
+                if !typeCounts.isEmpty {
+                    let typeStr = typeCounts.sorted(by: { $0.key < $1.key }).map { "\($0.key):\($0.value)" }.joined(separator: ", ")
+                    print("        Block types: [\(typeStr)]")
+                }
+            } catch {
+                let desc: String
+                if let decodingError = Self.extractDecodingError(from: error) {
+                    desc = Self.describeDecodingError(decodingError)
+                } else {
+                    desc = "\(error)"
+                }
+                errors.append("fetchBlocks(\(page.id)): \(desc)")
+                print("      ✗ fetchBlocks failed: \(desc)")
+                continue
+            }
+
+            // Step 4: Write content.json (block cache)
+            do {
+                let blockData = try encoder.encode(blocks)
+                let contentJsonPath = (pageDir as NSString).appendingPathComponent("content.json")
+                try blockData.write(to: URL(fileURLWithPath: contentJsonPath))
+                print("      ✓ content.json written (\(blockData.count) bytes)")
+
+                // Verify roundtrip
+                let decoded = try JSONDecoder().decode([Block].self, from: blockData)
+                XCTAssertEqual(decoded.count, blocks.count,
+                               "Block count mismatch after roundtrip for page \(page.id)")
+                print("      ✓ content.json roundtrip verified (\(decoded.count) blocks)")
+            } catch {
+                let desc: String
+                if let decodingError = error as? DecodingError {
+                    desc = Self.describeDecodingError(decodingError)
+                } else {
+                    desc = "\(error)"
+                }
+                errors.append("content.json(\(page.id)): \(desc)")
+                print("      ✗ content.json failed: \(desc)")
+            }
+
+            // Step 5: Render markdown (like ExportCommand does)
+            do {
+                let renderer = MarkdownRenderer(
+                    level: 0,
+                    ignoreColor: false,
+                    ignoreUnderline: false,
+                    downloadedAssets: [:])
+
+                // Build frontmatter (same as ExportCommand)
+                let selectProperties = page.properties
+                    .sorted(by: { $0.key < $1.key })
+                    .compactMap { (name: String, prop: Property) -> (String, [String])? in
+                        switch prop {
+                        case .multiSelect(_, let values):
+                            return (name, values.map { $0.name })
+                        case .select(_, let value):
+                            return (name, [value.name])
+                        case .url(_, let value):
+                            return (name, [value])
+                        case .formula(_, let value):
+                            return (name, [value.type.stringValue ?? ""])
+                        case .checkbox(_, let value):
+                            return (name, [value ? "Yes" : "No"])
+                        case .number(_, let value):
+                            return (name, [String(value)])
+                        case .date(_, let value):
+                            let formatter = ISO8601DateFormatter()
+                            let start = formatter.string(from: value.start)
+                            let end = value.end.map { formatter.string(from: $0) }
+                            return (name, [start] + (end.map { [" - ", $0] } ?? []))
+                        case .email(_, let value):
+                            return (name, [value])
+                        case .phoneNumber(_, let value):
+                            return (name, [value])
+                        case .relation(_, let values):
+                            return (name, values.map { $0.id })
+                        case .rollup(_, let value):
+                            return (name, [value.value])
+                        case .people(_, let users):
+                            return (name, users.compactMap { $0.name })
+                        case .file(_, let files), .files(_, let files):
+                            return (name, files.map { $0.url })
+                        case .createdBy(_, let user):
+                            return (name, [user.name].compactMap({ $0 }))
+                        case .lastEditedBy(_, let user):
+                            return (name, [user.name].compactMap({ $0 }))
+                        default:
+                            return nil
+                        }
+                    }
+
+                let emoji = page.icon?.emoji.map({ $0 + " " }) ?? ""
+                let titleHeader = """
+                    ---
+                    title: "\(emoji)\(try renderer.render(page.title))"
+                    created: \(dateFormatter.string(from: page.created))
+                    lastEdited: \(dateFormatter.string(from: page.lastEdited))
+                    archived: \(page.archived)
+                    id: \(page.id)
+                    \(selectProperties.map { name, values in
+                        "\(name.lowercased()): \(values.joined(separator: ", "))"
+                    }.joined(separator: "\n"))
+                    ---
+
+
+                    """
+
+                let markdown = titleHeader + (try renderer.render([page] + blocks))
+                let mdPath = (pageDir as NSString).appendingPathComponent("content.md")
+                try markdown.write(toFile: mdPath, atomically: true, encoding: .utf8)
+                print("      ✓ content.md written (\(markdown.count) chars)")
+            } catch {
+                errors.append("markdown(\(page.id)): \(error)")
+                print("      ✗ Markdown rendering failed: \(error)")
+            }
+
+            // Step 6: Write .webloc file
+            do {
+                let weblocContent = """
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+                    <plist version="1.0">
+                    <dict>
+                        <key>URL</key>
+                        <string>https://www.notion.so/\(page.id.replacingOccurrences(of: "-", with: ""))</string>
+                    </dict>
+                    </plist>
+                    """
+                var filename = pageTitle
+                if filename.isEmpty { filename = "Link" }
+                // Sanitize filename: replace path separators and other unsafe characters
+                filename = filename
+                    .replacingOccurrences(of: "/", with: "_")
+                    .replacingOccurrences(of: ":", with: "_")
+                let maxLength = 255 - ".webloc".count
+                if filename.count > maxLength {
+                    filename = String(filename.prefix(maxLength))
+                }
+                let weblocPath = (pageDir as NSString).appendingPathComponent(filename + ".webloc")
+                try weblocContent.write(toFile: weblocPath, atomically: true, encoding: .utf8)
+                print("      ✓ .webloc written")
+            } catch {
+                errors.append("webloc(\(page.id)): \(error)")
+                print("      ✗ .webloc failed: \(error)")
+            }
+
+            // Report property decoding issues
+            if !Self.propertyDecodingErrors.isEmpty {
+                print("      ⚠️ \(Self.propertyDecodingErrors.count) property decoding error(s):")
+                for err in Self.propertyDecodingErrors {
+                    print("        type='\(err.key)' error='\(err.error)'")
+                }
+            }
+        }
+
+        // Print summary
+        print("\n  === Export Complete ===")
+        print("  Output: \(outputDir)")
+        print("  Pages exported: \(pages.count)")
+        print("  Property types: \(allPropertyTypes.sorted().joined(separator: ", "))")
+        print("  Block types: \(allBlockTypes.sorted(by: { $0.key < $1.key }).map { "\($0.key):\($0.value)" }.joined(separator: ", "))")
+
+        // Verify output files exist
+        let exportedDirs = try fm.contentsOfDirectory(atPath: outputDir)
+            .filter { $0.hasSuffix(".localized") }
+        print("  Exported directories: \(exportedDirs.count)")
+
+        for dir in exportedDirs {
+            let dirPath = (outputDir as NSString).appendingPathComponent(dir)
+            let files = try fm.contentsOfDirectory(atPath: dirPath)
+            print("    \(dir): \(files.joined(separator: ", "))")
+
+            // Verify key files exist
+            XCTAssertTrue(files.contains("properties.json"), "Missing properties.json in \(dir)")
+            XCTAssertTrue(files.contains("content.json"), "Missing content.json in \(dir)")
+            XCTAssertTrue(files.contains("content.md"), "Missing content.md in \(dir)")
+        }
+
+        if errors.isEmpty {
+            print("\n  All operations succeeded!")
+        } else {
+            print("\n  \(errors.count) error(s):")
+            for err in errors {
+                print("    - \(err)")
+            }
+            XCTFail("\(errors.count) error(s) during export:\n" + errors.joined(separator: "\n"))
+        }
+    }
 }
