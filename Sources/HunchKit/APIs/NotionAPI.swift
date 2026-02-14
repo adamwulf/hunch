@@ -182,11 +182,25 @@ public class NotionAPI {
 
     internal func fetchDatabases(cursor: String?, parentId: String?) async -> Result<DatabaseList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
-            fetchResources(url: baseURL.appendingPathComponent("databases"),
-                           query: ["start_cursor": cursor, "parent": parentId].compactMapValues({ $0 }),
-                           completion: { result in
-                continuation.resume(returning: result)
-            })
+            do {
+                // The GET /v1/databases endpoint is deprecated. Use POST /v1/search with a database filter instead.
+                var body: [String: Any] = [
+                    "filter": ["value": "database", "property": "object"]
+                ]
+                if let cursor = cursor {
+                    body["start_cursor"] = cursor
+                }
+                let bodyData = try JSONSerialization.data(withJSONObject: body, options: [])
+                fetchResources(method: "POST",
+                               url: baseURL.appendingPathComponent("search"),
+                               query: [:],
+                               body: bodyData,
+                               completion: { result in
+                    continuation.resume(returning: result)
+                })
+            } catch {
+                continuation.resume(returning: .failure(.encodeError(error)))
+            }
         }
     }
 
