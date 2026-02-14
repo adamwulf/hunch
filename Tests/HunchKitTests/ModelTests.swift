@@ -1022,4 +1022,319 @@ final class ModelTests: XCTestCase {
         let decoded = try decoder.decode(Icon.self, from: encoded)
         XCTAssertEqual(decoded.emoji, "🔥")
     }
+
+    func testIconExternalDecode() throws {
+        let json = """
+        {"type": "external", "external": {"url": "https://example.com/icon.png"}}
+        """
+        let icon = try decoder.decode(Icon.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(icon.type, "external")
+        XCTAssertNil(icon.emoji)
+        XCTAssertEqual(icon.external?.url, "https://example.com/icon.png")
+
+        let encoded = try encoder.encode(icon)
+        let decoded = try decoder.decode(Icon.self, from: encoded)
+        XCTAssertEqual(decoded.external?.url, "https://example.com/icon.png")
+    }
+
+    func testIconFileDecode() throws {
+        let json = """
+        {"type": "file", "file": {"url": "https://s3.amazonaws.com/icon.png"}}
+        """
+        let icon = try notionDecoder.decode(Icon.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(icon.type, "file")
+        XCTAssertEqual(icon.file?.url, "https://s3.amazonaws.com/icon.png")
+    }
+
+    // MARK: - Color Enum Tests
+
+    func testAllColorRawValues() throws {
+        // Verify every Color case roundtrips through its raw value
+        let allColors: [(Color, String)] = [
+            (.plain, "default"),
+            (.gray, "gray"),
+            (.brown, "brown"),
+            (.orange, "orange"),
+            (.yellow, "yellow"),
+            (.green, "green"),
+            (.blue, "blue"),
+            (.purple, "purple"),
+            (.pink, "pink"),
+            (.red, "red"),
+            (.grayBackground, "gray_background"),
+            (.brownBackground, "brown_background"),
+            (.orangeBackground, "orange_background"),
+            (.yellowBackground, "yellow_background"),
+            (.greenBackground, "green_background"),
+            (.blueBackground, "blue_background"),
+            (.purpleBackground, "purple_background"),
+            (.pinkBackground, "pink_background"),
+            (.redBackground, "red_background")
+        ]
+
+        for (color, rawValue) in allColors {
+            XCTAssertEqual(color.rawValue, rawValue, "Color \(color) should have raw value '\(rawValue)'")
+
+            // Roundtrip through JSON
+            let json = "\"\(rawValue)\""
+            let decoded = try decoder.decode(Color.self, from: json.data(using: .utf8)!)
+            XCTAssertEqual(decoded, color, "Decoding '\(rawValue)' should produce \(color)")
+
+            let encoded = try encoder.encode(color)
+            let reDecoded = try decoder.decode(Color.self, from: encoded)
+            XCTAssertEqual(reDecoded, color, "Roundtrip for \(color) failed")
+        }
+    }
+
+    // MARK: - PartialUser Tests
+
+    func testPartialUserRoundtrip() throws {
+        let json = """
+        {"object": "user", "id": "user-abc-123"}
+        """
+        let user = try decoder.decode(PartialUser.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(user.object, "user")
+        XCTAssertEqual(user.id, "user-abc-123")
+
+        let encoded = try encoder.encode(user)
+        let decoded = try decoder.decode(PartialUser.self, from: encoded)
+        XCTAssertEqual(decoded.object, "user")
+        XCTAssertEqual(decoded.id, "user-abc-123")
+    }
+
+    // MARK: - NotionDate Tests
+
+    func testNotionDateWithEnd() throws {
+        let json = """
+        {"start": "2025-01-15", "end": "2025-01-20"}
+        """
+        let date = try decoder.decode(NotionDate.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(date.start, "2025-01-15")
+        XCTAssertEqual(date.end, "2025-01-20")
+
+        let encoded = try encoder.encode(date)
+        let decoded = try decoder.decode(NotionDate.self, from: encoded)
+        XCTAssertEqual(decoded.start, "2025-01-15")
+        XCTAssertEqual(decoded.end, "2025-01-20")
+    }
+
+    func testNotionDateWithoutEnd() throws {
+        let json = """
+        {"start": "2025-01-15", "end": null}
+        """
+        let date = try decoder.decode(NotionDate.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(date.start, "2025-01-15")
+        XCTAssertNil(date.end)
+    }
+
+    // MARK: - Annotation Tests
+
+    func testAnnotationPlainEquality() throws {
+        let plain = Annotation.plain
+        XCTAssertFalse(plain.bold)
+        XCTAssertFalse(plain.italic)
+        XCTAssertFalse(plain.strikethrough)
+        XCTAssertFalse(plain.underline)
+        XCTAssertFalse(plain.code)
+        XCTAssertEqual(plain.color, .plain)
+    }
+
+    func testAnnotationRoundtrip() throws {
+        let json = """
+        {"bold": true, "italic": true, "strikethrough": true, "underline": true, "code": true, "color": "red_background"}
+        """
+        let annotation = try decoder.decode(Annotation.self, from: json.data(using: .utf8)!)
+        XCTAssertTrue(annotation.bold)
+        XCTAssertTrue(annotation.italic)
+        XCTAssertTrue(annotation.strikethrough)
+        XCTAssertTrue(annotation.underline)
+        XCTAssertTrue(annotation.code)
+        XCTAssertEqual(annotation.color, .redBackground)
+
+        let encoded = try encoder.encode(annotation)
+        let decoded = try decoder.decode(Annotation.self, from: encoded)
+        XCTAssertEqual(decoded, annotation)
+    }
+
+    // MARK: - RichText.Mention Tests
+
+    func testRichTextMentionUserDecode() throws {
+        let json = """
+        {
+            "type": "user",
+            "user": {"object": "user", "id": "user-abc", "type": "person", "name": "Alice", "avatar_url": null}
+        }
+        """
+        let mention = try decoder.decode(RichText.Mention.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(mention.type, .user)
+        XCTAssertEqual(mention.user?.id, "user-abc")
+        XCTAssertEqual(mention.user?.name, "Alice")
+        XCTAssertNil(mention.page)
+        XCTAssertNil(mention.database)
+        XCTAssertNil(mention.date)
+
+        let encoded = try encoder.encode(mention)
+        let decoded = try decoder.decode(RichText.Mention.self, from: encoded)
+        XCTAssertEqual(decoded.type, .user)
+        XCTAssertEqual(decoded.user?.name, "Alice")
+    }
+
+    func testRichTextMentionPageDecode() throws {
+        let json = """
+        {
+            "type": "page",
+            "page": {"id": "page-linked-id"}
+        }
+        """
+        let mention = try decoder.decode(RichText.Mention.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(mention.type, .page)
+        XCTAssertEqual(mention.page?.id, "page-linked-id")
+        XCTAssertNil(mention.user)
+    }
+
+    func testRichTextMentionDatabaseDecode() throws {
+        let json = """
+        {
+            "type": "database",
+            "database": {"id": "db-linked-id"}
+        }
+        """
+        let mention = try decoder.decode(RichText.Mention.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(mention.type, .database)
+        XCTAssertEqual(mention.database?.id, "db-linked-id")
+    }
+
+    func testRichTextMentionDateDecode() throws {
+        let json = """
+        {
+            "type": "date",
+            "date": {"start": "2025-06-15", "end": null}
+        }
+        """
+        let mention = try decoder.decode(RichText.Mention.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(mention.type, .date)
+        XCTAssertEqual(mention.date?.start, "2025-06-15")
+        XCTAssertNil(mention.date?.end)
+    }
+
+    // MARK: - Reference Tests
+
+    func testReferenceRoundtrip() throws {
+        let json = """
+        {"id": "ref-abc-123"}
+        """
+        let ref = try decoder.decode(Reference.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(ref.id, "ref-abc-123")
+
+        let encoded = try encoder.encode(ref)
+        let decoded = try decoder.decode(Reference.self, from: encoded)
+        XCTAssertEqual(decoded.id, "ref-abc-123")
+    }
+
+    // MARK: - Link Tests
+
+    func testLinkRoundtrip() throws {
+        let json = """
+        {"url": "https://example.com/link"}
+        """
+        let link = try decoder.decode(Link.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(link.url, "https://example.com/link")
+        XCTAssertEqual(link.type, "url")
+
+        let encoded = try encoder.encode(link)
+        let decoded = try decoder.decode(Link.self, from: encoded)
+        XCTAssertEqual(decoded.url, "https://example.com/link")
+    }
+
+    // MARK: - SelectOption Tests
+
+    func testSelectOptionRoundtrip() throws {
+        let json = """
+        {"id": "opt-1", "name": "Priority", "color": "red"}
+        """
+        let opt = try decoder.decode(SelectOption.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(opt.id, "opt-1")
+        XCTAssertEqual(opt.name, "Priority")
+        XCTAssertEqual(opt.color, .red)
+
+        let encoded = try encoder.encode(opt)
+        let decoded = try decoder.decode(SelectOption.self, from: encoded)
+        XCTAssertEqual(decoded.name, "Priority")
+        XCTAssertEqual(decoded.color, .red)
+    }
+
+    // MARK: - StatusOption Tests
+
+    func testStatusOptionWithAllFields() throws {
+        let json = """
+        {"id": "st-1", "name": "Done", "color": "green"}
+        """
+        let opt = try decoder.decode(StatusOption.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(opt.id, "st-1")
+        XCTAssertEqual(opt.name, "Done")
+        XCTAssertEqual(opt.color, .green)
+    }
+
+    func testStatusOptionMinimal() throws {
+        let json = """
+        {"name": "Unknown"}
+        """
+        let opt = try decoder.decode(StatusOption.self, from: json.data(using: .utf8)!)
+        XCTAssertNil(opt.id)
+        XCTAssertEqual(opt.name, "Unknown")
+        XCTAssertNil(opt.color)
+    }
+
+    // MARK: - UniqueId Tests
+
+    func testUniqueIdWithPrefix() throws {
+        let json = """
+        {"number": 42, "prefix": "TASK"}
+        """
+        let uid = try decoder.decode(UniqueId.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(uid.number, 42)
+        XCTAssertEqual(uid.prefix, "TASK")
+
+        let encoded = try encoder.encode(uid)
+        let decoded = try decoder.decode(UniqueId.self, from: encoded)
+        XCTAssertEqual(decoded.number, 42)
+        XCTAssertEqual(decoded.prefix, "TASK")
+    }
+
+    func testUniqueIdWithoutPrefix() throws {
+        let json = """
+        {"number": 7}
+        """
+        let uid = try decoder.decode(UniqueId.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(uid.number, 7)
+        XCTAssertNil(uid.prefix)
+    }
+
+    // MARK: - Relation Tests
+
+    func testRelationRoundtrip() throws {
+        let json = """
+        {"id": "related-page-id"}
+        """
+        let rel = try decoder.decode(Relation.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(rel.id, "related-page-id")
+
+        let encoded = try encoder.encode(rel)
+        let decoded = try decoder.decode(Relation.self, from: encoded)
+        XCTAssertEqual(decoded.id, "related-page-id")
+    }
+
+    // MARK: - Rollup Tests
+
+    func testRollupRoundtrip() throws {
+        let json = """
+        {"value": "aggregated result"}
+        """
+        let rollup = try decoder.decode(Rollup.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(rollup.value, "aggregated result")
+
+        let encoded = try encoder.encode(rollup)
+        let decoded = try decoder.decode(Rollup.self, from: encoded)
+        XCTAssertEqual(decoded.value, "aggregated result")
+    }
 }
