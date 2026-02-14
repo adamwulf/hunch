@@ -26,12 +26,12 @@ struct UpdatePageCommand: AsyncParsableCommand {
 
     func run() async {
         do {
-            guard let data = properties.data(using: .utf8),
-                  let props = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            guard let data = properties.data(using: .utf8) else {
                 print("error: invalid properties JSON")
                 return
             }
 
+            let props = try JSONDecoder().decode(JSONValue.self, from: data)
             let page = try await HunchAPI.shared.updatePage(pageId: pageId, properties: props)
             Hunch.output(list: [page], format: format)
         } catch {

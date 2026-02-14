@@ -29,23 +29,28 @@ struct CreatePageCommand: AsyncParsableCommand {
 
     func run() async {
         do {
-            var props: [String: Any] = [:]
+            var propsDict: [String: JSONValue] = [:]
 
             if let propertiesJSON = properties,
-               let data = propertiesJSON.data(using: .utf8),
-               let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                props = parsed
+               let data = propertiesJSON.data(using: .utf8) {
+                let parsed = try JSONDecoder().decode(JSONValue.self, from: data)
+                if case .object(let dict) = parsed {
+                    propsDict = dict
+                }
             }
 
             if let title = title {
-                props["Name"] = [
-                    "title": [
-                        ["text": ["content": title]]
-                    ]
-                ]
+                propsDict["Name"] = .object([
+                    "title": .array([
+                        .object(["text": .object(["content": .string(title)])])
+                    ])
+                ])
             }
 
-            let page = try await HunchAPI.shared.createPage(parentDatabaseId: database, properties: props)
+            let page = try await HunchAPI.shared.createPage(
+                parentDatabaseId: database,
+                properties: .object(propsDict)
+            )
             Hunch.output(list: [page], format: format)
         } catch {
             fatalError("error: \(error.localizedDescription)")

@@ -22,7 +22,7 @@ public struct DatabaseFilter: Codable {
 }
 
 /// A generic JSON value type for preserving arbitrary JSON structures.
-internal indirect enum JSONValue: Codable {
+public indirect enum JSONValue: Codable {
     case string(String)
     case number(Double)
     case bool(Bool)
@@ -30,7 +30,7 @@ internal indirect enum JSONValue: Codable {
     case array([JSONValue])
     case object([String: JSONValue])
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
             self = .null
@@ -52,7 +52,7 @@ internal indirect enum JSONValue: Codable {
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
         case .null:

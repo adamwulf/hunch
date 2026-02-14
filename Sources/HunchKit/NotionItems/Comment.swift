@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct Comment: Codable {
+public struct Comment: NotionItem {
     public internal(set) var object: String
     public internal(set) var id: String
     public internal(set) var parent: Parent?
@@ -16,6 +16,10 @@ public struct Comment: Codable {
     public internal(set) var lastEditedTime: String
     public internal(set) var createdBy: PartialUser
     public internal(set) var richText: [RichText]
+
+    public var description: String {
+        return richText.map({ $0.plainText }).joined()
+    }
 
     enum CodingKeys: String, CodingKey {
         case object

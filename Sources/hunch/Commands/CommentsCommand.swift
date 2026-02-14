@@ -24,24 +24,25 @@ struct CommentsCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Discussion ID for threaded replies")
     var discussionId: String?
 
+    @Option(name: .shortAndLong, help: "The format of the output")
+    var format: Hunch.Format = .id
+
     func run() async {
         do {
             if let commentText = add {
-                let body = buildCommentBody(text: commentText)
+                let body = try buildCommentBody(text: commentText)
                 let comment = try await HunchAPI.shared.createComment(body: body)
-                printComment(comment)
+                Hunch.output(list: [comment], format: format)
             } else {
                 let comments = try await HunchAPI.shared.fetchComments(blockId: blockId)
-                for comment in comments {
-                    printComment(comment)
-                }
+                Hunch.output(list: comments, format: format)
             }
         } catch {
             fatalError("error: \(error.localizedDescription)")
         }
     }
 
-    private func buildCommentBody(text: String) -> Data {
+    private func buildCommentBody(text: String) throws -> Data {
         var body: [String: Any] = [
             "rich_text": [
                 [
@@ -57,12 +58,6 @@ struct CommentsCommand: AsyncParsableCommand {
             body["parent"] = ["page_id": blockId]
         }
 
-        // swiftlint:disable:next force_try
-        return try! JSONSerialization.data(withJSONObject: body, options: [])
-    }
-
-    private func printComment(_ comment: Comment) {
-        let text = comment.richText.map({ $0.plainText }).joined()
-        print("\(comment.id) [\(comment.createdTime)] \(text)")
+        return try JSONSerialization.data(withJSONObject: body, options: [])
     }
 }

@@ -140,6 +140,33 @@ final class PropertyTests: XCTestCase {
         }
     }
 
+    func testUniqueIdPropertyEncodeDecode() throws {
+        let encoder = JSONEncoder()
+        let json = """
+        {
+            "id": "def",
+            "type": "unique_id",
+            "unique_id": {
+                "number": 42,
+                "prefix": "BUG"
+            }
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let property = try decoder.decode(Property.self, from: data)
+        let encoded = try encoder.encode(property)
+        let decoded = try decoder.decode(Property.self, from: encoded)
+
+        if case .uniqueId(let id, let value) = decoded {
+            XCTAssertEqual(id, "def")
+            XCTAssertEqual(value.number, 42)
+            XCTAssertEqual(value.prefix, "BUG")
+        } else {
+            XCTFail("Expected .uniqueId property after roundtrip, got \(decoded)")
+        }
+    }
+
     func testStatusPropertyEncodeDecode() throws {
         let encoder = JSONEncoder()
         let json = """

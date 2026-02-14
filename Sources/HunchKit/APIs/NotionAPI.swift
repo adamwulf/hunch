@@ -270,12 +270,15 @@ public class NotionAPI {
 
     // MARK: - Update Page (PATCH /v1/pages/{id})
 
-    internal func updatePage(pageId: String, properties: [String: Any]) async -> Result<Page, NotionAPIServiceError> {
+    private struct UpdatePageBody: Encodable {
+        let properties: JSONValue
+    }
+
+    internal func updatePage(pageId: String, properties: JSONValue) async -> Result<Page, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             let url = baseURL.appendingPathComponent("pages").appendingPathComponent(pageId)
             do {
-                let body: [String: Any] = ["properties": properties]
-                let bodyData = try JSONSerialization.data(withJSONObject: body, options: [])
+                let bodyData = try jsonEncoder.encode(UpdatePageBody(properties: properties))
                 fetchResources(method: "PATCH",
                                url: url,
                                query: [:],
@@ -290,18 +293,26 @@ public class NotionAPI {
 
     // MARK: - Create Page (POST /v1/pages)
 
-    internal func createPage(parentDatabaseId: String, properties: [String: Any], children: [[String: Any]]? = nil) async -> Result<Page, NotionAPIServiceError> {
+    private struct CreatePageBody: Encodable {
+        let parent: ParentRef
+        let properties: JSONValue
+        let children: [JSONValue]?
+
+        struct ParentRef: Encodable {
+            let database_id: String
+        }
+    }
+
+    internal func createPage(parentDatabaseId: String, properties: JSONValue, children: [JSONValue]? = nil) async -> Result<Page, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             let url = baseURL.appendingPathComponent("pages")
             do {
-                var body: [String: Any] = [
-                    "parent": ["database_id": parentDatabaseId],
-                    "properties": properties
-                ]
-                if let children = children {
-                    body["children"] = children
-                }
-                let bodyData = try JSONSerialization.data(withJSONObject: body, options: [])
+                let body = CreatePageBody(
+                    parent: CreatePageBody.ParentRef(database_id: parentDatabaseId),
+                    properties: properties,
+                    children: children
+                )
+                let bodyData = try jsonEncoder.encode(body)
                 fetchResources(method: "POST",
                                url: url,
                                query: [:],

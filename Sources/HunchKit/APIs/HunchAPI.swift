@@ -120,7 +120,7 @@ public class HunchAPI {
 
     // MARK: - Update Page
 
-    public func updatePage(pageId: String, properties: [String: Any]) async throws -> Page {
+    public func updatePage(pageId: String, properties: JSONValue) async throws -> Page {
         let result = await notion.updatePage(pageId: pageId, properties: properties)
         switch result {
         case .success(let page):
@@ -132,7 +132,7 @@ public class HunchAPI {
 
     // MARK: - Create Page
 
-    public func createPage(parentDatabaseId: String, properties: [String: Any], children: [[String: Any]]? = nil) async throws -> Page {
+    public func createPage(parentDatabaseId: String, properties: JSONValue, children: [JSONValue]? = nil) async throws -> Page {
         let result = await notion.createPage(parentDatabaseId: parentDatabaseId, properties: properties, children: children)
         switch result {
         case .success(let page):
@@ -185,7 +185,7 @@ public class HunchAPI {
             switch result {
             case .success(let commentList):
                 comments.append(contentsOf: commentList.results)
-                cursor = commentList.hasMore ? commentList.nextCursor : nil
+                cursor = commentList.nextCursor
             case .failure(let error):
                 throw HunchAPIError.apiError(error)
             }
@@ -220,7 +220,7 @@ public class HunchAPI {
                     count += 1
                     guard count < limit else { return items }
                 }
-                cursor = searchResults.hasMore ? searchResults.nextCursor : nil
+                cursor = searchResults.nextCursor
             case .failure(let error):
                 throw HunchAPIError.apiError(error)
             }

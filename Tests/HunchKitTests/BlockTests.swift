@@ -952,6 +952,42 @@ final class BlockTests: XCTestCase {
         }
     }
 
+    func testNumberedListItemBlock() throws {
+        let block = Block(
+            object: "block",
+            id: "test-id",
+            parent: nil,
+            type: .numberedListItem,
+            createdTime: "2024-01-01",
+            createdBy: PartialUser(object: "user", id: "user-id"),
+            lastEditedTime: "2024-01-01",
+            lastEditedBy: PartialUser(object: "user", id: "user-id"),
+            archived: false,
+            inTrash: false,
+            hasChildren: false,
+            blockTypeObject: .numberedListItem(NumberedListItemBlock(
+                text: [RichText(
+                    plainText: "numbered item",
+                    annotations: .plain,
+                    type: "text",
+                    text: RichText.Text(content: "numbered item")
+                )],
+                color: .plain
+            ))
+        )
+
+        let data = try encoder.encode(block)
+        let decoded = try decoder.decode(Block.self, from: data)
+
+        if case .numberedListItem(let original) = block.blockTypeObject,
+           case .numberedListItem(let decoded) = decoded.blockTypeObject {
+            XCTAssertEqual(original.text.first?.plainText, decoded.text.first?.plainText)
+            XCTAssertEqual(original.color, decoded.color)
+        } else {
+            XCTFail("Wrong block type")
+        }
+    }
+
     func testTemplateBlock() throws {
         let block = Block(
             object: "block",
@@ -984,6 +1020,84 @@ final class BlockTests: XCTestCase {
             XCTAssertEqual(original.text.first?.plainText, decoded.text.first?.plainText)
         } else {
             XCTFail("Wrong block type")
+        }
+    }
+
+    // MARK: - Hardcoded JSON Decode Test
+
+    func testParagraphBlockFromNotionAPIJSON() throws {
+        // Real Notion API response format using "rich_text" as the JSON key
+        let json = """
+        {
+            "object": "block",
+            "id": "abc-123",
+            "parent": {
+                "type": "page_id",
+                "page_id": "parent-page-id"
+            },
+            "type": "paragraph",
+            "created_time": "2024-06-15T10:30:00.000Z",
+            "created_by": {
+                "object": "user",
+                "id": "user-abc"
+            },
+            "last_edited_time": "2024-06-15T11:00:00.000Z",
+            "last_edited_by": {
+                "object": "user",
+                "id": "user-abc"
+            },
+            "archived": false,
+            "in_trash": false,
+            "has_children": false,
+            "paragraph": {
+                "rich_text": [
+                    {
+                        "type": "text",
+                        "text": {
+                            "content": "Hello world",
+                            "link": null
+                        },
+                        "annotations": {
+                            "bold": true,
+                            "italic": false,
+                            "strikethrough": false,
+                            "underline": false,
+                            "code": false,
+                            "color": "default"
+                        },
+                        "plain_text": "Hello world",
+                        "href": null
+                    }
+                ],
+                "color": "default"
+            }
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let block = try decoder.decode(Block.self, from: data)
+
+        XCTAssertEqual(block.id, "abc-123")
+        XCTAssertEqual(block.type, .paragraph)
+        XCTAssertEqual(block.object, "block")
+        XCTAssertFalse(block.archived)
+        XCTAssertFalse(block.inTrash)
+        XCTAssertFalse(block.hasChildren)
+
+        if case .paragraph(let paragraph) = block.blockTypeObject {
+            XCTAssertEqual(paragraph.text.count, 1)
+            XCTAssertEqual(paragraph.text.first?.plainText, "Hello world")
+            XCTAssertEqual(paragraph.text.first?.annotations.bold, true)
+            XCTAssertEqual(paragraph.text.first?.annotations.italic, false)
+            XCTAssertEqual(paragraph.color, .plain)
+        } else {
+            XCTFail("Expected paragraph block type")
+        }
+
+        if case .page(let pageId) = block.parent {
+            XCTAssertEqual(pageId, "parent-page-id")
+        } else {
+            XCTFail("Expected page parent")
         }
     }
 }
