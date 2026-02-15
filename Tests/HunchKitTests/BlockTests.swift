@@ -806,6 +806,98 @@ final class BlockTests: XCTestCase {
         }
     }
 
+    func testImageBlock() throws {
+        let block = Block(
+            object: "block",
+            id: "test-id",
+            parent: nil,
+            type: .image,
+            createdTime: "2024-01-01",
+            createdBy: PartialUser(object: "user", id: "user-id"),
+            lastEditedTime: "2024-01-01",
+            lastEditedBy: PartialUser(object: "user", id: "user-id"),
+            archived: false,
+            inTrash: false,
+            hasChildren: false,
+            blockTypeObject: .image(ImageBlock(
+                image: FileBlock(
+                    caption: [RichText(
+                        plainText: "a sunset photo",
+                        annotations: .plain,
+                        type: "text",
+                        text: RichText.Text(content: "a sunset photo")
+                    )],
+                    type: .external(FileBlock.FileType.External(url: "https://example.com/sunset.png"))
+                )
+            ))
+        )
+
+        let data = try encoder.encode(block)
+        let decoded = try decoder.decode(Block.self, from: data)
+
+        XCTAssertEqual(block.id, decoded.id)
+        XCTAssertEqual(block.type, decoded.type)
+
+        if case .image(let original) = block.blockTypeObject,
+           case .image(let decoded) = decoded.blockTypeObject {
+            XCTAssertEqual(original.image.caption?.first?.plainText, decoded.image.caption?.first?.plainText)
+            if case .external(let originalExt) = original.image.type,
+               case .external(let decodedExt) = decoded.image.type {
+                XCTAssertEqual(originalExt.url, decodedExt.url)
+            } else {
+                XCTFail("Wrong image file type")
+            }
+        } else {
+            XCTFail("Wrong block type")
+        }
+    }
+
+    func testPdfBlock() throws {
+        let block = Block(
+            object: "block",
+            id: "test-id",
+            parent: nil,
+            type: .pdf,
+            createdTime: "2024-01-01",
+            createdBy: PartialUser(object: "user", id: "user-id"),
+            lastEditedTime: "2024-01-01",
+            lastEditedBy: PartialUser(object: "user", id: "user-id"),
+            archived: false,
+            inTrash: false,
+            hasChildren: false,
+            blockTypeObject: .pdf(PdfBlock(
+                pdf: FileBlock(
+                    caption: [RichText(
+                        plainText: "quarterly report",
+                        annotations: .plain,
+                        type: "text",
+                        text: RichText.Text(content: "quarterly report")
+                    )],
+                    type: .external(FileBlock.FileType.External(url: "https://example.com/report.pdf"))
+                )
+            ))
+        )
+
+        let data = try encoder.encode(block)
+        let decoded = try decoder.decode(Block.self, from: data)
+
+        XCTAssertEqual(block.id, decoded.id)
+        XCTAssertEqual(block.type, decoded.type)
+
+        if case .pdf(let original) = block.blockTypeObject,
+           case .pdf(let decoded) = decoded.blockTypeObject {
+            XCTAssertEqual(original.pdf.caption?.first?.plainText, decoded.pdf.caption?.first?.plainText)
+            if case .external(let originalExt) = original.pdf.type,
+               case .external(let decodedExt) = decoded.pdf.type {
+                XCTAssertEqual(originalExt.url, decodedExt.url)
+            } else {
+                XCTFail("Wrong pdf file type")
+            }
+        } else {
+            XCTFail("Wrong block type")
+        }
+    }
+
     func testUnsupportedBlock() throws {
         let block = Block(
             object: "block",
