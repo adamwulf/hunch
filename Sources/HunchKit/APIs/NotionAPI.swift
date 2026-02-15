@@ -14,8 +14,40 @@ public class NotionAPI {
     public static let shared = NotionAPI()
     public var token: String?
     private init() {
-        self.token = ProcessInfo.processInfo.environment["NOTION_KEY"]
+        self.token = ProcessInfo.processInfo.environment["NOTION_KEY"] ?? Self.loadTokenFromEnvFile()
         Logging.configure()
+    }
+
+    /// Searches for a `.env` file starting from the current working directory and walking up,
+    /// then parses `NOTION_KEY=<value>` from it.
+    private static func loadTokenFromEnvFile() -> String? {
+        var directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+
+        while true {
+            let envFileURL = directory.appendingPathComponent(".env")
+            if let contents = try? String(contentsOf: envFileURL, encoding: .utf8) {
+                for line in contents.components(separatedBy: .newlines) {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    if trimmed.hasPrefix("#") || trimmed.isEmpty {
+                        continue
+                    }
+                    if trimmed.hasPrefix("NOTION_KEY=") {
+                        let value = String(trimmed.dropFirst("NOTION_KEY=".count))
+                            .trimmingCharacters(in: .whitespaces)
+                        if !value.isEmpty {
+                            return value
+                        }
+                    }
+                }
+            }
+
+            let parent = directory.deletingLastPathComponent()
+            if parent.path == directory.path {
+                break
+            }
+            directory = parent
+        }
+        return nil
     }
 
     private let urlSession = URLSession(configuration: .ephemeral)
