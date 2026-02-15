@@ -29,6 +29,8 @@ public enum Property: Codable {
     case createdBy(id: String, value: User)
     case lastEditedTime(id: String, value: Date)
     case lastEditedBy(id: String, value: User)
+    case status(id: String, value: StatusOption)
+    case uniqueId(id: String, value: UniqueId)
     case null(id: String, type: Kind)
 
     enum CodingKeys: String, CodingKey {
@@ -55,6 +57,8 @@ public enum Property: Codable {
         case createdBy = "created_by"
         case lastEditedTime = "last_edited_time"
         case lastEditedBy = "last_edited_by"
+        case status
+        case uniqueId = "unique_id"
     }
 
     public enum Kind: String, Codable {
@@ -78,6 +82,8 @@ public enum Property: Codable {
         case createdBy = "created_by"
         case lastEditedTime = "last_edited_time"
         case lastEditedBy = "last_edited_by"
+        case status
+        case uniqueId = "unique_id"
         case null
     }
 
@@ -103,7 +109,9 @@ public enum Property: Codable {
         case .createdBy: .createdBy
         case .lastEditedTime: .lastEditedTime
         case .lastEditedBy: .lastEditedBy
-        case .null: .null
+        case .status: .status
+        case .uniqueId: .uniqueId
+        case .null(_, let type): type
         }
     }
 
@@ -115,69 +123,146 @@ public enum Property: Codable {
         do {
             switch kind {
             case .title:
-                let value = try container.decode([RichText].self, forKey: .title)
-                self = .title(id: id, value: value)
+                // Notion API returns [] for page values, {} for database schema definitions
+                if let value = try? container.decode([RichText].self, forKey: .title) {
+                    self = .title(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .richText:
-                let value = try container.decode([RichText].self, forKey: .richText)
-                self = .richText(id: id, value: value)
+                // Notion API returns [] for page values, {} for database schema definitions
+                if let value = try? container.decode([RichText].self, forKey: .richText) {
+                    self = .richText(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .number:
-                let value = try container.decode(Double.self, forKey: .number)
-                self = .number(id: id, value: value)
+                if let value = try? container.decodeIfPresent(Double.self, forKey: .number) {
+                    self = .number(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .select:
-                let value = try container.decode(SelectOption.self, forKey: .select)
-                self = .select(id: id, value: value)
+                if let value = try? container.decodeIfPresent(SelectOption.self, forKey: .select) {
+                    self = .select(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .multiSelect:
                 do {
                     let value = try container.decode([SelectOption].self, forKey: .multiSelect)
                     self = .multiSelect(id: id, value: value)
                 } catch {
-                    let value = try container.decode(MultiSelect.self, forKey: .multiSelect)
-                    self = .multiSelect(id: id, value: value.options)
+                    if let value = try? container.decode(MultiSelect.self, forKey: .multiSelect) {
+                        self = .multiSelect(id: id, value: value.options)
+                    } else {
+                        self = .null(id: id, type: kind)
+                    }
                 }
             case .date:
-                let value = try container.decode(DateRange.self, forKey: .date)
-                self = .date(id: id, value: value)
+                if let value = try? container.decodeIfPresent(DateRange.self, forKey: .date) {
+                    self = .date(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .people:
-                let value = try container.decode([User].self, forKey: .people)
-                self = .people(id: id, value: value)
+                if let value = try? container.decode([User].self, forKey: .people) {
+                    self = .people(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .file:
-                let value = try container.decode([File].self, forKey: .file)
-                self = .file(id: id, value: value)
+                // Notion API returns [] for page values, {} for database schema definitions
+                if let value = try? container.decode([File].self, forKey: .file) {
+                    self = .file(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .files:
-                let value = try container.decode([File].self, forKey: .files)
-                self = .files(id: id, value: value)
+                // Notion API returns [] for page values, {} for database schema definitions
+                if let value = try? container.decode([File].self, forKey: .files) {
+                    self = .files(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .checkbox:
-                let value = try container.decode(Bool.self, forKey: .checkbox)
-                self = .checkbox(id: id, value: value)
+                if let value = try? container.decode(Bool.self, forKey: .checkbox) {
+                    self = .checkbox(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .url:
-                let value = try container.decode(String.self, forKey: .url)
-                self = .url(id: id, value: value)
+                if let value = try? container.decodeIfPresent(String.self, forKey: .url) {
+                    self = .url(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .email:
-                let value = try container.decode(String.self, forKey: .email)
-                self = .email(id: id, value: value)
+                if let value = try? container.decodeIfPresent(String.self, forKey: .email) {
+                    self = .email(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .phoneNumber:
-                let value = try container.decode(String.self, forKey: .phoneNumber)
-                self = .phoneNumber(id: id, value: value)
+                if let value = try? container.decodeIfPresent(String.self, forKey: .phoneNumber) {
+                    self = .phoneNumber(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .formula:
-                self = .formula(id: id, value: try Formula(from: decoder))
+                if let value = try? Formula(from: decoder) {
+                    self = .formula(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .relation:
-                let value = try container.decode([Relation].self, forKey: .relation)
-                self = .relation(id: id, value: value)
+                if let value = try? container.decode([Relation].self, forKey: .relation) {
+                    self = .relation(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .rollup:
-                let value = try container.decode(Rollup.self, forKey: .rollup)
-                self = .rollup(id: id, value: value)
+                if let value = try? container.decode(Rollup.self, forKey: .rollup) {
+                    self = .rollup(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .createdTime:
-                let value = try container.decode(Date.self, forKey: .createdTime)
-                self = .createdTime(id: id, value: value)
+                if let value = try? container.decode(Date.self, forKey: .createdTime) {
+                    self = .createdTime(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .createdBy:
-                let value = try container.decode(User.self, forKey: .createdBy)
-                self = .createdBy(id: id, value: value)
+                if let value = try? container.decode(User.self, forKey: .createdBy) {
+                    self = .createdBy(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .lastEditedTime:
-                let value = try container.decode(Date.self, forKey: .lastEditedTime)
-                self = .lastEditedTime(id: id, value: value)
+                if let value = try? container.decode(Date.self, forKey: .lastEditedTime) {
+                    self = .lastEditedTime(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .lastEditedBy:
-                let value = try container.decode(User.self, forKey: .lastEditedBy)
-                self = .lastEditedBy(id: id, value: value)
+                if let value = try? container.decode(User.self, forKey: .lastEditedBy) {
+                    self = .lastEditedBy(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
+            case .status:
+                if let value = try? container.decodeIfPresent(StatusOption.self, forKey: .status) {
+                    self = .status(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
+            case .uniqueId:
+                if let value = try? container.decode(UniqueId.self, forKey: .uniqueId) {
+                    self = .uniqueId(id: id, value: value)
+                } else {
+                    self = .null(id: id, type: kind)
+                }
             case .null:
                 self = .null(id: id, type: kind)
             }
@@ -195,24 +280,25 @@ public enum Property: Codable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case .null:
-            break
+        case .null(let id, let type):
+            try container.encode(id, forKey: .id)
+            try container.encode(type, forKey: .type)
         case .title(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.title, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .title)
         case .richText(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.richText, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .richText)
         case .number(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.number, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .number)
         case .select(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.select, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .select)
         case .multiSelect(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.multiSelect, forKey: .type)
@@ -220,63 +306,72 @@ public enum Property: Codable {
         case .date(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.date, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .date)
         case .people(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.people, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .people)
         case .file(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.file, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .file)
         case .files(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.files, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .files)
         case .checkbox(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.checkbox, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .checkbox)
         case .url(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.url, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .url)
         case .email(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.email, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .email)
         case .phoneNumber(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.phoneNumber, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .phoneNumber)
         case .formula(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.formula, forKey: .type)
-            try container.encode(value, forKey: .value)
+            // Formula.encode uses the same container to write its .formula nested key
+            try value.encode(to: encoder)
         case .relation(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.relation, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .relation)
         case .rollup(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.rollup, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .rollup)
         case .createdTime(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.createdTime, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .createdTime)
         case .createdBy(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.createdBy, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .createdBy)
         case .lastEditedTime(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.lastEditedTime, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .lastEditedTime)
         case .lastEditedBy(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.lastEditedBy, forKey: .type)
-            try container.encode(value, forKey: .value)
+            try container.encode(value, forKey: .lastEditedBy)
+        case .status(let id, let value):
+            try container.encode(id, forKey: .id)
+            try container.encode(Kind.status, forKey: .type)
+            try container.encode(value, forKey: .status)
+        case .uniqueId(let id, let value):
+            try container.encode(id, forKey: .id)
+            try container.encode(Kind.uniqueId, forKey: .type)
+            try container.encode(value, forKey: .uniqueId)
         }
     }
 }
@@ -393,6 +488,17 @@ public struct Relation: Codable {
 
 public struct Rollup: Codable {
     public internal(set) var value: String
+}
+
+public struct StatusOption: Codable {
+    public internal(set) var id: String?
+    public internal(set) var name: String
+    public internal(set) var color: Color?
+}
+
+public struct UniqueId: Codable {
+    public internal(set) var number: Int
+    public internal(set) var prefix: String?
 }
 
 // This property is specific to the multi-select definition in a database

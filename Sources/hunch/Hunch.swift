@@ -13,18 +13,42 @@ import HunchKit
 @main
 struct Hunch: AsyncParsableCommand {
 
-    enum Format: String, ExpressibleByArgument {
+    enum Format: String, ExpressibleByArgument, CaseIterable {
         case smalljsonl
         case jsonl
         case id
         case markdown
     }
 
+    enum SortDirection: String, ExpressibleByArgument, CaseIterable {
+        case ascending
+        case descending
+    }
+
     static var configuration = CommandConfiguration(
         commandName: "hunch",
+        abstract: "A CLI tool for interacting with the Notion API",
         version: "Hunch",
-        subcommands: [DatabaseCommand.self, PageCommand.self, BlocksCommand.self, ExportCommand.self, ExportPageCommand.self, ActivityCommand.self]
+        subcommands: [DatabaseCommand.self, PageCommand.self, BlocksCommand.self, ExportCommand.self, ExportPageCommand.self, ActivityCommand.self, UpdatePageCommand.self, CreatePageCommand.self, CommentsCommand.self, SearchCommand.self, AppendBlocksCommand.self, DeleteBlockCommand.self]
     )
+
+    static func main() async {
+        // Load NOTION_KEY from a .env file if the environment variable is not set
+        if NotionAPI.shared.token == nil {
+            NotionAPI.shared.token = DotEnv.loadValue(forKey: "NOTION_KEY")
+        }
+
+        do {
+            var command = try parseAsRoot()
+            if var asyncCommand = command as? AsyncParsableCommand {
+                try await asyncCommand.run()
+            } else {
+                try command.run()
+            }
+        } catch {
+            exit(withError: error)
+        }
+    }
 
     static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) {
         let flattenedList = flatten(items: list)

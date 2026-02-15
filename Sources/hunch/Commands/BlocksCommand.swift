@@ -16,7 +16,7 @@ struct BlocksCommand: AsyncParsableCommand {
         abstract: "Fetch block content from Notion"
     )
 
-    @Argument(help: "The Notion id of the object") var pageId: String
+    @Argument(help: "The Notion page or block ID to fetch blocks from") var pageId: String
 
     @Option(name: .shortAndLong, help: "The format of the output")
     var format: Hunch.Format = .id

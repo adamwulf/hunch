@@ -78,6 +78,7 @@ public struct Block: NotionItem {
         case createdTime = "created_time"
         case divider
         case embed
+        case equation
         case file
         case hasChildren = "has_children"
         case heading1 = "heading_1"
@@ -97,7 +98,9 @@ public struct Block: NotionItem {
         case quote
         case syncedBlock = "synced_block"
         case table
+        case tableOfContents = "table_of_contents"
         case tableRow = "table_row"
+        case template
         case todo = "to_do"
         case toggle
         case type
@@ -145,8 +148,7 @@ public struct Block: NotionItem {
         case .embed:
             blockTypeObject = .embed(try container.decode(EmbedBlock.self, forKey: .embed))
         case .equation:
-            fatalError("not yet supported")
-            blockTypeObject = .equation(try EquationBlock(from: decoder))
+            blockTypeObject = .equation(try container.decode(EquationBlock.self, forKey: .equation))
         case .file:
             blockTypeObject = .file(try container.decode(FileBlock.self, forKey: .file))
         case .heading1:
@@ -174,13 +176,11 @@ public struct Block: NotionItem {
         case .table:
             blockTypeObject = .table(try container.decode(TableBlock.self, forKey: .table))
         case .tableOfContents:
-            fatalError("not yet supported")
-            blockTypeObject = .tableOfContents(try TableOfContentsBlock(from: decoder))
+            blockTypeObject = .tableOfContents(try container.decode(TableOfContentsBlock.self, forKey: .tableOfContents))
         case .tableRow:
             blockTypeObject = .tableRow(try container.decode(TableRowBlock.self, forKey: .tableRow))
         case .template:
-            fatalError("not yet supported")
-            blockTypeObject = .template(try TemplateBlock(from: decoder))
+            blockTypeObject = .template(try container.decode(TemplateBlock.self, forKey: .template))
         case .toDo:
             blockTypeObject = .toDo(try container.decode(ToDoBlock.self, forKey: .todo))
         case .toggle:
@@ -237,7 +237,7 @@ public struct Block: NotionItem {
         case .embed(let value):
             try container.encode(value, forKey: .embed)
         case .equation(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .equation)
         case .file(let value):
             try container.encode(value, forKey: .file)
         case .heading1(let value):
@@ -265,11 +265,11 @@ public struct Block: NotionItem {
         case .table(let value):
             try container.encode(value, forKey: .table)
         case .tableOfContents(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .tableOfContents)
         case .tableRow(let value):
             try container.encode(value, forKey: .tableRow)
         case .template(let value):
-            try value.encode(to: encoder)
+            try container.encode(value, forKey: .template)
         case .toDo(let value):
             try container.encode(value, forKey: .todo)
         case .toggle(let value):
@@ -364,11 +364,21 @@ public struct BreadcrumbBlock: Codable {}
 public struct BulletedListItemBlock: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct CalloutBlock: Codable {
     public let icon: Icon?
     public let text: [RichText]
+
+    enum CodingKeys: String, CodingKey {
+        case icon
+        case text = "rich_text"
+    }
 }
 
 public struct ChildDatabaseBlock: Codable {
@@ -383,6 +393,12 @@ public struct CodeBlock: Codable {
     public let caption: [RichText]
     public let text: [RichText]
     public let language: String
+
+    enum CodingKeys: String, CodingKey {
+        case caption
+        case text = "rich_text"
+        case language
+    }
 }
 
 public struct ColumnBlock: Codable {}
@@ -483,16 +499,31 @@ public typealias AudioBlock = FileBlock
 public struct Heading1Block: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct Heading2Block: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct Heading3Block: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct ImageBlock: Codable {
@@ -518,11 +549,21 @@ public struct LinkToPageBlock: Codable {
 public struct NumberedListItemBlock: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct ParagraphBlock: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct PdfBlock: Codable {
@@ -532,6 +573,11 @@ public struct PdfBlock: Codable {
 public struct QuoteBlock: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct SyncedBlock: Codable {
@@ -562,25 +608,42 @@ public struct TableBlock: Codable {
     }
 }
 
-public struct TableOfContentsBlock: Codable {}
+public struct TableOfContentsBlock: Codable {
+    public let color: Color?
+}
 
 public struct TableRowBlock: Codable {
     public let cells: [[RichText]]
 }
 
 public struct TemplateBlock: Codable {
-    public let text: String
+    public let text: [RichText]
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+    }
 }
 
 public struct ToDoBlock: Codable {
     public let text: [RichText]
     public let checked: Bool
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case checked
+        case color
+    }
 }
 
 public struct ToggleBlock: Codable {
     public let text: [RichText]
     public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
 }
 
 public struct UnsupportedBlock: Codable {}

@@ -111,7 +111,7 @@ public class NotionAPI {
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("2021-05-13", forHTTPHeaderField: "Notion-Version")
+        request.setValue("2022-06-28", forHTTPHeaderField: "Notion-Version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpMethod = method
         request.httpBody = body
@@ -182,20 +182,45 @@ public class NotionAPI {
 
     internal func fetchDatabases(cursor: String?, parentId: String?) async -> Result<DatabaseList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
-            fetchResources(url: baseURL.appendingPathComponent("databases"),
-                           query: ["start_cursor": cursor, "parent": parentId].compactMapValues({ $0 }),
-                           completion: { result in
-                continuation.resume(returning: result)
-            })
+            do {
+                // The GET /v1/databases endpoint is deprecated. Use POST /v1/search with a database filter instead.
+                var body: [String: Any] = [
+                    "filter": ["value": "database", "property": "object"]
+                ]
+                if let cursor = cursor {
+                    body["start_cursor"] = cursor
+                }
+                let bodyData = try JSONSerialization.data(withJSONObject: body, options: [])
+                fetchResources(method: "POST",
+                               url: baseURL.appendingPathComponent("search"),
+                               query: [:],
+                               body: bodyData,
+                               completion: { result in
+                    continuation.resume(returning: result)
+                })
+            } catch {
+                continuation.resume(returning: .failure(.encodeError(error)))
+            }
         }
     }
 
-    internal func fetchPages(cursor: String?, databaseId: String?) async -> Result<PageList, NotionAPIServiceError> {
+    internal func fetchPages(cursor: String?, databaseId: String?, filter: DatabaseFilter? = nil, sorts: [DatabaseSort]? = nil) async -> Result<PageList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
-            let bodyJSON: [String: Any] = ["start_cursor": cursor].compactMapValues({ $0 })
             do {
                 if let databaseId = databaseId {
-                    let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
+                    var body: [String: Any] = [:]
+                    if let cursor = cursor {
+                        body["start_cursor"] = cursor
+                    }
+                    if let filter = filter {
+                        let filterData = try jsonEncoder.encode(filter)
+                        body["filter"] = try JSONSerialization.jsonObject(with: filterData)
+                    }
+                    if let sorts = sorts, !sorts.isEmpty {
+                        let sortsData = try jsonEncoder.encode(sorts)
+                        body["sorts"] = try JSONSerialization.jsonObject(with: sortsData)
+                    }
+                    let bodyData = try JSONSerialization.data(withJSONObject: body, options: [])
                     let targetURL = baseURL.appendingPathComponent("databases")
                         .appendingPathComponent(databaseId)
                         .appendingPathComponent("query")
@@ -206,6 +231,7 @@ public class NotionAPI {
                         continuation.resume(returning: result)
                     }
                 } else {
+                    let bodyJSON: [String: Any] = ["start_cursor": cursor].compactMapValues({ $0 })
                     let bodyData = try JSONSerialization.data(withJSONObject: bodyJSON, options: [])
                     fetchResources(method: "POST",
                                    url: baseURL.appendingPathComponent("search"),
@@ -232,6 +258,18 @@ public class NotionAPI {
         }
     }
 
+    internal func retrieveDatabase(databaseId: String) async -> Result<Database, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let url = baseURL.appendingPathComponent("databases").appendingPathComponent(databaseId)
+            fetchResources(method: "GET",
+                           url: url,
+                           query: [:],
+                           body: nil) { result in
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
     internal func fetchBlockList(cursor: String?, in pageOrBlockId: String) async -> Result<BlockList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             let url = baseURL.appendingPathComponent("blocks").appendingPathComponent(pageOrBlockId).appendingPathComponent("children")
@@ -240,6 +278,162 @@ public class NotionAPI {
                            query: ["start_cursor": cursor].compactMapValues({ $0 }),
                            body: nil) { result in
                 continuation.resume(returning: result)
+            }
+        }
+    }
+
+    // MARK: - Update Page (PATCH /v1/pages/{id})
+
+    private struct UpdatePageBody: Encodable {
+        let properties: JSONValue?
+        let archived: Bool?
+    }
+
+    internal func updatePage(pageId: String, properties: JSONValue? = nil, archived: Bool? = nil) async -> Result<Page, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let url = baseURL.appendingPathComponent("pages").appendingPathComponent(pageId)
+            do {
+                let bodyData = try jsonEncoder.encode(UpdatePageBody(properties: properties, archived: archived))
+                fetchResources(method: "PATCH",
+                               url: url,
+                               query: [:],
+                               body: bodyData) { result in
+                    continuation.resume(returning: result)
+                }
+            } catch {
+                continuation.resume(returning: .failure(.encodeError(error)))
+            }
+        }
+    }
+
+    // MARK: - Create Page (POST /v1/pages)
+
+    private struct CreatePageBody: Encodable {
+        let parent: ParentRef
+        let properties: JSONValue
+        let children: [JSONValue]?
+
+        struct ParentRef: Encodable {
+            let database_id: String
+        }
+    }
+
+    internal func createPage(parentDatabaseId: String, properties: JSONValue, children: [JSONValue]? = nil) async -> Result<Page, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let url = baseURL.appendingPathComponent("pages")
+            do {
+                let body = CreatePageBody(
+                    parent: CreatePageBody.ParentRef(database_id: parentDatabaseId),
+                    properties: properties,
+                    children: children
+                )
+                let bodyData = try jsonEncoder.encode(body)
+                fetchResources(method: "POST",
+                               url: url,
+                               query: [:],
+                               body: bodyData) { result in
+                    continuation.resume(returning: result)
+                }
+            } catch {
+                continuation.resume(returning: .failure(.encodeError(error)))
+            }
+        }
+    }
+
+    // MARK: - Block Operations
+
+    internal func appendBlockChildren(blockId: String, children: Data) async -> Result<BlockList, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let url = baseURL.appendingPathComponent("blocks").appendingPathComponent(blockId).appendingPathComponent("children")
+            fetchResources(method: "PATCH",
+                           url: url,
+                           query: [:],
+                           body: children) { result in
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    internal func updateBlock(blockId: String, body: Data) async -> Result<Block, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let url = baseURL.appendingPathComponent("blocks").appendingPathComponent(blockId)
+            fetchResources(method: "PATCH",
+                           url: url,
+                           query: [:],
+                           body: body) { result in
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    internal func deleteBlock(blockId: String) async -> Result<Block, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let url = baseURL.appendingPathComponent("blocks").appendingPathComponent(blockId)
+            fetchResources(method: "DELETE",
+                           url: url,
+                           query: [:],
+                           body: nil) { result in
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    // MARK: - Comments
+
+    internal func fetchComments(blockId: String, cursor: String?) async -> Result<CommentList, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let url = baseURL.appendingPathComponent("comments")
+            fetchResources(method: "GET",
+                           url: url,
+                           query: ["block_id": blockId, "start_cursor": cursor].compactMapValues({ $0 }),
+                           body: nil) { result in
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    internal func createComment(body: Data) async -> Result<Comment, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let url = baseURL.appendingPathComponent("comments")
+            fetchResources(method: "POST",
+                           url: url,
+                           query: [:],
+                           body: body) { result in
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    // MARK: - Search
+
+    internal func search(query: String?, filter: SearchFilter?, sort: SearchSort?, cursor: String?) async -> Result<SearchResults, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let url = baseURL.appendingPathComponent("search")
+            do {
+                var body: [String: Any] = [:]
+                if let query = query {
+                    body["query"] = query
+                }
+                if let filter = filter {
+                    let filterData = try jsonEncoder.encode(filter)
+                    body["filter"] = try JSONSerialization.jsonObject(with: filterData)
+                }
+                if let sort = sort {
+                    let sortData = try jsonEncoder.encode(sort)
+                    body["sort"] = try JSONSerialization.jsonObject(with: sortData)
+                }
+                if let cursor = cursor {
+                    body["start_cursor"] = cursor
+                }
+                let bodyData = try JSONSerialization.data(withJSONObject: body, options: [])
+                fetchResources(method: "POST",
+                               url: url,
+                               query: [:],
+                               body: bodyData) { result in
+                    continuation.resume(returning: result)
+                }
+            } catch {
+                continuation.resume(returning: .failure(.encodeError(error)))
             }
         }
     }
