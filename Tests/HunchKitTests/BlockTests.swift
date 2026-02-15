@@ -898,6 +898,50 @@ final class BlockTests: XCTestCase {
         }
     }
 
+    func testAudioBlock() throws {
+        let block = Block(
+            object: "block",
+            id: "test-id",
+            parent: nil,
+            type: .audio,
+            createdTime: "2024-01-01",
+            createdBy: PartialUser(object: "user", id: "user-id"),
+            lastEditedTime: "2024-01-01",
+            lastEditedBy: PartialUser(object: "user", id: "user-id"),
+            archived: false,
+            inTrash: false,
+            hasChildren: false,
+            blockTypeObject: .audio(AudioBlock(
+                caption: [RichText(
+                    plainText: "podcast episode",
+                    annotations: .plain,
+                    type: "text",
+                    text: RichText.Text(content: "podcast episode")
+                )],
+                type: .external(FileBlock.FileType.External(url: "https://example.com/episode.mp3"))
+            ))
+        )
+
+        let data = try encoder.encode(block)
+        let decoded = try decoder.decode(Block.self, from: data)
+
+        XCTAssertEqual(block.id, decoded.id)
+        XCTAssertEqual(block.type, decoded.type)
+
+        if case .audio(let original) = block.blockTypeObject,
+           case .audio(let decoded) = decoded.blockTypeObject {
+            XCTAssertEqual(original.caption?.first?.plainText, decoded.caption?.first?.plainText)
+            if case .external(let originalExt) = original.type,
+               case .external(let decodedExt) = decoded.type {
+                XCTAssertEqual(originalExt.url, decodedExt.url)
+            } else {
+                XCTFail("Wrong audio file type")
+            }
+        } else {
+            XCTFail("Wrong block type")
+        }
+    }
+
     func testUnsupportedBlock() throws {
         let block = Block(
             object: "block",
