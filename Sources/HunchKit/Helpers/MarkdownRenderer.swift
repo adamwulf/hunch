@@ -27,7 +27,20 @@ public class MarkdownRenderer: Renderer {
     }
 
     public func render(_ items: [NotionItem]) throws -> String {
-        return renderBlocksToMarkdown(items.compactMap { $0 as? Block })
+        var markdown = ""
+        for item in items {
+            if let block = item as? Block {
+                markdown += handleStateForBlock(block)
+                markdown += renderBlockToMarkdown(block)
+            } else if let database = item as? Database {
+                markdown += renderDatabase(database)
+            } else if let page = item as? Page {
+                markdown += renderPage(page)
+            } else if let comment = item as? Comment {
+                markdown += renderComment(comment)
+            }
+        }
+        return markdown
     }
 
     public func render(_ text: [RichText]) throws -> String {
@@ -469,5 +482,116 @@ public class MarkdownRenderer: Renderer {
             return block.children.map { renderBlockToMarkdown($0) }.joined()
         }
         return ""
+    }
+
+    // MARK: - Database Rendering
+
+    private func renderDatabase(_ database: Database) -> String {
+        let icon = database.icon?.emoji.map({ $0 + " " }) ?? ""
+        let title = database.title.map { renderRichText($0) }.joined()
+        var markdown = "# \(icon)\(title)\n\n"
+
+        let propertyNames = database.properties.keys.sorted()
+        if !propertyNames.isEmpty {
+            markdown += "| Property | Type |\n"
+            markdown += "| --- | --- |\n"
+            for name in propertyNames {
+                if let property = database.properties[name] {
+                    markdown += "| \(name) | \(property.kind.rawValue) |\n"
+                }
+            }
+            markdown += "\n"
+        }
+
+        return markdown
+    }
+
+    // MARK: - Page Rendering
+
+    private func renderPage(_ page: Page) -> String {
+        let icon = page.icon?.emoji.map({ $0 + " " }) ?? ""
+        let title = page.title.map { renderRichText($0) }.joined()
+        var markdown = "# \(icon)\(title)\n\n"
+
+        let propertyNames = page.properties.keys.sorted()
+        for name in propertyNames {
+            guard let property = page.properties[name] else { continue }
+            // Skip the title property since we already rendered it as the heading
+            if property.kind == .title { continue }
+            if let value = renderPropertyValue(property) {
+                markdown += "- **\(name):** \(value)\n"
+            }
+        }
+
+        if propertyNames.contains(where: { page.properties[$0]?.kind != .title }) {
+            markdown += "\n"
+        }
+
+        return markdown
+    }
+
+    private func renderPropertyValue(_ property: Property) -> String? {
+        switch property {
+        case .title(_, let value):
+            let text = value.map { renderRichText($0) }.joined()
+            return text.isEmpty ? nil : text
+        case .richText(_, let value):
+            let text = value.map { renderRichText($0) }.joined()
+            return text.isEmpty ? nil : text
+        case .number(_, let value):
+            return String(value)
+        case .select(_, let value):
+            return value.name
+        case .multiSelect(_, let value):
+            return value.map(\.name).joined(separator: ", ")
+        case .date(_, let value):
+            let formatter = ISO8601DateFormatter()
+            formatter.timeZone = TimeZone(identifier: "UTC")!
+            var result = formatter.string(from: value.start)
+            if let end = value.end {
+                result += " - " + formatter.string(from: end)
+            }
+            return result
+        case .people(_, let value):
+            return value.compactMap(\.name).joined(separator: ", ")
+        case .file(_, let value), .files(_, let value):
+            return value.map(\.url).joined(separator: ", ")
+        case .checkbox(_, let value):
+            return value ? "Yes" : "No"
+        case .url(_, let value):
+            return "[\(value)](\(value))"
+        case .email(_, let value):
+            return value
+        case .phoneNumber(_, let value):
+            return value
+        case .formula(_, let value):
+            return value.type.stringValue
+        case .relation(_, let value):
+            return value.map(\.id).joined(separator: ", ")
+        case .rollup(_, let value):
+            return value.value
+        case .createdTime(_, let value), .lastEditedTime(_, let value):
+            let formatter = ISO8601DateFormatter()
+            formatter.timeZone = TimeZone(identifier: "UTC")!
+            return formatter.string(from: value)
+        case .createdBy(_, let value), .lastEditedBy(_, let value):
+            return value.name ?? value.id
+        case .status(_, let value):
+            return value.name
+        case .uniqueId(_, let value):
+            if let prefix = value.prefix {
+                return "\(prefix)-\(value.number)"
+            }
+            return String(value.number)
+        case .null:
+            return nil
+        }
+    }
+
+    // MARK: - Comment Rendering
+
+    private func renderComment(_ comment: Comment) -> String {
+        let text = comment.richText.map { renderRichText($0) }.joined()
+        return "> \(text)\n\n"
     }
 }
