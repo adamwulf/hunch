@@ -49,35 +49,18 @@ final class IntegrationTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Loads NOTION_KEY from .env file, searching up from the test bundle
+    /// Loads NOTION_KEY from .env file, searching up from the test bundle and current directory
     static func loadNotionKey() -> String? {
-        // Try multiple locations for the .env file
-        let candidates = [
-            // Package root (when running swift test from repo root)
-            URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent() // Tests/HunchKitTests/
-                .deletingLastPathComponent() // Tests/
-                .deletingLastPathComponent() // repo root
-                .appendingPathComponent(".env"),
-            // Direct path if known
-            URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-                .appendingPathComponent(".env")
-        ]
-
-        for envURL in candidates {
-            if let contents = try? String(contentsOf: envURL, encoding: .utf8) {
-                for line in contents.components(separatedBy: .newlines) {
-                    let trimmed = line.trimmingCharacters(in: .whitespaces)
-                    if trimmed.hasPrefix("NOTION_KEY=") {
-                        let value = String(trimmed.dropFirst("NOTION_KEY=".count))
-                        if !value.isEmpty {
-                            return value
-                        }
-                    }
-                }
-            }
+        // Try from the package root first (when running swift test from repo root)
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // Tests/HunchKitTests/
+            .deletingLastPathComponent() // Tests/
+            .deletingLastPathComponent() // repo root
+        if let value = DotEnv.loadValue(forKey: "NOTION_KEY", startingIn: packageRoot) {
+            return value
         }
-        return nil
+        // Fall back to current working directory
+        return DotEnv.loadValue(forKey: "NOTION_KEY")
     }
 
     /// Extracts the underlying DecodingError from the HunchAPI error chain

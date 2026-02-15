@@ -32,6 +32,24 @@ struct Hunch: AsyncParsableCommand {
         subcommands: [DatabaseCommand.self, PageCommand.self, BlocksCommand.self, ExportCommand.self, ExportPageCommand.self, ActivityCommand.self, UpdatePageCommand.self, CreatePageCommand.self, CommentsCommand.self, SearchCommand.self, AppendBlocksCommand.self, DeleteBlockCommand.self]
     )
 
+    static func main() async {
+        // Load NOTION_KEY from a .env file if the environment variable is not set
+        if NotionAPI.shared.token == nil {
+            NotionAPI.shared.token = DotEnv.loadValue(forKey: "NOTION_KEY")
+        }
+
+        do {
+            var command = try parseAsRoot()
+            if var asyncCommand = command as? AsyncParsableCommand {
+                try await asyncCommand.run()
+            } else {
+                try command.run()
+            }
+        } catch {
+            exit(withError: error)
+        }
+    }
+
     static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) {
         let flattenedList = flatten(items: list)
 
