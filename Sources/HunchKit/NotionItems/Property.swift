@@ -111,7 +111,7 @@ public enum Property: Codable {
         case .lastEditedBy: .lastEditedBy
         case .status: .status
         case .uniqueId: .uniqueId
-        case .null: .null
+        case .null(_, let type): type
         }
     }
 

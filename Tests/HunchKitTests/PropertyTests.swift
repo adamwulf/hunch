@@ -167,6 +167,50 @@ final class PropertyTests: XCTestCase {
         }
     }
 
+    // MARK: - Null Kind Returns Stored Type
+
+    func testNullPropertyKindReturnsStoredType() throws {
+        // Database schema format: `"rich_text": {}` can't decode as [RichText],
+        // so it falls back to .null(id:, type:). The `kind` property should
+        // return the stored type, not .null.
+        let json = """
+        {"id": "abc", "type": "rich_text", "rich_text": {}}
+        """
+        let data = json.data(using: .utf8)!
+        let property = try decoder.decode(Property.self, from: data)
+
+        if case .null(_, let type) = property {
+            XCTAssertEqual(type, .richText)
+        } else {
+            XCTFail("Expected .null for schema format rich_text")
+        }
+
+        // kind should return the stored type, not .null
+        XCTAssertEqual(property.kind, .richText)
+        XCTAssertEqual(property.kind.rawValue, "rich_text")
+    }
+
+    func testNullPropertyKindForVariousTypes() throws {
+        let schemaProperties: [(String, String, Property.Kind)] = [
+            ("title", "title", .title),
+            ("rich_text", "rich_text", .richText),
+            ("number", "number", .number),
+            ("file", "file", .file),
+            ("files", "files", .files),
+        ]
+
+        for (type, key, expectedKind) in schemaProperties {
+            let json = """
+            {"id": "abc", "type": "\(type)", "\(key)": {}}
+            """
+            let data = json.data(using: .utf8)!
+            let property = try decoder.decode(Property.self, from: data)
+
+            XCTAssertEqual(property.kind, expectedKind,
+                           "Property.kind for null \(type) should return .\(expectedKind) not .null")
+        }
+    }
+
     func testStatusPropertyEncodeDecode() throws {
         let encoder = JSONEncoder()
         let json = """
