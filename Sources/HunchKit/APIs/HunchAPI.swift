@@ -120,8 +120,8 @@ public class HunchAPI {
 
     // MARK: - Update Page
 
-    public func updatePage(pageId: String, properties: JSONValue) async throws -> Page {
-        let result = await notion.updatePage(pageId: pageId, properties: properties)
+    public func updatePage(pageId: String, properties: JSONValue? = nil, archived: Bool? = nil) async throws -> Page {
+        let result = await notion.updatePage(pageId: pageId, properties: properties, archived: archived)
         switch result {
         case .success(let page):
             return page

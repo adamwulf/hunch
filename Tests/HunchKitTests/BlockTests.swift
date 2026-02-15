@@ -1023,7 +1023,44 @@ final class BlockTests: XCTestCase {
         }
     }
 
-    // MARK: - Hardcoded JSON Decode Test
+    // MARK: - Notion API JSON Decode Tests
+    //
+    // These tests use JSON matching the real Notion API response format.
+    // Each test decodes from the API format, then re-encodes and re-decodes
+    // to verify a complete roundtrip.
+
+    /// Helper: creates the common block envelope JSON wrapping a type-specific payload
+    func blockJSON(type: String, hasChildren: Bool = false, payload: String) -> String {
+        return """
+        {
+            "object": "block",
+            "id": "block-\(type)-id",
+            "parent": {"type": "page_id", "page_id": "parent-page-id"},
+            "type": "\(type)",
+            "created_time": "2024-06-15T10:30:00.000Z",
+            "created_by": {"object": "user", "id": "user-abc"},
+            "last_edited_time": "2024-06-15T11:00:00.000Z",
+            "last_edited_by": {"object": "user", "id": "user-abc"},
+            "archived": false,
+            "in_trash": false,
+            "has_children": \(hasChildren),
+            \(payload)
+        }
+        """
+    }
+
+    /// Helper: decodes a block from JSON, roundtrips it, and verifies the type
+    func assertBlockRoundtrip(_ json: String, expectedType: BlockType, file: StaticString = #filePath, line: UInt = #line) throws {
+        let data = json.data(using: .utf8)!
+        let block = try decoder.decode(Block.self, from: data)
+        XCTAssertEqual(block.type, expectedType, "Block type mismatch", file: file, line: line)
+
+        // Roundtrip
+        let encoded = try encoder.encode(block)
+        let roundtripped = try decoder.decode(Block.self, from: encoded)
+        XCTAssertEqual(roundtripped.type, expectedType, "Roundtripped block type mismatch", file: file, line: line)
+        XCTAssertEqual(roundtripped.id, block.id, "Roundtripped block ID mismatch", file: file, line: line)
+    }
 
     func testParagraphBlockFromNotionAPIJSON() throws {
         // Real Notion API response format using "rich_text" as the JSON key
@@ -1099,5 +1136,660 @@ final class BlockTests: XCTestCase {
         } else {
             XCTFail("Expected page parent")
         }
+    }
+
+    // MARK: - All Block Types from Notion API JSON
+
+    func testBookmarkFromNotionJSON() throws {
+        let json = blockJSON(type: "bookmark", payload: """
+            "bookmark": {
+                "caption": [
+                    {"type": "text", "text": {"content": "A bookmark"}, "plain_text": "A bookmark",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "url": "https://example.com/bookmark"
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .bookmark)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .bookmark(let bm) = block.blockTypeObject {
+            XCTAssertEqual(bm.url, "https://example.com/bookmark")
+            XCTAssertEqual(bm.caption.first?.plainText, "A bookmark")
+        } else { XCTFail("Expected bookmark") }
+    }
+
+    func testBulletedListItemFromNotionJSON() throws {
+        let json = blockJSON(type: "bulleted_list_item", payload: """
+            "bulleted_list_item": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "Bullet point"}, "plain_text": "Bullet point",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "color": "default"
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .bulletedListItem)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .bulletedListItem(let item) = block.blockTypeObject {
+            XCTAssertEqual(item.text.first?.plainText, "Bullet point")
+            XCTAssertEqual(item.color, .plain)
+        } else { XCTFail("Expected bulleted_list_item") }
+    }
+
+    func testCalloutFromNotionJSON() throws {
+        let json = blockJSON(type: "callout", payload: """
+            "callout": {
+                "icon": {"type": "emoji", "emoji": "💡"},
+                "rich_text": [
+                    {"type": "text", "text": {"content": "Important note"}, "plain_text": "Important note",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "color": "gray_background"
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .callout)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .callout(let callout) = block.blockTypeObject {
+            XCTAssertEqual(callout.text.first?.plainText, "Important note")
+            XCTAssertEqual(callout.icon?.emoji, "💡")
+        } else { XCTFail("Expected callout") }
+    }
+
+    func testCodeFromNotionJSON() throws {
+        let json = blockJSON(type: "code", payload: """
+            "code": {
+                "caption": [],
+                "rich_text": [
+                    {"type": "text", "text": {"content": "let x = 42"}, "plain_text": "let x = 42",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "language": "swift"
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .code)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .code(let code) = block.blockTypeObject {
+            XCTAssertEqual(code.language, "swift")
+            XCTAssertEqual(code.text.first?.plainText, "let x = 42")
+            XCTAssertTrue(code.caption.isEmpty)
+        } else { XCTFail("Expected code") }
+    }
+
+    func testHeading1FromNotionJSON() throws {
+        let json = blockJSON(type: "heading_1", payload: """
+            "heading_1": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "Main Heading"}, "plain_text": "Main Heading",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "color": "default",
+                "is_toggleable": false
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .heading1)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .heading1(let h) = block.blockTypeObject {
+            XCTAssertEqual(h.text.first?.plainText, "Main Heading")
+        } else { XCTFail("Expected heading_1") }
+    }
+
+    func testHeading2FromNotionJSON() throws {
+        let json = blockJSON(type: "heading_2", payload: """
+            "heading_2": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "Sub Heading"}, "plain_text": "Sub Heading",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "color": "default",
+                "is_toggleable": false
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .heading2)
+    }
+
+    func testHeading3FromNotionJSON() throws {
+        let json = blockJSON(type: "heading_3", payload: """
+            "heading_3": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "Minor Heading"}, "plain_text": "Minor Heading",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "color": "blue",
+                "is_toggleable": false
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .heading3)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .heading3(let h) = block.blockTypeObject {
+            XCTAssertEqual(h.text.first?.plainText, "Minor Heading")
+            XCTAssertEqual(h.color, .blue)
+        } else { XCTFail("Expected heading_3") }
+    }
+
+    func testNumberedListItemFromNotionJSON() throws {
+        let json = blockJSON(type: "numbered_list_item", payload: """
+            "numbered_list_item": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "First item"}, "plain_text": "First item",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "color": "default"
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .numberedListItem)
+    }
+
+    func testQuoteFromNotionJSON() throws {
+        let json = blockJSON(type: "quote", payload: """
+            "quote": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "To be or not to be"}, "plain_text": "To be or not to be",
+                     "annotations": {"bold": false, "italic": true, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "color": "default"
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .quote)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .quote(let q) = block.blockTypeObject {
+            XCTAssertEqual(q.text.first?.plainText, "To be or not to be")
+            XCTAssertTrue(q.text.first?.annotations.italic ?? false)
+        } else { XCTFail("Expected quote") }
+    }
+
+    func testToDoFromNotionJSON() throws {
+        let json = blockJSON(type: "to_do", payload: """
+            "to_do": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "Buy groceries"}, "plain_text": "Buy groceries",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "checked": true,
+                "color": "default"
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .toDo)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .toDo(let todo) = block.blockTypeObject {
+            XCTAssertEqual(todo.text.first?.plainText, "Buy groceries")
+            XCTAssertTrue(todo.checked)
+        } else { XCTFail("Expected to_do") }
+    }
+
+    func testToggleFromNotionJSON() throws {
+        let json = blockJSON(type: "toggle", hasChildren: true, payload: """
+            "toggle": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "Click to expand"}, "plain_text": "Click to expand",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "color": "default"
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .toggle)
+    }
+
+    func testDividerFromNotionJSON() throws {
+        let json = blockJSON(type: "divider", payload: """
+            "divider": {}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .divider)
+    }
+
+    func testBreadcrumbFromNotionJSON() throws {
+        let json = blockJSON(type: "breadcrumb", payload: """
+            "breadcrumb": {}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .breadcrumb)
+    }
+
+    func testTableOfContentsFromNotionJSON() throws {
+        let json = blockJSON(type: "table_of_contents", payload: """
+            "table_of_contents": {"color": "default"}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .tableOfContents)
+    }
+
+    func testEquationFromNotionJSON() throws {
+        let json = blockJSON(type: "equation", payload: """
+            "equation": {"expression": "E = mc^2"}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .equation)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .equation(let eq) = block.blockTypeObject {
+            XCTAssertEqual(eq.expression, "E = mc^2")
+        } else { XCTFail("Expected equation") }
+    }
+
+    func testEmbedFromNotionJSON() throws {
+        let json = blockJSON(type: "embed", payload: """
+            "embed": {"url": "https://twitter.com/example/status/123"}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .embed)
+    }
+
+    func testLinkPreviewFromNotionJSON() throws {
+        let json = blockJSON(type: "link_preview", payload: """
+            "link_preview": {"url": "https://github.com/example/repo"}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .linkPreview)
+    }
+
+    func testLinkToPageFromNotionJSON() throws {
+        let json = blockJSON(type: "link_to_page", payload: """
+            "link_to_page": {"type": "page_id", "page_id": "linked-page-abc"}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .linkToPage)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .linkToPage(let link) = block.blockTypeObject {
+            XCTAssertEqual(link.pageId, "linked-page-abc")
+        } else { XCTFail("Expected link_to_page") }
+    }
+
+    func testChildPageFromNotionJSON() throws {
+        let json = blockJSON(type: "child_page", hasChildren: true, payload: """
+            "child_page": {"title": "My Sub Page"}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .childPage)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .childPage(let cp) = block.blockTypeObject {
+            XCTAssertEqual(cp.title, "My Sub Page")
+        } else { XCTFail("Expected child_page") }
+    }
+
+    func testChildDatabaseFromNotionJSON() throws {
+        let json = blockJSON(type: "child_database", hasChildren: true, payload: """
+            "child_database": {"title": "Embedded Database"}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .childDatabase)
+    }
+
+    func testColumnListFromNotionJSON() throws {
+        let json = blockJSON(type: "column_list", hasChildren: true, payload: """
+            "column_list": {}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .columnList)
+    }
+
+    func testColumnFromNotionJSON() throws {
+        let json = blockJSON(type: "column", hasChildren: true, payload: """
+            "column": {}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .column)
+    }
+
+    func testTemplateFromNotionJSON() throws {
+        let json = blockJSON(type: "template", payload: """
+            "template": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "Template text"}, "plain_text": "Template text",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ]
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .template)
+    }
+
+    func testSyncedBlockOriginalFromNotionJSON() throws {
+        let json = blockJSON(type: "synced_block", hasChildren: true, payload: """
+            "synced_block": {"synced_from": null}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .syncedBlock)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .syncedBlock(let sb) = block.blockTypeObject {
+            XCTAssertNil(sb.syncedFrom)
+        } else { XCTFail("Expected synced_block") }
+    }
+
+    func testSyncedBlockReferenceFromNotionJSON() throws {
+        let json = blockJSON(type: "synced_block", hasChildren: true, payload: """
+            "synced_block": {"synced_from": {"type": "block_id", "block_id": "original-block-abc"}}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .syncedBlock)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .syncedBlock(let sb) = block.blockTypeObject {
+            XCTAssertEqual(sb.syncedFrom?.blockId, "original-block-abc")
+        } else { XCTFail("Expected synced_block") }
+    }
+
+    func testTableFromNotionJSON() throws {
+        let json = blockJSON(type: "table", hasChildren: true, payload: """
+            "table": {"table_width": 3, "has_column_header": true, "has_row_header": false}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .table)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .table(let t) = block.blockTypeObject {
+            XCTAssertEqual(t.rowCount, 3)
+            XCTAssertTrue(t.hasColumnHeader)
+            XCTAssertFalse(t.hasRowHeader)
+        } else { XCTFail("Expected table") }
+    }
+
+    func testTableRowFromNotionJSON() throws {
+        let json = blockJSON(type: "table_row", payload: """
+            "table_row": {
+                "cells": [
+                    [{"type": "text", "text": {"content": "Cell A"}, "plain_text": "Cell A",
+                      "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}],
+                    [{"type": "text", "text": {"content": "Cell B"}, "plain_text": "Cell B",
+                      "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}]
+                ]
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .tableRow)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .tableRow(let tr) = block.blockTypeObject {
+            XCTAssertEqual(tr.cells.count, 2)
+            XCTAssertEqual(tr.cells[0].first?.plainText, "Cell A")
+            XCTAssertEqual(tr.cells[1].first?.plainText, "Cell B")
+        } else { XCTFail("Expected table_row") }
+    }
+
+    // MARK: - File-based Block Types from Notion JSON
+
+    func testFileBlockExternalFromNotionJSON() throws {
+        let json = blockJSON(type: "file", payload: """
+            "file": {
+                "caption": [
+                    {"type": "text", "text": {"content": "My file"}, "plain_text": "My file",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "type": "external",
+                "external": {"url": "https://example.com/doc.pdf"}
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .file)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .file(let f) = block.blockTypeObject {
+            XCTAssertEqual(f.caption?.first?.plainText, "My file")
+            if case .external(let ext) = f.type {
+                XCTAssertEqual(ext.url, "https://example.com/doc.pdf")
+            } else { XCTFail("Expected external file") }
+        } else { XCTFail("Expected file block") }
+    }
+
+    func testFileBlockNotionHostedFromNotionJSON() throws {
+        let json = blockJSON(type: "file", payload: """
+            "file": {
+                "caption": [],
+                "type": "file",
+                "file": {"url": "https://prod-files-secure.s3.us-west-2.amazonaws.com/abc/file.pdf", "expiry_time": "2025-01-15T12:00:00.000Z"}
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .file)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .file(let f) = block.blockTypeObject {
+            if case .file(let hosted) = f.type {
+                XCTAssertTrue(hosted.url.contains("s3.us-west-2"))
+                XCTAssertFalse(hosted.expiryTime.isEmpty)
+            } else { XCTFail("Expected hosted file") }
+        } else { XCTFail("Expected file block") }
+    }
+
+    func testVideoBlockExternalFromNotionJSON() throws {
+        let json = blockJSON(type: "video", payload: """
+            "video": {
+                "caption": [],
+                "type": "external",
+                "external": {"url": "https://www.youtube.com/watch?v=abc123"}
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .video)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .video(let v) = block.blockTypeObject {
+            if case .external(let ext) = v.type {
+                XCTAssertTrue(ext.url.contains("youtube"))
+            } else { XCTFail("Expected external video") }
+        } else { XCTFail("Expected video block") }
+    }
+
+    func testVideoBlockNotionHostedFromNotionJSON() throws {
+        let json = blockJSON(type: "video", payload: """
+            "video": {
+                "caption": [
+                    {"type": "text", "text": {"content": "Demo video"}, "plain_text": "Demo video",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "type": "file",
+                "file": {"url": "https://prod-files-secure.s3.us-west-2.amazonaws.com/video.mp4", "expiry_time": "2025-06-01T00:00:00.000Z"}
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .video)
+    }
+
+    func testAudioBlockExternalFromNotionJSON() throws {
+        let json = blockJSON(type: "audio", payload: """
+            "audio": {
+                "caption": [],
+                "type": "external",
+                "external": {"url": "https://example.com/podcast.mp3"}
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .audio)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .audio(let a) = block.blockTypeObject {
+            if case .external(let ext) = a.type {
+                XCTAssertEqual(ext.url, "https://example.com/podcast.mp3")
+            } else { XCTFail("Expected external audio") }
+        } else { XCTFail("Expected audio block") }
+    }
+
+    func testAudioBlockNotionHostedFromNotionJSON() throws {
+        let json = blockJSON(type: "audio", payload: """
+            "audio": {
+                "caption": [],
+                "type": "file",
+                "file": {"url": "https://prod-files-secure.s3.us-west-2.amazonaws.com/audio.wav", "expiry_time": "2025-06-01T00:00:00.000Z"}
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .audio)
+    }
+
+    func testImageBlockExternalFromNotionJSON() throws {
+        // ImageBlock has a special nested structure: {"image": {"type": "external", ...}}
+        let json = """
+        {
+            "object": "block",
+            "id": "block-image-ext",
+            "parent": {"type": "page_id", "page_id": "parent-page-id"},
+            "type": "image",
+            "created_time": "2024-06-15T10:30:00.000Z",
+            "created_by": {"object": "user", "id": "user-abc"},
+            "last_edited_time": "2024-06-15T11:00:00.000Z",
+            "last_edited_by": {"object": "user", "id": "user-abc"},
+            "archived": false,
+            "in_trash": false,
+            "has_children": false,
+            "image": {
+                "caption": [
+                    {"type": "text", "text": {"content": "A photo"}, "plain_text": "A photo",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "type": "external",
+                "external": {"url": "https://example.com/image.png"}
+            }
+        }
+        """
+        try assertBlockRoundtrip(json, expectedType: .image)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .image(let img) = block.blockTypeObject {
+            XCTAssertEqual(img.image.caption?.first?.plainText, "A photo")
+            if case .external(let ext) = img.image.type {
+                XCTAssertEqual(ext.url, "https://example.com/image.png")
+            } else { XCTFail("Expected external image") }
+        } else { XCTFail("Expected image block") }
+    }
+
+    func testImageBlockNotionHostedFromNotionJSON() throws {
+        let json = """
+        {
+            "object": "block",
+            "id": "block-image-file",
+            "parent": {"type": "page_id", "page_id": "parent-page-id"},
+            "type": "image",
+            "created_time": "2024-06-15T10:30:00.000Z",
+            "created_by": {"object": "user", "id": "user-abc"},
+            "last_edited_time": "2024-06-15T11:00:00.000Z",
+            "last_edited_by": {"object": "user", "id": "user-abc"},
+            "archived": false,
+            "in_trash": false,
+            "has_children": false,
+            "image": {
+                "caption": [],
+                "type": "file",
+                "file": {"url": "https://prod-files-secure.s3.us-west-2.amazonaws.com/img.jpg", "expiry_time": "2025-01-15T12:00:00.000Z"}
+            }
+        }
+        """
+        try assertBlockRoundtrip(json, expectedType: .image)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .image(let img) = block.blockTypeObject {
+            if case .file(let hosted) = img.image.type {
+                XCTAssertTrue(hosted.url.contains("s3.us-west-2"))
+            } else { XCTFail("Expected hosted image") }
+        } else { XCTFail("Expected image block") }
+    }
+
+    func testPdfBlockExternalFromNotionJSON() throws {
+        // PdfBlock has a nested structure: {"pdf": {"type": "external", ...}}
+        let json = """
+        {
+            "object": "block",
+            "id": "block-pdf-ext",
+            "parent": {"type": "page_id", "page_id": "parent-page-id"},
+            "type": "pdf",
+            "created_time": "2024-06-15T10:30:00.000Z",
+            "created_by": {"object": "user", "id": "user-abc"},
+            "last_edited_time": "2024-06-15T11:00:00.000Z",
+            "last_edited_by": {"object": "user", "id": "user-abc"},
+            "archived": false,
+            "in_trash": false,
+            "has_children": false,
+            "pdf": {
+                "caption": [],
+                "type": "external",
+                "external": {"url": "https://example.com/document.pdf"}
+            }
+        }
+        """
+        try assertBlockRoundtrip(json, expectedType: .pdf)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .pdf(let p) = block.blockTypeObject {
+            if case .external(let ext) = p.pdf.type {
+                XCTAssertEqual(ext.url, "https://example.com/document.pdf")
+            } else { XCTFail("Expected external pdf") }
+        } else { XCTFail("Expected pdf block") }
+    }
+
+    func testPdfBlockNotionHostedFromNotionJSON() throws {
+        let json = """
+        {
+            "object": "block",
+            "id": "block-pdf-file",
+            "parent": {"type": "page_id", "page_id": "parent-page-id"},
+            "type": "pdf",
+            "created_time": "2024-06-15T10:30:00.000Z",
+            "created_by": {"object": "user", "id": "user-abc"},
+            "last_edited_time": "2024-06-15T11:00:00.000Z",
+            "last_edited_by": {"object": "user", "id": "user-abc"},
+            "archived": false,
+            "in_trash": false,
+            "has_children": false,
+            "pdf": {
+                "caption": [
+                    {"type": "text", "text": {"content": "PDF doc"}, "plain_text": "PDF doc",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "type": "file",
+                "file": {"url": "https://prod-files-secure.s3.us-west-2.amazonaws.com/doc.pdf", "expiry_time": "2025-01-15T12:00:00.000Z"}
+            }
+        }
+        """
+        try assertBlockRoundtrip(json, expectedType: .pdf)
+    }
+
+    func testUnsupportedFromNotionJSON() throws {
+        let json = blockJSON(type: "unsupported", payload: """
+            "unsupported": {}
+        """)
+        try assertBlockRoundtrip(json, expectedType: .unsupported)
+    }
+
+    // MARK: - Parent type variants in blocks
+
+    func testBlockWithDatabaseParent() throws {
+        let json = """
+        {
+            "object": "block",
+            "id": "block-with-db-parent",
+            "parent": {"type": "database_id", "database_id": "db-parent-id"},
+            "type": "paragraph",
+            "created_time": "2024-06-15T10:30:00.000Z",
+            "created_by": {"object": "user", "id": "user-abc"},
+            "last_edited_time": "2024-06-15T11:00:00.000Z",
+            "last_edited_by": {"object": "user", "id": "user-abc"},
+            "archived": false,
+            "in_trash": false,
+            "has_children": false,
+            "paragraph": {"rich_text": [], "color": "default"}
+        }
+        """
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .database(let dbId) = block.parent {
+            XCTAssertEqual(dbId, "db-parent-id")
+        } else { XCTFail("Expected database parent") }
+
+        // Roundtrip
+        let encoded = try encoder.encode(block)
+        let rt = try decoder.decode(Block.self, from: encoded)
+        if case .database(let dbId) = rt.parent {
+            XCTAssertEqual(dbId, "db-parent-id")
+        } else { XCTFail("Expected database parent after roundtrip") }
+    }
+
+    func testBlockWithBlockParent() throws {
+        let json = """
+        {
+            "object": "block",
+            "id": "block-with-block-parent",
+            "parent": {"type": "block_id", "block_id": "parent-block-id"},
+            "type": "paragraph",
+            "created_time": "2024-06-15T10:30:00.000Z",
+            "created_by": {"object": "user", "id": "user-abc"},
+            "last_edited_time": "2024-06-15T11:00:00.000Z",
+            "last_edited_by": {"object": "user", "id": "user-abc"},
+            "archived": false,
+            "in_trash": false,
+            "has_children": false,
+            "paragraph": {"rich_text": [], "color": "default"}
+        }
+        """
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .block(let blockId) = block.parent {
+            XCTAssertEqual(blockId, "parent-block-id")
+        } else { XCTFail("Expected block parent") }
+    }
+
+    func testBlockWithWorkspaceParent() throws {
+        let json = """
+        {
+            "object": "block",
+            "id": "block-with-ws-parent",
+            "parent": {"type": "workspace", "workspace": true},
+            "type": "paragraph",
+            "created_time": "2024-06-15T10:30:00.000Z",
+            "created_by": {"object": "user", "id": "user-abc"},
+            "last_edited_time": "2024-06-15T11:00:00.000Z",
+            "last_edited_by": {"object": "user", "id": "user-abc"},
+            "archived": false,
+            "in_trash": false,
+            "has_children": false,
+            "paragraph": {"rich_text": [], "color": "default"}
+        }
+        """
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .workspace = block.parent {
+            // success
+        } else { XCTFail("Expected workspace parent") }
     }
 }

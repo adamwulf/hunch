@@ -182,11 +182,25 @@ public class NotionAPI {
 
     internal func fetchDatabases(cursor: String?, parentId: String?) async -> Result<DatabaseList, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
-            fetchResources(url: baseURL.appendingPathComponent("databases"),
-                           query: ["start_cursor": cursor, "parent": parentId].compactMapValues({ $0 }),
-                           completion: { result in
-                continuation.resume(returning: result)
-            })
+            do {
+                // The GET /v1/databases endpoint is deprecated. Use POST /v1/search with a database filter instead.
+                var body: [String: Any] = [
+                    "filter": ["value": "database", "property": "object"]
+                ]
+                if let cursor = cursor {
+                    body["start_cursor"] = cursor
+                }
+                let bodyData = try JSONSerialization.data(withJSONObject: body, options: [])
+                fetchResources(method: "POST",
+                               url: baseURL.appendingPathComponent("search"),
+                               query: [:],
+                               body: bodyData,
+                               completion: { result in
+                    continuation.resume(returning: result)
+                })
+            } catch {
+                continuation.resume(returning: .failure(.encodeError(error)))
+            }
         }
     }
 
@@ -271,14 +285,15 @@ public class NotionAPI {
     // MARK: - Update Page (PATCH /v1/pages/{id})
 
     private struct UpdatePageBody: Encodable {
-        let properties: JSONValue
+        let properties: JSONValue?
+        let archived: Bool?
     }
 
-    internal func updatePage(pageId: String, properties: JSONValue) async -> Result<Page, NotionAPIServiceError> {
+    internal func updatePage(pageId: String, properties: JSONValue? = nil, archived: Bool? = nil) async -> Result<Page, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             let url = baseURL.appendingPathComponent("pages").appendingPathComponent(pageId)
             do {
-                let bodyData = try jsonEncoder.encode(UpdatePageBody(properties: properties))
+                let bodyData = try jsonEncoder.encode(UpdatePageBody(properties: properties, archived: archived))
                 fetchResources(method: "PATCH",
                                url: url,
                                query: [:],
