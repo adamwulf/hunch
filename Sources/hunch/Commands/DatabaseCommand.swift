@@ -16,9 +16,9 @@ struct DatabaseCommand: AsyncParsableCommand {
         abstract: "Fetch databases from Notion"
     )
 
-    @Argument(help: "The Notion id of the object") var entityId: String?
+    @Argument(help: "The Notion database ID to query pages from") var entityId: String?
 
-    @Option(name: .shortAndLong, help: "The maxiumum number of results to return")
+    @Option(name: .shortAndLong, help: "The maximum number of results to return")
     var limit: Int?
 
     @Option(name: .shortAndLong, help: "The format of the output")

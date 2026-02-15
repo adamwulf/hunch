@@ -18,7 +18,7 @@ struct AppendBlocksCommand: AsyncParsableCommand {
     @Argument(help: "The Notion block or page ID to append children to")
     var blockId: String
 
-    @Option(name: .shortAndLong, help: "JSON string of children blocks to append")
+    @Option(name: .shortAndLong, help: "JSON string of children blocks to append (reads from stdin if omitted)")
     var json: String?
 
     @Option(name: .shortAndLong, help: "The format of the output")

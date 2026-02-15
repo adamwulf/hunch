@@ -13,15 +13,21 @@ import HunchKit
 @main
 struct Hunch: AsyncParsableCommand {
 
-    enum Format: String, ExpressibleByArgument {
+    enum Format: String, ExpressibleByArgument, CaseIterable {
         case smalljsonl
         case jsonl
         case id
         case markdown
     }
 
+    enum SortDirection: String, ExpressibleByArgument, CaseIterable {
+        case ascending
+        case descending
+    }
+
     static var configuration = CommandConfiguration(
         commandName: "hunch",
+        abstract: "A CLI tool for interacting with the Notion API",
         version: "Hunch",
         subcommands: [DatabaseCommand.self, PageCommand.self, BlocksCommand.self, ExportCommand.self, ExportPageCommand.self, ActivityCommand.self, UpdatePageCommand.self, CreatePageCommand.self, CommentsCommand.self, SearchCommand.self, AppendBlocksCommand.self, DeleteBlockCommand.self]
     )
