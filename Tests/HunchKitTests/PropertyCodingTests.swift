@@ -379,6 +379,45 @@ final class PropertyCodingTests: XCTestCase {
         try assertPropertyRoundtrip(json, expectedKind: .formula)
     }
 
+    func testFormulaDatePropertyDecode() throws {
+        let json = """
+        {"id": "abc", "type": "formula", "formula": {"type": "date", "date": "2025-03-15T14:00:00.000Z"}}
+        """
+        try assertPropertyRoundtrip(json, expectedKind: .formula)
+        let property = try decoder.decode(Property.self, from: json.data(using: .utf8)!)
+        if case .formula(_, let value) = property {
+            if case .date(let date) = value.type {
+                XCTAssertNotNil(date)
+                let calendar = Calendar(identifier: .gregorian)
+                let components = calendar.dateComponents(in: TimeZone(secondsFromGMT: 0)!, from: date!)
+                XCTAssertEqual(components.year, 2025)
+                XCTAssertEqual(components.month, 3)
+                XCTAssertEqual(components.day, 15)
+            } else {
+                XCTFail("Expected date formula")
+            }
+        } else {
+            XCTFail("Expected .formula")
+        }
+    }
+
+    func testFormulaDateNullValueDecode() throws {
+        let json = """
+        {"id": "abc", "type": "formula", "formula": {"type": "date", "date": null}}
+        """
+        try assertPropertyRoundtrip(json, expectedKind: .formula)
+        let property = try decoder.decode(Property.self, from: json.data(using: .utf8)!)
+        if case .formula(_, let value) = property {
+            if case .date(let date) = value.type {
+                XCTAssertNil(date)
+            } else {
+                XCTFail("Expected date formula")
+            }
+        } else {
+            XCTFail("Expected .formula")
+        }
+    }
+
     func testFormulaNullValueDecode() throws {
         let json = """
         {"id": "abc", "type": "formula", "formula": {"type": "number", "number": null}}
@@ -476,7 +515,86 @@ final class PropertyCodingTests: XCTestCase {
         try assertPropertyRoundtrip(json, expectedKind: .files)
     }
 
-    // MARK: - Created Time / Created By / Last Edited Time / Last Edited By
+    // MARK: - File (singular)
+
+    func testFilePropertyDecode() throws {
+        let json = """
+        {"id": "abc", "type": "file", "file": [{"url": "https://example.com/document.pdf"}]}
+        """
+        try assertPropertyRoundtrip(json, expectedKind: .file)
+        let property = try decoder.decode(Property.self, from: json.data(using: .utf8)!)
+        if case .file(_, let value) = property {
+            XCTAssertEqual(value.count, 1)
+            XCTAssertEqual(value.first?.url, "https://example.com/document.pdf")
+        } else {
+            XCTFail("Expected .file")
+        }
+    }
+
+    func testFilePropertyEmpty() throws {
+        let json = """
+        {"id": "abc", "type": "file", "file": []}
+        """
+        try assertPropertyRoundtrip(json, expectedKind: .file)
+        let property = try decoder.decode(Property.self, from: json.data(using: .utf8)!)
+        if case .file(_, let value) = property {
+            XCTAssertEqual(value.count, 0)
+        } else {
+            XCTFail("Expected .file")
+        }
+    }
+
+    func testFilePropertySchemaFormat() throws {
+        // Database schema returns {} instead of []
+        let json = """
+        {"id": "abc", "type": "file", "file": {}}
+        """
+        try assertPropertyRoundtrip(json, expectedKind: .file)
+        let property = try decoder.decode(Property.self, from: json.data(using: .utf8)!)
+        if case .null(_, let type) = property {
+            XCTAssertEqual(type, .file)
+        } else {
+            XCTFail("Expected .null for schema format file")
+        }
+    }
+
+    // MARK: - Created Time / Last Edited Time
+
+    func testCreatedTimePropertyDecode() throws {
+        let json = """
+        {"id": "abc", "type": "created_time", "created_time": "2025-01-15T10:30:00.000Z"}
+        """
+        try assertPropertyRoundtrip(json, expectedKind: .createdTime)
+        let property = try decoder.decode(Property.self, from: json.data(using: .utf8)!)
+        if case .createdTime(_, let value) = property {
+            let calendar = Calendar(identifier: .gregorian)
+            let components = calendar.dateComponents(in: TimeZone(secondsFromGMT: 0)!, from: value)
+            XCTAssertEqual(components.year, 2025)
+            XCTAssertEqual(components.month, 1)
+            XCTAssertEqual(components.day, 15)
+        } else {
+            XCTFail("Expected .createdTime")
+        }
+    }
+
+    func testLastEditedTimePropertyDecode() throws {
+        let json = """
+        {"id": "abc", "type": "last_edited_time", "last_edited_time": "2025-06-20T18:45:00.000Z"}
+        """
+        try assertPropertyRoundtrip(json, expectedKind: .lastEditedTime)
+        let property = try decoder.decode(Property.self, from: json.data(using: .utf8)!)
+        if case .lastEditedTime(_, let value) = property {
+            let calendar = Calendar(identifier: .gregorian)
+            let components = calendar.dateComponents(in: TimeZone(secondsFromGMT: 0)!, from: value)
+            XCTAssertEqual(components.year, 2025)
+            XCTAssertEqual(components.month, 6)
+            XCTAssertEqual(components.day, 20)
+        } else {
+            XCTFail("Expected .lastEditedTime")
+        }
+    }
+
+    // MARK: - Created By / Last Edited By
 
     func testCreatedByPropertyDecode() throws {
         let json = """
