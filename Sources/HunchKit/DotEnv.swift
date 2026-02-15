@@ -16,7 +16,7 @@ public enum DotEnv {
     ///   - directory: The directory to start searching from. Defaults to the current working directory.
     /// - Returns: The value if found, or `nil`.
     public static func loadValue(forKey key: String, startingIn directory: URL? = nil) -> String? {
-        var dir = directory ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        var dir = (directory ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)).standardizedFileURL
 
         while true {
             let envFileURL = dir.appendingPathComponent(".env")
@@ -24,7 +24,7 @@ public enum DotEnv {
                 return value
             }
 
-            let parent = dir.deletingLastPathComponent()
+            let parent = dir.deletingLastPathComponent().standardizedFileURL
             if parent.path == dir.path {
                 break
             }
