@@ -65,8 +65,9 @@ struct PageCommand: AsyncParsableCommand {
                     dbSorts = [DatabaseSort(property: sortBy, direction: direction)]
                 } else if let sortTimestamp = sortTimestamp {
                     let direction: DatabaseSort.Direction = sortDirection == .descending ? .descending : .ascending
-                    let ts = DatabaseSort.TimestampSort(rawValue: sortTimestamp.rawValue)!
-                    dbSorts = [DatabaseSort(timestamp: ts, direction: direction)]
+                    if let ts = DatabaseSort.TimestampSort(rawValue: sortTimestamp.rawValue) {
+                        dbSorts = [DatabaseSort(timestamp: ts, direction: direction)]
+                    }
                 }
 
                 let pages = try await HunchAPI.shared.fetchPages(databaseId: database, limit: limit, filter: dbFilter, sorts: dbSorts)
