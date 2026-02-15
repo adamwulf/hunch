@@ -11,16 +11,24 @@ import SwiftToolbox
 import HunchKit
 
 struct PageCommand: AsyncParsableCommand {
+
+    enum SortTimestamp: String, ExpressibleByArgument, CaseIterable {
+        case createdTime = "created_time"
+        case lastEditedTime = "last_edited_time"
+    }
+
     static var configuration = CommandConfiguration(
         commandName: "page",
         abstract: "Fetch pages from Notion"
     )
 
-    @Option(name: .shortAndLong, help: "The Notion id of a specific page") var id: String?
+    @Option(name: .shortAndLong, help: "The Notion ID of a specific page to retrieve")
+    var id: String?
 
-    @Option(name: .shortAndLong, help: "The Notion id of a database") var database: String?
+    @Option(name: .shortAndLong, help: "The Notion database ID to list pages from")
+    var database: String?
 
-    @Option(name: .shortAndLong, help: "The maxiumum number of results to return")
+    @Option(name: .shortAndLong, help: "The maximum number of results to return")
     var limit: Int?
 
     @Option(name: .shortAndLong, help: "The format of the output")
@@ -29,14 +37,14 @@ struct PageCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Filter as JSON string (e.g. '{\"property\":\"Status\",\"status\":{\"equals\":\"Done\"}}')")
     var filter: String?
 
-    @Option(name: .long, help: "Sort property name")
+    @Option(name: .long, help: "Sort by a property name")
     var sortBy: String?
 
-    @Option(name: .long, help: "Sort direction: ascending or descending (default: ascending)")
-    var sortDirection: String?
+    @Option(name: .long, help: "Sort direction")
+    var sortDirection: Hunch.SortDirection?
 
-    @Option(name: .long, help: "Sort by timestamp: created_time or last_edited_time")
-    var sortTimestamp: String?
+    @Option(name: .long, help: "Sort by timestamp field")
+    var sortTimestamp: SortTimestamp?
 
     func run() async {
         do {
@@ -53,13 +61,12 @@ struct PageCommand: AsyncParsableCommand {
 
                 var dbSorts: [DatabaseSort]?
                 if let sortBy = sortBy {
-                    let direction: DatabaseSort.Direction = sortDirection == "descending" ? .descending : .ascending
+                    let direction: DatabaseSort.Direction = sortDirection == .descending ? .descending : .ascending
                     dbSorts = [DatabaseSort(property: sortBy, direction: direction)]
                 } else if let sortTimestamp = sortTimestamp {
-                    let direction: DatabaseSort.Direction = sortDirection == "descending" ? .descending : .ascending
-                    if let ts = DatabaseSort.TimestampSort(rawValue: sortTimestamp) {
-                        dbSorts = [DatabaseSort(timestamp: ts, direction: direction)]
-                    }
+                    let direction: DatabaseSort.Direction = sortDirection == .descending ? .descending : .ascending
+                    let ts = DatabaseSort.TimestampSort(rawValue: sortTimestamp.rawValue)!
+                    dbSorts = [DatabaseSort(timestamp: ts, direction: direction)]
                 }
 
                 let pages = try await HunchAPI.shared.fetchPages(databaseId: database, limit: limit, filter: dbFilter, sorts: dbSorts)
