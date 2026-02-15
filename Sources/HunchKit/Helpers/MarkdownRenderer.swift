@@ -488,7 +488,8 @@ public class MarkdownRenderer: Renderer {
 
     private func renderDatabase(_ database: Database) -> String {
         let icon = database.icon?.emoji.map({ $0 + " " }) ?? ""
-        let title = database.title.map { renderRichText($0) }.joined()
+        let titleText = database.title.map { renderRichText($0) }.joined()
+        let title = titleText.isEmpty ? "Untitled" : titleText
         var markdown = "# \(icon)\(title)\n\n"
 
         let propertyNames = database.properties.keys.sorted()
@@ -510,7 +511,8 @@ public class MarkdownRenderer: Renderer {
 
     private func renderPage(_ page: Page) -> String {
         let icon = page.icon?.emoji.map({ $0 + " " }) ?? ""
-        let title = page.title.map { renderRichText($0) }.joined()
+        let titleText = page.title.map { renderRichText($0) }.joined()
+        let title = titleText.isEmpty ? "Untitled" : titleText
         var markdown = "# \(icon)\(title)\n\n"
 
         let propertyNames = page.properties.keys.sorted()
