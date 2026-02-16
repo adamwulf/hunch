@@ -494,11 +494,20 @@ public class MarkdownRenderer: Renderer {
 
         let propertyNames = database.properties.keys.sorted()
         if !propertyNames.isEmpty {
-            markdown += "| Property | Type |\n"
-            markdown += "| --- | --- |\n"
+            markdown += "| Property | Type | Values |\n"
+            markdown += "| --- | --- | --- |\n"
             for name in propertyNames {
                 if let property = database.properties[name] {
-                    markdown += "| \(name) | \(property.kind.rawValue) |\n"
+                    markdown += "| \(name) | \(property.kind.rawValue) | "
+                    switch property {
+                    case .multiSelect(_, let values):
+                        markdown += values.map({ $0.name }).joined(separator: ", ") + " |"
+                    case .select(_, let value):
+                        markdown += value.map({ $0.name }).joined(separator: ", ") + " |"
+                    default:
+                        markdown += "|"
+                    }
+                    markdown += "\n"
                 }
             }
             markdown += "\n"
