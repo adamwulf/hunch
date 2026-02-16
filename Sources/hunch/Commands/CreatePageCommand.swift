@@ -40,7 +40,7 @@ struct CreatePageCommand: AsyncParsableCommand {
             }
 
             if let title = title {
-                propsDict["Name"] = .object([
+                propsDict["title"] = .object([
                     "title": .array([
                         .object(["text": .object(["content": .string(title)])])
                     ])
