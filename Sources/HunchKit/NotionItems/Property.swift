@@ -12,7 +12,7 @@ public enum Property: Codable {
     case title(id: String, value: [RichText])
     case richText(id: String, value: [RichText])
     case number(id: String, value: Double)
-    case select(id: String, value: SelectOption)
+    case select(id: String, value: [SelectOption])
     case multiSelect(id: String, value: [SelectOption])
     case date(id: String, value: DateRange)
     case people(id: String, value: [User])
@@ -143,10 +143,16 @@ public enum Property: Codable {
                     self = .null(id: id, type: kind)
                 }
             case .select:
-                if let value = try? container.decodeIfPresent(SelectOption.self, forKey: .select) {
-                    self = .select(id: id, value: value)
-                } else {
-                    self = .null(id: id, type: kind)
+                do {
+                    // Try single value format (page property)
+                    if let value = try? container.decodeIfPresent(SelectOption.self, forKey: .select) {
+                        self = .select(id: id, value: [value])
+                    } else if let schemaValue = try? container.decode(Select.self, forKey: .select) {
+                        // Try schema format with options array
+                        self = .select(id: id, value: schemaValue.options)
+                    } else {
+                        self = .null(id: id, type: kind)
+                    }
                 }
             case .multiSelect:
                 do {
@@ -298,7 +304,15 @@ public enum Property: Codable {
         case .select(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.select, forKey: .type)
-            try container.encode(value, forKey: .select)
+            // For page properties, encode first element; for schemas, encode the array
+            if value.count == 1 {
+                try container.encode(value.first, forKey: .select)
+            } else if value.isEmpty {
+                try container.encodeNil(forKey: .select)
+            } else {
+                // Multiple values - encode as schema format
+                try container.encode(Select(options: value), forKey: .select)
+            }
         case .multiSelect(let id, let value):
             try container.encode(id, forKey: .id)
             try container.encode(Kind.multiSelect, forKey: .type)
@@ -501,7 +515,11 @@ public struct UniqueId: Codable {
     public internal(set) var prefix: String?
 }
 
-// This property is specific to the multi-select definition in a database
+// These properties are specific to select/multi-select definitions in a database
+private struct Select: Codable {
+    public internal(set) var options: [SelectOption]
+}
+
 private struct MultiSelect: Codable {
     public internal(set) var options: [SelectOption]
 }

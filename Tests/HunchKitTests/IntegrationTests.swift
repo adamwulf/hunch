@@ -780,8 +780,8 @@ final class IntegrationTests: XCTestCase {
                         switch prop {
                         case .multiSelect(_, let values):
                             return (name, values.map { $0.name })
-                        case .select(_, let value):
-                            return (name, [value.name])
+                        case .select(_, let values):
+                            return (name, values.map { $0.name })
                         case .url(_, let value):
                             return (name, [value])
                         case .formula(_, let value):

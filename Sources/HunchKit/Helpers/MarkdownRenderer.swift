@@ -543,7 +543,7 @@ public class MarkdownRenderer: Renderer {
         case .number(_, let value):
             return String(value)
         case .select(_, let value):
-            return value.name
+            return value.first?.name ?? ""
         case .multiSelect(_, let value):
             return value.map(\.name).joined(separator: ", ")
         case .date(_, let value):

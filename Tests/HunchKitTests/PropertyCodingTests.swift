@@ -169,9 +169,10 @@ final class PropertyCodingTests: XCTestCase {
         """
         try assertPropertyRoundtrip(json, expectedKind: .select)
         let property = try decoder.decode(Property.self, from: json.data(using: .utf8)!)
-        if case .select(_, let value) = property {
-            XCTAssertEqual(value.name, "Option A")
-            XCTAssertEqual(value.color, .blue)
+        if case .select(_, let values) = property {
+            XCTAssertEqual(values.count, 1)
+            XCTAssertEqual(values.first?.name, "Option A")
+            XCTAssertEqual(values.first?.color, .blue)
         } else {
             XCTFail("Expected .select")
         }
@@ -182,6 +183,27 @@ final class PropertyCodingTests: XCTestCase {
         {"id": "abc", "type": "select", "select": null}
         """
         try assertPropertyRoundtrip(json, expectedKind: .select)
+    }
+
+    func testSelectPropertySchemaFormat() throws {
+        // Database schema returns {"options": [...]} instead of a single value
+        let json = """
+        {"id": "abc", "type": "select", "select": {"options": [
+            {"id": "opt1", "name": "High", "color": "red"},
+            {"id": "opt2", "name": "Medium", "color": "yellow"},
+            {"id": "opt3", "name": "Low", "color": "green"}
+        ]}}
+        """
+        try assertPropertyRoundtrip(json, expectedKind: .select)
+        let property = try decoder.decode(Property.self, from: json.data(using: .utf8)!)
+        if case .select(_, let values) = property {
+            XCTAssertEqual(values.count, 3)
+            XCTAssertEqual(values[0].name, "High")
+            XCTAssertEqual(values[1].name, "Medium")
+            XCTAssertEqual(values[2].name, "Low")
+        } else {
+            XCTFail("Expected .select")
+        }
     }
 
     // MARK: - Multi-Select
