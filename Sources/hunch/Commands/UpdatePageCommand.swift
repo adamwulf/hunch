@@ -19,20 +19,33 @@ struct UpdatePageCommand: AsyncParsableCommand {
     var pageId: String
 
     @Option(name: .long, help: "Properties as a JSON string")
-    var properties: String
+    var properties: String?
+
+    @Flag(name: .long, help: "Archive (trash) the page")
+    var archive: Bool = false
+
+    @Flag(name: .long, help: "Unarchive (restore) the page")
+    var unarchive: Bool = false
 
     @Option(name: .shortAndLong, help: "The format of the output")
     var format: Hunch.Format = .id
 
     func run() async {
         do {
-            guard let data = properties.data(using: .utf8) else {
-                print("error: invalid properties JSON")
+            var props: JSONValue?
+            if let propertiesJSON = properties,
+               let data = propertiesJSON.data(using: .utf8) {
+                props = try JSONDecoder().decode(JSONValue.self, from: data)
+            }
+
+            let archived: Bool? = archive ? true : (unarchive ? false : nil)
+
+            guard props != nil || archived != nil else {
+                print("error: provide --properties and/or --archive/--unarchive")
                 return
             }
 
-            let props = try JSONDecoder().decode(JSONValue.self, from: data)
-            let page = try await HunchAPI.shared.updatePage(pageId: pageId, properties: props)
+            let page = try await HunchAPI.shared.updatePage(pageId: pageId, properties: props, archived: archived)
             Hunch.output(list: [page], format: format)
         } catch {
             fatalError("error: \(error.localizedDescription)")

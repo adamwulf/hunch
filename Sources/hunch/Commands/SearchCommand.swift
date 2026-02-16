@@ -24,7 +24,7 @@ struct SearchCommand: AsyncParsableCommand {
     @Argument(help: "The search query text")
     var query: String?
 
-    @Option(name: .shortAndLong, help: "Filter by object type")
+    @Option(name: .long, help: "Filter by object type")
     var filterType: FilterType?
 
     @Option(name: .long, help: "Sort direction")
