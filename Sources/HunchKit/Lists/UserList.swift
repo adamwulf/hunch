@@ -1,15 +1,15 @@
 //
-//  PageList.swift
+//  UserList.swift
 //  hunch
 //
-//  Created by Adam Wulf on 11/12/24.
+//  Created by Adam Wulf on 2/17/26.
 //
 
 import Foundation
 
-struct PageList: Codable {
+struct UserList: Codable {
     let object = "list"
-    let results: [Page]
+    let results: [User]
     let nextCursor: String?
     let hasMore: Bool
 

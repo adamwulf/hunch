@@ -879,40 +879,162 @@ final class ModelTests: XCTestCase {
 
     // MARK: - User Tests
 
-    func testUserPersonDecode() throws {
+    func testUserPersonWithEmailDecode() throws {
         let json = """
         {
+            "object": "user",
             "id": "user-abc",
             "type": "person",
             "name": "Alice",
-            "avatar_url": "https://example.com/avatar.jpg"
+            "avatar_url": "https://example.com/avatar.jpg",
+            "person": {
+                "email": "alice@example.com"
+            }
         }
         """
         let user = try decoder.decode(User.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(user.object, "user")
         XCTAssertEqual(user.id, "user-abc")
         XCTAssertEqual(user.type, .person)
         XCTAssertEqual(user.name, "Alice")
         XCTAssertEqual(user.avatarURL, "https://example.com/avatar.jpg")
+        XCTAssertEqual(user.person?.email, "alice@example.com")
+        XCTAssertNil(user.bot)
 
+        // Roundtrip
         let encoded = try encoder.encode(user)
         let decoded = try decoder.decode(User.self, from: encoded)
         XCTAssertEqual(decoded.id, "user-abc")
         XCTAssertEqual(decoded.name, "Alice")
+        XCTAssertEqual(decoded.person?.email, "alice@example.com")
+        XCTAssertNil(decoded.bot)
     }
 
-    func testUserBotDecode() throws {
+    func testUserBotWithOwnerDecode() throws {
         let json = """
         {
+            "object": "user",
             "id": "bot-xyz",
             "type": "bot",
             "name": "My Integration",
-            "avatar_url": null
+            "avatar_url": null,
+            "bot": {
+                "owner": {
+                    "type": "workspace",
+                    "workspace": true
+                }
+            }
+        }
+        """
+        let user = try decoder.decode(User.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(user.object, "user")
+        XCTAssertEqual(user.id, "bot-xyz")
+        XCTAssertEqual(user.type, .bot)
+        XCTAssertEqual(user.name, "My Integration")
+        XCTAssertNil(user.avatarURL)
+        XCTAssertNotNil(user.bot)
+        XCTAssertEqual(user.bot?.owner?.type, "workspace")
+        XCTAssertEqual(user.bot?.owner?.workspace, true)
+        XCTAssertNil(user.person)
+
+        // Roundtrip
+        let encoded = try encoder.encode(user)
+        let decoded = try decoder.decode(User.self, from: encoded)
+        XCTAssertEqual(decoded.id, "bot-xyz")
+        XCTAssertEqual(decoded.bot?.owner?.type, "workspace")
+        XCTAssertEqual(decoded.bot?.owner?.workspace, true)
+        XCTAssertNil(decoded.person)
+    }
+
+    func testUserBotEmptyObject() throws {
+        let json = """
+        {
+            "object": "user",
+            "id": "bot-empty",
+            "type": "bot",
+            "name": "Simple Bot",
+            "bot": {}
         }
         """
         let user = try decoder.decode(User.self, from: json.data(using: .utf8)!)
         XCTAssertEqual(user.type, .bot)
-        XCTAssertEqual(user.name, "My Integration")
+        XCTAssertNotNil(user.bot)
+        XCTAssertNil(user.bot?.owner)
+
+        // Roundtrip
+        let encoded = try encoder.encode(user)
+        let decoded = try decoder.decode(User.self, from: encoded)
+        XCTAssertNotNil(decoded.bot)
+        XCTAssertNil(decoded.bot?.owner)
+    }
+
+    func testUserMinimalFields() throws {
+        let json = """
+        {
+            "object": "user",
+            "id": "user-minimal",
+            "type": "person"
+        }
+        """
+        let user = try decoder.decode(User.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(user.id, "user-minimal")
+        XCTAssertEqual(user.type, .person)
+        XCTAssertNil(user.name)
         XCTAssertNil(user.avatarURL)
+        XCTAssertNil(user.person)
+        XCTAssertNil(user.bot)
+        XCTAssertEqual(user.description, "user-minimal")
+    }
+
+    func testUserListDecode() throws {
+        let json = """
+        {
+            "results": [
+                {
+                    "object": "user",
+                    "id": "user-1",
+                    "type": "person",
+                    "name": "Alice",
+                    "person": { "email": "alice@example.com" }
+                },
+                {
+                    "object": "user",
+                    "id": "bot-1",
+                    "type": "bot",
+                    "name": "My Bot",
+                    "bot": { "owner": { "type": "workspace", "workspace": true } }
+                }
+            ],
+            "next_cursor": "cursor-xyz",
+            "has_more": true
+        }
+        """
+        let list = try decoder.decode(UserList.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(list.results.count, 2)
+        XCTAssertEqual(list.nextCursor, "cursor-xyz")
+        XCTAssertTrue(list.hasMore)
+
+        XCTAssertEqual(list.results[0].id, "user-1")
+        XCTAssertEqual(list.results[0].type, .person)
+        XCTAssertEqual(list.results[0].person?.email, "alice@example.com")
+
+        XCTAssertEqual(list.results[1].id, "bot-1")
+        XCTAssertEqual(list.results[1].type, .bot)
+        XCTAssertEqual(list.results[1].bot?.owner?.type, "workspace")
+    }
+
+    func testUserListEmpty() throws {
+        let json = """
+        {
+            "results": [],
+            "next_cursor": null,
+            "has_more": false
+        }
+        """
+        let list = try decoder.decode(UserList.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(list.results.count, 0)
+        XCTAssertNil(list.nextCursor)
+        XCTAssertFalse(list.hasMore)
     }
 
     // MARK: - Pagination List Tests

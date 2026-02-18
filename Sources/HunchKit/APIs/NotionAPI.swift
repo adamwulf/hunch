@@ -404,6 +404,32 @@ public class NotionAPI {
         }
     }
 
+    // MARK: - Users
+
+    internal func fetchUsers(cursor: String?) async -> Result<UserList, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let url = baseURL.appendingPathComponent("users")
+            fetchResources(method: "GET",
+                           url: url,
+                           query: ["start_cursor": cursor].compactMapValues({ $0 }),
+                           body: nil) { result in
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    internal func retrieveUser(userId: String) async -> Result<User, NotionAPIServiceError> {
+        return await withCheckedContinuation { continuation in
+            let url = baseURL.appendingPathComponent("users").appendingPathComponent(userId)
+            fetchResources(method: "GET",
+                           url: url,
+                           query: [:],
+                           body: nil) { result in
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
     // MARK: - Search
 
     internal func search(query: String?, filter: SearchFilter?, sort: SearchSort?, cursor: String?) async -> Result<SearchResults, NotionAPIServiceError> {
