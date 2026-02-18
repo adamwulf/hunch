@@ -18,8 +18,4 @@ struct PageList: Codable {
         case nextCursor = "next_cursor"
         case hasMore = "has_more"
     }
-
-    var simpleList: (next: String?, items: [Page]) {
-        return (next: hasMore ? nextCursor : nil, items: results)
-    }
 }
