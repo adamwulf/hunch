@@ -204,6 +204,41 @@ public class HunchAPI {
         }
     }
 
+    // MARK: - Users
+
+    public func fetchUsers(limit: Int = .max) async throws -> [User] {
+        var users: [User] = []
+        var cursor: String?
+        var count = 0
+
+        repeat {
+            let result = await notion.fetchUsers(cursor: cursor)
+            switch result {
+            case .success(let userList):
+                for user in userList.results {
+                    users.append(user)
+                    count += 1
+                    guard count < limit else { return users }
+                }
+                cursor = userList.nextCursor
+            case .failure(let error):
+                throw HunchAPIError.apiError(error)
+            }
+        } while cursor != nil
+
+        return users
+    }
+
+    public func retrieveUser(userId: String) async throws -> User {
+        let result = await notion.retrieveUser(userId: userId)
+        switch result {
+        case .success(let user):
+            return user
+        case .failure(let error):
+            throw HunchAPIError.apiError(error)
+        }
+    }
+
     // MARK: - Search
 
     public func search(query: String? = nil, filter: SearchFilter? = nil, sort: SearchSort? = nil, limit: Int = .max) async throws -> [NotionItem] {
