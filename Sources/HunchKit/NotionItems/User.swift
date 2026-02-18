@@ -13,7 +13,7 @@ public struct User: NotionItem {
         case bot
     }
 
-    public internal(set) var object: String
+    public let object = "user"
     public internal(set) var id: String
     public internal(set) var parent: Parent?
     public internal(set) var type: Kind
@@ -25,7 +25,6 @@ public struct User: NotionItem {
     }
 
     enum CodingKeys: String, CodingKey {
-        case object
         case id
         case type
         case name
