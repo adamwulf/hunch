@@ -1339,6 +1339,137 @@ final class IntegrationTests: XCTestCase {
         print("  Test page archived")
     }
 
+    // MARK: - User Tests
+
+    /// Test fetching the list of users in the workspace
+    /// Requires the integration to have "Read user information including email addresses" capability.
+    func testFetchUsers() async throws {
+        print("\n=== testFetchUsers ===")
+        do {
+            let users = try await HunchAPI.shared.fetchUsers(limit: 10)
+            print("SUCCESS: Fetched \(users.count) users")
+            for user in users {
+                print("  - \(user.id): \(user.description) (type: \(user.type.rawValue))")
+                if let person = user.person {
+                    print("    email: \(person.email ?? "nil")")
+                }
+                if let bot = user.bot {
+                    print("    bot owner type: \(bot.owner?.type ?? "nil")")
+                }
+            }
+            XCTAssertGreaterThan(users.count, 0, "Expected at least one user in the workspace")
+
+            // Verify each user has required fields
+            for user in users {
+                XCTAssertFalse(user.id.isEmpty, "User ID should not be empty")
+                // Every user should be either person or bot
+                XCTAssertTrue(user.type == .person || user.type == .bot,
+                              "User type should be person or bot, got: \(user.type.rawValue)")
+            }
+
+            // Test encoding roundtrip
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(users)
+            let decoded = try JSONDecoder().decode([User].self, from: data)
+            XCTAssertEqual(decoded.count, users.count)
+            for (original, roundtripped) in zip(users, decoded) {
+                XCTAssertEqual(original.id, roundtripped.id)
+                XCTAssertEqual(original.type, roundtripped.type)
+                XCTAssertEqual(original.name, roundtripped.name)
+            }
+            print("  User encode/decode roundtrip verified")
+        } catch {
+            if let hunchError = error as? HunchAPIError,
+               case .apiError(let serviceError) = hunchError,
+               case .invalidResponseStatus(let status) = serviceError, status == 403 {
+                throw XCTSkip("Token lacks 'Read user information including email addresses' capability (HTTP 403). "
+                              + "Enable this permission in your Notion integration settings at https://www.notion.so/my-integrations")
+            }
+            Self.printLastResponse(label: "fetchUsers")
+            if let decodingError = Self.extractDecodingError(from: error) {
+                let desc = Self.describeDecodingError(decodingError)
+                XCTFail("Decoding failed in fetchUsers: \(desc)")
+            } else {
+                XCTFail("fetchUsers failed: \(error)")
+            }
+        }
+    }
+
+    /// Test retrieving a single user by ID (uses first user from list fetch)
+    /// Requires the integration to have "Read user information including email addresses" capability.
+    func testRetrieveUser() async throws {
+        print("\n=== testRetrieveUser ===")
+
+        // First fetch the user list to get a valid user ID
+        let users: [User]
+        do {
+            users = try await HunchAPI.shared.fetchUsers(limit: 5)
+            guard !users.isEmpty else {
+                throw XCTSkip("No users found in workspace")
+            }
+        } catch let error as XCTSkip {
+            throw error
+        } catch {
+            if let hunchError = error as? HunchAPIError,
+               case .apiError(let serviceError) = hunchError,
+               case .invalidResponseStatus(let status) = serviceError, status == 403 {
+                throw XCTSkip("Token lacks 'Read user information including email addresses' capability (HTTP 403). "
+                              + "Enable this permission in your Notion integration settings at https://www.notion.so/my-integrations")
+            }
+            XCTFail("Failed to fetch users for retrieve test: \(error)")
+            return
+        }
+
+        print("  Found \(users.count) users, retrieving each by ID...")
+
+        var retrieveErrors: [(user: String, error: String)] = []
+
+        for user in users {
+            do {
+                let retrieved = try await HunchAPI.shared.retrieveUser(userId: user.id)
+                XCTAssertEqual(retrieved.id, user.id, "Retrieved user ID should match")
+                XCTAssertEqual(retrieved.type, user.type, "Retrieved user type should match")
+                XCTAssertEqual(retrieved.name, user.name, "Retrieved user name should match")
+                print("  ✓ Retrieved '\(retrieved.description)' (type: \(retrieved.type.rawValue))")
+
+                // Verify type-specific info is present
+                switch retrieved.type {
+                case .person:
+                    // Person may or may not have email depending on permissions
+                    if let email = retrieved.person?.email {
+                        print("    email: \(email)")
+                    }
+                case .bot:
+                    if let ownerType = retrieved.bot?.owner?.type {
+                        print("    bot owner: \(ownerType)")
+                    }
+                }
+
+                // Test encoding roundtrip for the single user
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys]
+                let data = try encoder.encode(retrieved)
+                let decoded = try JSONDecoder().decode(User.self, from: data)
+                XCTAssertEqual(decoded.id, retrieved.id)
+                XCTAssertEqual(decoded.type, retrieved.type)
+            } catch {
+                let msg: String
+                if let decodingError = Self.extractDecodingError(from: error) {
+                    msg = "User \(user.id): \(Self.describeDecodingError(decodingError))"
+                } else {
+                    msg = "User \(user.id): \(error)"
+                }
+                retrieveErrors.append((user: user.id, error: msg))
+                print("  ✗ \(msg)")
+            }
+        }
+
+        if !retrieveErrors.isEmpty {
+            XCTFail("\(retrieveErrors.count) user(s) failed retrieval:\n" + retrieveErrors.map { $0.error }.joined(separator: "\n"))
+        }
+    }
+
     // MARK: - Block Mutation Tests
 
     /// Test appending blocks to an existing page
