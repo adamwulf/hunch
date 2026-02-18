@@ -14,6 +14,7 @@ swift test                           # Run all tests
 swift test --filter BlockTests       # Run specific test class
 swift test --filter testBookmarkBlock # Run a single test
 ./format-files.sh                    # SwiftLint auto-fix then lint check
+mint install adamwulf/hunch@main --force  # Install globally via Mint
 ```
 
 The CLI requires `NOTION_KEY` environment variable set to a Notion API token:
