@@ -20,7 +20,7 @@ mint install adamwulf/hunch@main --force  # Install globally via Mint
 The CLI requires `NOTION_KEY` environment variable set to a Notion API token:
 ```bash
 swift run hunch databases [--limit N] [--format jsonl]
-swift run hunch pages --id <pageId>
+swift run hunch pages [<pageId>]
 swift run hunch blocks <pageId> [--format markdown]
 swift run hunch export <databaseId> --output-dir <path>
 ```
