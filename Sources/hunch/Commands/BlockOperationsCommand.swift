@@ -52,7 +52,7 @@ struct AppendBlocksCommand: AsyncParsableCommand {
 
 struct DeleteBlockCommand: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
-        commandName: "delete-blocks",
+        commandName: "delete-block",
         abstract: "Delete (archive) a block"
     )
 
