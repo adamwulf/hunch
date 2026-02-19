@@ -15,7 +15,7 @@ struct UsersCommand: AsyncParsableCommand {
         abstract: "List users in the Notion workspace"
     )
 
-    @Option(name: .shortAndLong, help: "The Notion user ID to retrieve a single user")
+    @Argument(help: "The Notion user ID to retrieve. If omitted, lists all users.")
     var id: String?
 
     @Option(name: .shortAndLong, help: "The maximum number of results to return")
