@@ -27,18 +27,14 @@ struct CommentsCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "The format of the output")
     var format: Hunch.Format = .id
 
-    func run() async {
-        do {
-            if let commentText = add {
-                let body = try buildCommentBody(text: commentText)
-                let comment = try await HunchAPI.shared.createComment(body: body)
-                Hunch.output(list: [comment], format: format)
-            } else {
-                let comments = try await HunchAPI.shared.fetchComments(blockId: blockId)
-                Hunch.output(list: comments, format: format)
-            }
-        } catch {
-            fatalError("error: \(error.localizedDescription)")
+    func run() async throws {
+        if let commentText = add {
+            let body = try buildCommentBody(text: commentText)
+            let comment = try await HunchAPI.shared.createComment(body: body)
+            Hunch.output(list: [comment], format: format)
+        } else {
+            let comments = try await HunchAPI.shared.fetchComments(blockId: blockId)
+            Hunch.output(list: comments, format: format)
         }
     }
 

@@ -30,25 +30,20 @@ struct UpdatePageCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "The format of the output")
     var format: Hunch.Format = .id
 
-    func run() async {
-        do {
-            var props: JSONValue?
-            if let propertiesJSON = properties,
-               let data = propertiesJSON.data(using: .utf8) {
-                props = try JSONDecoder().decode(JSONValue.self, from: data)
-            }
-
-            let archived: Bool? = archive ? true : (unarchive ? false : nil)
-
-            guard props != nil || archived != nil else {
-                print("error: provide --properties and/or --archive/--unarchive")
-                return
-            }
-
-            let page = try await HunchAPI.shared.updatePage(pageId: pageId, properties: props, archived: archived)
-            Hunch.output(list: [page], format: format)
-        } catch {
-            fatalError("error: \(error.localizedDescription)")
+    func run() async throws {
+        var props: JSONValue?
+        if let propertiesJSON = properties,
+           let data = propertiesJSON.data(using: .utf8) {
+            props = try JSONDecoder().decode(JSONValue.self, from: data)
         }
+
+        let archived: Bool? = archive ? true : (unarchive ? false : nil)
+
+        guard props != nil || archived != nil else {
+            throw ValidationError("Provide --properties and/or --archive/--unarchive")
+        }
+
+        let page = try await HunchAPI.shared.updatePage(pageId: pageId, properties: props, archived: archived)
+        Hunch.output(list: [page], format: format)
     }
 }

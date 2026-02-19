@@ -24,29 +24,24 @@ struct AppendBlocksCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "The format of the output")
     var format: Hunch.Format = .id
 
-    func run() async {
-        do {
-            let childrenData: Data
-            if let json = json, let data = json.data(using: .utf8) {
-                childrenData = data
-            } else {
-                // Read from stdin
-                var input = ""
-                while let line = readLine() {
-                    input += line
-                }
-                guard let data = input.data(using: .utf8) else {
-                    print("error: could not read JSON input")
-                    return
-                }
-                childrenData = data
+    func run() async throws {
+        let childrenData: Data
+        if let json = json, let data = json.data(using: .utf8) {
+            childrenData = data
+        } else {
+            // Read from stdin
+            var input = ""
+            while let line = readLine() {
+                input += line
             }
-
-            let blocks = try await HunchAPI.shared.appendBlockChildren(blockId: blockId, children: childrenData)
-            Hunch.output(list: blocks, format: format)
-        } catch {
-            fatalError("error: \(error.localizedDescription)")
+            guard let data = input.data(using: .utf8) else {
+                throw ValidationError("Could not read JSON input")
+            }
+            childrenData = data
         }
+
+        let blocks = try await HunchAPI.shared.appendBlockChildren(blockId: blockId, children: childrenData)
+        Hunch.output(list: blocks, format: format)
     }
 }
 
@@ -62,12 +57,8 @@ struct DeleteBlockCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "The format of the output")
     var format: Hunch.Format = .id
 
-    func run() async {
-        do {
-            let block = try await HunchAPI.shared.deleteBlock(blockId: blockId)
-            Hunch.output(list: [block], format: format)
-        } catch {
-            fatalError("error: \(error.localizedDescription)")
-        }
+    func run() async throws {
+        let block = try await HunchAPI.shared.deleteBlock(blockId: blockId)
+        Hunch.output(list: [block], format: format)
     }
 }

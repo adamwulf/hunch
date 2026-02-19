@@ -46,35 +46,31 @@ struct PageCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Sort by timestamp field")
     var sortTimestamp: SortTimestamp?
 
-    func run() async {
-        do {
-            if let pageId = id {
-                let page = try await HunchAPI.shared.retrievePage(pageId: pageId)
-                Hunch.output(list: [page], format: format)
-            } else {
-                let limit = limit ?? .max
+    func run() async throws {
+        if let pageId = id {
+            let page = try await HunchAPI.shared.retrievePage(pageId: pageId)
+            Hunch.output(list: [page], format: format)
+        } else {
+            let limit = limit ?? .max
 
-                var dbFilter: DatabaseFilter?
-                if let filterJSON = filter, let filterData = filterJSON.data(using: .utf8) {
-                    dbFilter = try JSONDecoder().decode(DatabaseFilter.self, from: filterData)
-                }
-
-                var dbSorts: [DatabaseSort]?
-                if let sortBy = sortBy {
-                    let direction: DatabaseSort.Direction = sortDirection == .descending ? .descending : .ascending
-                    dbSorts = [DatabaseSort(property: sortBy, direction: direction)]
-                } else if let sortTimestamp = sortTimestamp {
-                    let direction: DatabaseSort.Direction = sortDirection == .descending ? .descending : .ascending
-                    if let ts = DatabaseSort.TimestampSort(rawValue: sortTimestamp.rawValue) {
-                        dbSorts = [DatabaseSort(timestamp: ts, direction: direction)]
-                    }
-                }
-
-                let pages = try await HunchAPI.shared.fetchPages(databaseId: database, limit: limit, filter: dbFilter, sorts: dbSorts)
-                Hunch.output(list: pages, format: format)
+            var dbFilter: DatabaseFilter?
+            if let filterJSON = filter, let filterData = filterJSON.data(using: .utf8) {
+                dbFilter = try JSONDecoder().decode(DatabaseFilter.self, from: filterData)
             }
-        } catch {
-            fatalError("error: \(error.localizedDescription)")
+
+            var dbSorts: [DatabaseSort]?
+            if let sortBy = sortBy {
+                let direction: DatabaseSort.Direction = sortDirection == .descending ? .descending : .ascending
+                dbSorts = [DatabaseSort(property: sortBy, direction: direction)]
+            } else if let sortTimestamp = sortTimestamp {
+                let direction: DatabaseSort.Direction = sortDirection == .descending ? .descending : .ascending
+                if let ts = DatabaseSort.TimestampSort(rawValue: sortTimestamp.rawValue) {
+                    dbSorts = [DatabaseSort(timestamp: ts, direction: direction)]
+                }
+            }
+
+            let pages = try await HunchAPI.shared.fetchPages(databaseId: database, limit: limit, filter: dbFilter, sorts: dbSorts)
+            Hunch.output(list: pages, format: format)
         }
     }
 }

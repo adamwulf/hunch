@@ -27,33 +27,29 @@ struct CreatePageCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "The format of the output")
     var format: Hunch.Format = .id
 
-    func run() async {
-        do {
-            var propsDict: [String: JSONValue] = [:]
+    func run() async throws {
+        var propsDict: [String: JSONValue] = [:]
 
-            if let propertiesJSON = properties,
-               let data = propertiesJSON.data(using: .utf8) {
-                let parsed = try JSONDecoder().decode(JSONValue.self, from: data)
-                if case .object(let dict) = parsed {
-                    propsDict = dict
-                }
+        if let propertiesJSON = properties,
+           let data = propertiesJSON.data(using: .utf8) {
+            let parsed = try JSONDecoder().decode(JSONValue.self, from: data)
+            if case .object(let dict) = parsed {
+                propsDict = dict
             }
-
-            if let title = title {
-                propsDict["title"] = .object([
-                    "title": .array([
-                        .object(["text": .object(["content": .string(title)])])
-                    ])
-                ])
-            }
-
-            let page = try await HunchAPI.shared.createPage(
-                parentDatabaseId: database,
-                properties: .object(propsDict)
-            )
-            Hunch.output(list: [page], format: format)
-        } catch {
-            fatalError("error: \(error.localizedDescription)")
         }
+
+        if let title = title {
+            propsDict["title"] = .object([
+                "title": .array([
+                    .object(["text": .object(["content": .string(title)])])
+                ])
+            ])
+        }
+
+        let page = try await HunchAPI.shared.createPage(
+            parentDatabaseId: database,
+            properties: .object(propsDict)
+        )
+        Hunch.output(list: [page], format: format)
     }
 }
