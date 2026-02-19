@@ -22,7 +22,7 @@ struct PageCommand: AsyncParsableCommand {
         abstract: "Fetch pages from Notion"
     )
 
-    @Option(name: .shortAndLong, help: "The Notion ID of a specific page to retrieve")
+    @Argument(help: "The Notion page ID to retrieve. If omitted, lists pages.")
     var id: String?
 
     @Option(name: .shortAndLong, help: "The Notion database ID to list pages from")
