@@ -27,12 +27,8 @@ struct BlocksCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Ignore underlined formatting in markdown")
     var ignoreUnderline: Bool = false
 
-    func run() async {
-        do {
-            let rootBlocks = try await HunchAPI.shared.fetchBlocks(in: pageId)
-            Hunch.output(list: rootBlocks, format: format, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
-        } catch {
-            fatalError("error: \(error.localizedDescription)")
-        }
+    func run() async throws {
+        let rootBlocks = try await HunchAPI.shared.fetchBlocks(in: pageId)
+        try Hunch.output(list: rootBlocks, format: format, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
     }
 }

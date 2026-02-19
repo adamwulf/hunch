@@ -27,22 +27,17 @@ struct DatabaseCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Retrieve a single database schema by ID (requires entityId)")
     var schema: Bool = false
 
-    func run() async {
-        do {
-            if schema {
-                guard let databaseId = entityId else {
-                    print("error: --schema requires a database ID as argument")
-                    return
-                }
-                let database = try await HunchAPI.shared.retrieveDatabase(databaseId: databaseId)
-                Hunch.output(list: [database], format: format)
-            } else {
-                let limit = limit ?? .max
-                let databases = try await HunchAPI.shared.fetchDatabases(parentId: entityId, limit: limit)
-                Hunch.output(list: databases, format: format)
+    func run() async throws {
+        if schema {
+            guard let databaseId = entityId else {
+                throw ValidationError("--schema requires a database ID as argument")
             }
-        } catch {
-            fatalError("error: \(error.localizedDescription)")
+            let database = try await HunchAPI.shared.retrieveDatabase(databaseId: databaseId)
+            try Hunch.output(list: [database], format: format)
+        } else {
+            let limit = limit ?? .max
+            let databases = try await HunchAPI.shared.fetchDatabases(parentId: entityId, limit: limit)
+            try Hunch.output(list: databases, format: format)
         }
     }
 }

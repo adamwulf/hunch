@@ -24,18 +24,14 @@ struct UsersCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "The format of the output")
     var format: Hunch.Format = .id
 
-    func run() async {
-        do {
-            if let userId = id {
-                let user = try await HunchAPI.shared.retrieveUser(userId: userId)
-                Hunch.output(list: [user], format: format)
-            } else {
-                let limit = limit ?? .max
-                let users = try await HunchAPI.shared.fetchUsers(limit: limit)
-                Hunch.output(list: users, format: format)
-            }
-        } catch {
-            fatalError("error: \(error.localizedDescription)")
+    func run() async throws {
+        if let userId = id {
+            let user = try await HunchAPI.shared.retrieveUser(userId: userId)
+            try Hunch.output(list: [user], format: format)
+        } else {
+            let limit = limit ?? .max
+            let users = try await HunchAPI.shared.fetchUsers(limit: limit)
+            try Hunch.output(list: users, format: format)
         }
     }
 }
