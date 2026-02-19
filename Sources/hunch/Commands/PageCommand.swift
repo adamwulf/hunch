@@ -18,7 +18,7 @@ struct PageCommand: AsyncParsableCommand {
     }
 
     static var configuration = CommandConfiguration(
-        commandName: "page",
+        commandName: "pages",
         abstract: "Fetch pages from Notion"
     )
 

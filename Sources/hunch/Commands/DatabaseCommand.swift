@@ -12,7 +12,7 @@ import HunchKit
 
 struct DatabaseCommand: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
-        commandName: "database",
+        commandName: "databases",
         abstract: "Fetch databases from Notion"
     )
 
