@@ -27,11 +27,11 @@ struct UsersCommand: AsyncParsableCommand {
     func run() async throws {
         if let userId = id {
             let user = try await HunchAPI.shared.retrieveUser(userId: userId)
-            Hunch.output(list: [user], format: format)
+            try Hunch.output(list: [user], format: format)
         } else {
             let limit = limit ?? .max
             let users = try await HunchAPI.shared.fetchUsers(limit: limit)
-            Hunch.output(list: users, format: format)
+            try Hunch.output(list: users, format: format)
         }
     }
 }

@@ -51,7 +51,7 @@ struct Hunch: AsyncParsableCommand {
         }
     }
 
-    static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) {
+    static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) throws {
         let flattenedList = flatten(items: list)
 
         let renderer: Renderer = {
@@ -69,12 +69,8 @@ struct Hunch: AsyncParsableCommand {
             }
         }()
 
-        do {
-            let output = try renderer.render(flattenedList)
-            print(output)
-        } catch {
-            print("error: \(error.localizedDescription)")
-        }
+        let output = try renderer.render(flattenedList)
+        print(output)
     }
 
     // Helper function to flatten the list of NotionItems

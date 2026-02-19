@@ -50,6 +50,6 @@ struct CreatePageCommand: AsyncParsableCommand {
             parentDatabaseId: database,
             properties: .object(propsDict)
         )
-        Hunch.output(list: [page], format: format)
+        try Hunch.output(list: [page], format: format)
     }
 }

@@ -44,6 +44,6 @@ struct UpdatePageCommand: AsyncParsableCommand {
         }
 
         let page = try await HunchAPI.shared.updatePage(pageId: pageId, properties: props, archived: archived)
-        Hunch.output(list: [page], format: format)
+        try Hunch.output(list: [page], format: format)
     }
 }

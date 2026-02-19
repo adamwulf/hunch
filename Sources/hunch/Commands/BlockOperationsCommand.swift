@@ -41,7 +41,7 @@ struct AppendBlocksCommand: AsyncParsableCommand {
         }
 
         let blocks = try await HunchAPI.shared.appendBlockChildren(blockId: blockId, children: childrenData)
-        Hunch.output(list: blocks, format: format)
+        try Hunch.output(list: blocks, format: format)
     }
 }
 
@@ -59,6 +59,6 @@ struct DeleteBlockCommand: AsyncParsableCommand {
 
     func run() async throws {
         let block = try await HunchAPI.shared.deleteBlock(blockId: blockId)
-        Hunch.output(list: [block], format: format)
+        try Hunch.output(list: [block], format: format)
     }
 }

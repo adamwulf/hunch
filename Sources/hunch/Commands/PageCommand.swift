@@ -49,7 +49,7 @@ struct PageCommand: AsyncParsableCommand {
     func run() async throws {
         if let pageId = id {
             let page = try await HunchAPI.shared.retrievePage(pageId: pageId)
-            Hunch.output(list: [page], format: format)
+            try Hunch.output(list: [page], format: format)
         } else {
             let limit = limit ?? .max
 
@@ -70,7 +70,7 @@ struct PageCommand: AsyncParsableCommand {
             }
 
             let pages = try await HunchAPI.shared.fetchPages(databaseId: database, limit: limit, filter: dbFilter, sorts: dbSorts)
-            Hunch.output(list: pages, format: format)
+            try Hunch.output(list: pages, format: format)
         }
     }
 }

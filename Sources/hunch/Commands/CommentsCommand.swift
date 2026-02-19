@@ -31,10 +31,10 @@ struct CommentsCommand: AsyncParsableCommand {
         if let commentText = add {
             let body = try buildCommentBody(text: commentText)
             let comment = try await HunchAPI.shared.createComment(body: body)
-            Hunch.output(list: [comment], format: format)
+            try Hunch.output(list: [comment], format: format)
         } else {
             let comments = try await HunchAPI.shared.fetchComments(blockId: blockId)
-            Hunch.output(list: comments, format: format)
+            try Hunch.output(list: comments, format: format)
         }
     }
 

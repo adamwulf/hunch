@@ -46,6 +46,6 @@ struct SearchCommand: AsyncParsableCommand {
 
         let limit = limit ?? .max
         let items = try await HunchAPI.shared.search(query: query, filter: filter, sort: sort, limit: limit)
-        Hunch.output(list: items, format: format)
+        try Hunch.output(list: items, format: format)
     }
 }
