@@ -16,6 +16,7 @@ struct Hunch: AsyncParsableCommand {
     enum Format: String, ExpressibleByArgument, CaseIterable {
         case smalljsonl
         case jsonl
+        case json
         case id
         case markdown
     }
@@ -61,6 +62,8 @@ struct Hunch: AsyncParsableCommand {
                 return SmallJSONRenderer()
             case .jsonl:
                 return FullJSONRenderer()
+            case .json:
+                return JSONRenderer()
             case .markdown:
                 return MarkdownRenderer(level: 0, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
             }
