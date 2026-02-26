@@ -10,8 +10,8 @@ import Foundation
 /// - If the input is a bare JSON array `[...]`, wraps it as `{"children": [...]}`.
 /// - If it already has a top-level `{"children": [...]}` key, passes through unchanged.
 /// - Any other JSON object passes through unchanged.
-public enum JSONChildrenWrapper {
-    public static func wrapIfNeeded(_ data: Data) -> Data {
+enum JSONChildrenWrapper {
+    static func wrapIfNeeded(_ data: Data) -> Data {
         guard let parsed = try? JSONSerialization.jsonObject(with: data) else {
             return data
         }

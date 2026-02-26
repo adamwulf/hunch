@@ -1,5 +1,5 @@
+@testable import hunch
 import XCTest
-@testable import HunchKit
 
 final class JSONChildrenWrapperTests: XCTestCase {
 
@@ -14,6 +14,18 @@ final class JSONChildrenWrapperTests: XCTestCase {
         let children = parsed?["children"] as? [[String: Any]]
         XCTAssertEqual(children?.count, 1)
         XCTAssertEqual(children?.first?["type"] as? String, "paragraph")
+    }
+
+    func testEmptyArrayGetsWrapped() throws {
+        let input = Data("[]".utf8)
+        let output = JSONChildrenWrapper.wrapIfNeeded(input)
+
+        let parsed = try JSONSerialization.jsonObject(with: output) as? [String: Any]
+        XCTAssertNotNil(parsed)
+
+        let children = parsed?["children"] as? [Any]
+        XCTAssertNotNil(children)
+        XCTAssertEqual(children?.count, 0)
     }
 
     func testAlreadyWrappedPassesThrough() throws {
