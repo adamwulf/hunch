@@ -40,7 +40,8 @@ struct AppendBlocksCommand: AsyncParsableCommand {
             childrenData = data
         }
 
-        let blocks = try await HunchAPI.shared.appendBlockChildren(blockId: blockId, children: childrenData)
+        let wrappedData = JSONChildrenWrapper.wrapIfNeeded(childrenData)
+        let blocks = try await HunchAPI.shared.appendBlockChildren(blockId: blockId, children: wrappedData)
         try Hunch.output(list: blocks, format: format)
     }
 }

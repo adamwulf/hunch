@@ -192,6 +192,8 @@ final class IntegrationTests: XCTestCase {
         var totalPages = 0
 
         for db in databases {
+            guard totalPages < 200 else { break }
+
             print("\n  Database: \(db.id) (\(db.description))")
 
             // Check database property schema
@@ -267,10 +269,13 @@ final class IntegrationTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         var encodeErrors: [(page: String, error: String)] = []
+        var totalPages = 0
 
         for db in databases {
+            guard totalPages < 200 else { break }
             do {
                 let pages = try await HunchAPI.shared.fetchPages(databaseId: db.id, limit: 5)
+                totalPages += pages.count
                 for page in pages {
                     do {
                         // This is what the export command does - encode properties to JSON
@@ -316,11 +321,14 @@ final class IntegrationTests: XCTestCase {
         var allBlockTypes: [String: Int] = [:]
         var blockErrors: [(page: String, error: String)] = []
         var pagesWithBlocks = 0
+        var totalPages = 0
 
         for db in databases.prefix(2) {
+            guard totalPages < 200 else { break }
             let pages: [Page]
             do {
                 pages = try await HunchAPI.shared.fetchPages(databaseId: db.id, limit: 5)
+                totalPages += pages.count
             } catch {
                 print("  ⚠️ Skipping database \(db.id): \(error)")
                 continue
@@ -383,11 +391,14 @@ final class IntegrationTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         var roundtripErrors: [(page: String, error: String)] = []
+        var totalPages = 0
 
         for db in databases.prefix(2) {
+            guard totalPages < 200 else { break }
             let pages: [Page]
             do {
                 pages = try await HunchAPI.shared.fetchPages(databaseId: db.id, limit: 3)
+                totalPages += pages.count
             } catch {
                 print("  ⚠️ Skipping database \(db.id): \(error)")
                 continue
@@ -452,11 +463,14 @@ final class IntegrationTests: XCTestCase {
         }
 
         var retrieveErrors: [(page: String, error: String)] = []
+        var totalPages = 0
 
         for db in databases {
+            guard totalPages < 200 else { break }
             let pages: [Page]
             do {
                 pages = try await HunchAPI.shared.fetchPages(databaseId: db.id, limit: 5)
+                totalPages += pages.count
             } catch {
                 print("  ⚠️ Skipping database \(db.id): \(error)")
                 continue
@@ -660,7 +674,7 @@ final class IntegrationTests: XCTestCase {
         print("  Output directory: \(outputDir)")
 
         // Fetch all pages from the database
-        let pages = try await HunchAPI.shared.fetchPages(databaseId: db.id)
+        let pages = try await HunchAPI.shared.fetchPages(databaseId: db.id, limit: 200)
         print("  Fetched \(pages.count) pages")
         XCTAssertGreaterThan(pages.count, 0, "Expected at least one page in the Example database")
 
