@@ -12,21 +12,21 @@ import HunchKit
 struct AppendBlocksCommand: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
         commandName: "append-blocks",
-        abstract: "Append child blocks to a page or block (accepts --json, -j, or --blocks)"
+        abstract: "Append child blocks to a page or block"
     )
 
     @Argument(help: "The Notion block or page ID to append children to")
     var blockId: String
 
-    @Option(name: [.short, .long, .customLong("blocks")], help: "JSON string of children blocks to append (reads from stdin if omitted)")
-    var json: String?
+    @Option(name: .shortAndLong, help: "JSON string of children blocks to append (reads from stdin if omitted)")
+    var blocks: String?
 
     @Option(name: .shortAndLong, help: "The format of the output")
     var format: Hunch.Format = .id
 
     func run() async throws {
         let childrenData: Data
-        if let json = json, let data = json.data(using: .utf8) {
+        if let blocks = blocks, let data = blocks.data(using: .utf8) {
             childrenData = data
         } else {
             // Read from stdin
