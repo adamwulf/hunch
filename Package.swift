@@ -39,6 +39,13 @@ let package = Package(
         .testTarget(
             name: "HunchKitTests",
             dependencies: ["HunchKit"]
+        ),
+        .testTarget(
+            name: "CLITests",
+            dependencies: [
+                "hunch",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ]
         )
     ]
 )
