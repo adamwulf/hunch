@@ -15,6 +15,9 @@ struct ExportCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Output directory path")
     var outputDir: String = "./notion_export"
 
+    @Option(name: .shortAndLong, help: "Maximum number of pages to export")
+    var limit: Int?
+
     mutating func run() async throws {
         let fm = FileManager.default
 
@@ -24,7 +27,7 @@ struct ExportCommand: AsyncParsableCommand {
             .standardizingPath
 
         // Fetch database pages
-        let pages = try await HunchAPI.shared.fetchPages(databaseId: databaseId)
+        let pages = try await HunchAPI.shared.fetchPages(databaseId: databaseId, limit: limit ?? .max)
 
         // Create output directory if it doesn't exist
         try fm.createDirectory(atPath: normalizedPath, withIntermediateDirectories: true)
