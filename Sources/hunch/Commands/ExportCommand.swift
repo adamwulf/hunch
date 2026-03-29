@@ -18,6 +18,15 @@ struct ExportCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Maximum number of pages to export")
     var limit: Int?
 
+    @Option(name: .long, help: "Sort by a property name")
+    var sortBy: String?
+
+    @Option(name: .long, help: "Sort direction")
+    var sortDirection: Hunch.SortDirection?
+
+    @Option(name: .long, help: "Sort by timestamp field (created_time or last_edited_time)")
+    var sortTimestamp: PageCommand.SortTimestamp?
+
     mutating func run() async throws {
         let fm = FileManager.default
 
@@ -26,8 +35,20 @@ struct ExportCommand: AsyncParsableCommand {
             .expandingTildeInPath as NSString)
             .standardizingPath
 
+        // Build sort options
+        var dbSorts: [DatabaseSort]?
+        if let sortBy = sortBy {
+            let direction: DatabaseSort.Direction = sortDirection == .descending ? .descending : .ascending
+            dbSorts = [DatabaseSort(property: sortBy, direction: direction)]
+        } else if let sortTimestamp = sortTimestamp {
+            let direction: DatabaseSort.Direction = sortDirection == .descending ? .descending : .ascending
+            if let ts = DatabaseSort.TimestampSort(rawValue: sortTimestamp.rawValue) {
+                dbSorts = [DatabaseSort(timestamp: ts, direction: direction)]
+            }
+        }
+
         // Fetch database pages
-        let pages = try await HunchAPI.shared.fetchPages(databaseId: databaseId, limit: limit ?? .max)
+        let pages = try await HunchAPI.shared.fetchPages(databaseId: databaseId, limit: limit ?? .max, sorts: dbSorts)
 
         // Create output directory if it doesn't exist
         try fm.createDirectory(atPath: normalizedPath, withIntermediateDirectories: true)
