@@ -1,59 +1,93 @@
-# ytt: Handle activities with no associated link (e.g., "Used Shorts creation tools")
+# ytt: Activity parse errors for unsupported activity formats
 
-## Problem
+## Resolved: "Used Shorts creation tools" (no associated link)
 
-When running `hunch activity` on a Google Takeout MyActivity.html file that contains "Used Shorts creation tools" YouTube activities, the parser throws:
+**Status:** Fixed in current `main` — `usedShortsCreationTools` action case and `.none` link case both exist.
+
+---
+
+## Open: "Shared video" activity fails to parse
+
+### Problem
+
+When running `hunch activity` on a Google Takeout MyActivity.html file that contains "Shared video" YouTube activities, the parser throws:
 
 ```
 Error: activityParseError(block: "...", reason: "Could not extract action")
 ```
 
-This happens for activities that describe tool usage rather than content interaction — they have no associated video, channel, post, or search URL.
+Example invocation:
+
+```
+$ ./fetch-youtube.sh
+Error: activityParseError(block: "<div class=\"outer-cell mdl-cell mdl-cell--12-col mdl-shadow--2dp\">...Shared video...</div>", reason: "Could not extract action")
+```
 
 The HTML block looks like:
 
 ```html
-<div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1">Used Shorts creation tools<br>Apr 12, 2026, 11:00:07 AM CDT<br></div>
-<div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1 mdl-typography--text-right"></div>
+<div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1">
+  <a href="https://youtube.com/watch?v=91AJ0cpgLlQ&amp;si=YuAnMOTLcrxcDecZ">Shared video</a><br>
+  Shared URL: https://youtube.com/watch?v=91AJ0cpgLlQ&amp;si=YuAnMOTLcrxcDecZ<br>
+  <a href="https://youtube.com/watch?v=91AJ0cpgLlQ&amp;si=YuAnMOTLcrxcDecZ">How Anthropic uses Claude in Product Management</a><br>
+  Mar 26, 2026, 11:57:04 PM CDT<br>
+</div>
 ```
 
-Note: there is **no** `<a href="...">` link or `https://` URL in the content cell — just the action text followed by `<br>` and a timestamp.
+Note: the action text "Shared video" is **inside an anchor tag** (`<a href="...">Shared video</a>`) rather than being plain text before a link. This is different from all other activity types where the action text is plain text.
 
-## Root Cause
+### Root Cause
 
-In `Sources/YouTubeTranscriptKit/YouTubeTranscriptKit.swift`, `parseActivityBlock()` at line 297 uses this regex to extract the action text:
+In `Sources/YouTubeTranscriptKit/YouTubeTranscriptKit.swift`, `parseActivityBlock()` at line 295 has two regex patterns for extracting action text:
 
 ```swift
-let actionPattern = #"<div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1">([^<]+?)(?:(?:https://|<a href="))"#
+let actionWithLinkPattern = #"<div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1">([^<]+?)(?:(?:https://|<a href="))"#
+let actionNoLinkPattern = #"<div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1">([^<]+?)<br>"#
 ```
 
-This regex **requires** the action text to be followed by either `https://` or `<a href="`. For "Used Shorts creation tools", the action text is followed by `<br>`, so the regex doesn't match at all, and the function throws `"Could not extract action"`.
+Both patterns use `([^<]+?)` to capture the action text, which requires plain text (no `<` characters). But for "Shared video", the content cell **starts with** `<a href="...">`, so there is no plain text to match before the `<` — both regexes fail, and the function throws `"Could not extract action"`.
 
-Even if the regex were fixed, there are two more issues:
+Beyond the action extraction, there are two more issues:
 
-1. `Activity.Action` enum in `Model+Public.swift` has no case for "used shorts creation tools"
-2. The link extraction (lines 316-329) requires at least one of: video, post, channel, playlist, or search link — but this activity has no link
+1. **Missing `Action` case:** `Activity.Action` enum in `Model+Public.swift` has no case for `"shared video"` (or similar like `"shared"`)
+2. **URL format mismatch:** The shared video URL uses `youtube.com/watch?v=...` (no `www.`), but `extractVideoId()` at line 361 requires `www.youtube.com/watch`:
+   ```swift
+   let anchorPattern = #"<a href="(?:https://)?www\.youtube\.com/watch\?v=([^"]+)">([^<]+)</a>"#
+   ```
+   This would fail to extract the video ID even after the action is fixed.
 
-## Fix
+### Fix
 
 Three changes needed in the `ytt` package:
 
-### 1. Add new `Action` case in `Model+Public.swift`
+#### 1. Add new `Action` case in `Model+Public.swift`
+
+Add a case for sharing activities:
 
 ```swift
-case usedShortsCreationTools = "used shorts creation tools"
+case sharedVideo = "shared video"
 ```
 
-### 2. Add a `Link` case for no-content activities in `Model+Public.swift`
+#### 2. Add a third action extraction pattern in `parseActivityBlock()` (`YouTubeTranscriptKit.swift`)
+
+Add a regex that handles action text wrapped in an anchor tag. The new pattern should capture text from inside `<a href="...">ACTION TEXT</a>`:
 
 ```swift
-case none  // Activity with no associated content (e.g., tool usage)
+let actionInLinkPattern = #"<div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1"><a href="[^"]+">([^<]+)</a>"#
 ```
 
-With a corresponding `url` implementation that returns nil or a sensible default.
+This should be tried as a third fallback after `actionWithLinkPattern` and `actionNoLinkPattern`, or potentially first since it's the most specific.
 
-### 3. Update `parseActivityBlock()` in `YouTubeTranscriptKit.swift`
+#### 3. Update `extractVideoId()` to handle URLs without `www.`
 
-The action extraction regex needs a second pattern that handles the no-link case. When the action text is followed by `<br>` instead of a URL, extract the action and set the link to `.none`.
+The anchor pattern and plain URL pattern in `extractVideoId()` both require `www.youtube.com`. The "Shared video" activity uses `youtube.com` without `www.`. Update the patterns to make `www.` optional:
 
-Alternatively, the function could return `nil` for these activities (skip them), since they don't reference any video content.
+```swift
+// Anchor pattern: make www. optional
+let anchorPattern = #"<a href="(?:https://)?(?:www\.)?youtube\.com/watch\?v=([^"]+)">([^<]+)</a>"#
+
+// Plain URL pattern: make www. optional
+let plainPattern = #"https://(?:www\.)?youtube\.com/watch\?v=([^<\s]+)"#
+```
+
+**Note:** The same `www.` issue may affect `extractPostId`, `extractChannelId`, `extractPlaylistId`, and `extractSearchQuery` — consider auditing all URL patterns for consistency.
