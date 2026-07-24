@@ -92,6 +92,12 @@ public class MarkdownRenderer: Renderer {
             return renderHeading(block, level: 2)
         case .heading3:
             return renderHeading(block, level: 3)
+        case .heading4:
+            return renderHeading(block, level: 4)
+        case .heading5:
+            return renderHeading(block, level: 5)
+        case .heading6:
+            return renderHeading(block, level: 6)
         case .bulletedListItem:
             return renderBulletedListItem(block)
         case .numberedListItem:
@@ -188,6 +194,12 @@ public class MarkdownRenderer: Renderer {
         case .heading2(let block):
             formattedText = block.text.map { renderRichText($0) }.joined()
         case .heading3(let block):
+            formattedText = block.text.map { renderRichText($0) }.joined()
+        case .heading4(let block):
+            formattedText = block.text.map { renderRichText($0) }.joined()
+        case .heading5(let block):
+            formattedText = block.text.map { renderRichText($0) }.joined()
+        case .heading6(let block):
             formattedText = block.text.map { renderRichText($0) }.joined()
         default:
             fatalError("Invalid header block")
