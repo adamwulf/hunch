@@ -806,6 +806,114 @@ final class BlockTests: XCTestCase {
         }
     }
 
+    func testHeading4Block() throws {
+        let block = Block(
+            object: "block",
+            id: "test-id",
+            parent: nil,
+            type: .heading4,
+            createdTime: "2024-01-01",
+            createdBy: PartialUser(object: "user", id: "user-id"),
+            lastEditedTime: "2024-01-01",
+            lastEditedBy: PartialUser(object: "user", id: "user-id"),
+            archived: false,
+            inTrash: false,
+            hasChildren: false,
+            blockTypeObject: .heading4(Heading4Block(
+                text: [RichText(
+                    plainText: "Heading 4",
+                    annotations: .plain,
+                    type: "text",
+                    text: RichText.Text(content: "Heading 4")
+                )],
+                color: .plain
+            ))
+        )
+
+        let data = try encoder.encode(block)
+        let decoded = try decoder.decode(Block.self, from: data)
+
+        if case .heading4(let original) = block.blockTypeObject,
+           case .heading4(let decoded) = decoded.blockTypeObject {
+            XCTAssertEqual(original.text.first?.plainText, decoded.text.first?.plainText)
+            XCTAssertEqual(original.color, decoded.color)
+        } else {
+            XCTFail("Wrong block type")
+        }
+    }
+
+    func testHeading5Block() throws {
+        let block = Block(
+            object: "block",
+            id: "test-id",
+            parent: nil,
+            type: .heading5,
+            createdTime: "2024-01-01",
+            createdBy: PartialUser(object: "user", id: "user-id"),
+            lastEditedTime: "2024-01-01",
+            lastEditedBy: PartialUser(object: "user", id: "user-id"),
+            archived: false,
+            inTrash: false,
+            hasChildren: false,
+            blockTypeObject: .heading5(Heading5Block(
+                text: [RichText(
+                    plainText: "Heading 5",
+                    annotations: .plain,
+                    type: "text",
+                    text: RichText.Text(content: "Heading 5")
+                )],
+                color: .plain
+            ))
+        )
+
+        let data = try encoder.encode(block)
+        let decoded = try decoder.decode(Block.self, from: data)
+
+        if case .heading5(let original) = block.blockTypeObject,
+           case .heading5(let decoded) = decoded.blockTypeObject {
+            XCTAssertEqual(original.text.first?.plainText, decoded.text.first?.plainText)
+            XCTAssertEqual(original.color, decoded.color)
+        } else {
+            XCTFail("Wrong block type")
+        }
+    }
+
+    func testHeading6Block() throws {
+        let block = Block(
+            object: "block",
+            id: "test-id",
+            parent: nil,
+            type: .heading6,
+            createdTime: "2024-01-01",
+            createdBy: PartialUser(object: "user", id: "user-id"),
+            lastEditedTime: "2024-01-01",
+            lastEditedBy: PartialUser(object: "user", id: "user-id"),
+            archived: false,
+            inTrash: false,
+            hasChildren: false,
+            blockTypeObject: .heading6(Heading6Block(
+                text: [RichText(
+                    plainText: "Heading 6",
+                    annotations: .plain,
+                    type: "text",
+                    text: RichText.Text(content: "Heading 6")
+                )],
+                color: .plain
+            ))
+        )
+
+        let data = try encoder.encode(block)
+        let decoded = try decoder.decode(Block.self, from: data)
+
+        if case .heading6(let original) = block.blockTypeObject,
+           case .heading6(let decoded) = decoded.blockTypeObject {
+            XCTAssertEqual(original.text.first?.plainText, decoded.text.first?.plainText)
+            XCTAssertEqual(original.color, decoded.color)
+        } else {
+            XCTFail("Wrong block type")
+        }
+    }
+
     func testImageBlock() throws {
         let block = Block(
             object: "block",
@@ -1400,6 +1508,63 @@ final class BlockTests: XCTestCase {
             XCTAssertEqual(h.text.first?.plainText, "Minor Heading")
             XCTAssertEqual(h.color, .blue)
         } else { XCTFail("Expected heading_3") }
+    }
+
+    func testHeading4FromNotionJSON() throws {
+        let json = blockJSON(type: "heading_4", payload: """
+            "heading_4": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "Deep Heading 4"}, "plain_text": "Deep Heading 4",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "color": "blue",
+                "is_toggleable": false
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .heading4)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .heading4(let h) = block.blockTypeObject {
+            XCTAssertEqual(h.text.first?.plainText, "Deep Heading 4")
+            XCTAssertEqual(h.color, .blue)
+        } else { XCTFail("Expected heading_4") }
+    }
+
+    func testHeading5FromNotionJSON() throws {
+        let json = blockJSON(type: "heading_5", payload: """
+            "heading_5": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "Deep Heading 5"}, "plain_text": "Deep Heading 5",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "color": "blue",
+                "is_toggleable": false
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .heading5)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .heading5(let h) = block.blockTypeObject {
+            XCTAssertEqual(h.text.first?.plainText, "Deep Heading 5")
+            XCTAssertEqual(h.color, .blue)
+        } else { XCTFail("Expected heading_5") }
+    }
+
+    func testHeading6FromNotionJSON() throws {
+        let json = blockJSON(type: "heading_6", payload: """
+            "heading_6": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "Deep Heading 6"}, "plain_text": "Deep Heading 6",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "color": "blue",
+                "is_toggleable": false
+            }
+        """)
+        try assertBlockRoundtrip(json, expectedType: .heading6)
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        if case .heading6(let h) = block.blockTypeObject {
+            XCTAssertEqual(h.text.first?.plainText, "Deep Heading 6")
+            XCTAssertEqual(h.color, .blue)
+        } else { XCTFail("Expected heading_6") }
     }
 
     func testNumberedListItemFromNotionJSON() throws {

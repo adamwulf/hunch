@@ -164,4 +164,93 @@ final class MarkdownRendererTests: XCTestCase {
 
         XCTAssertTrue(result.hasPrefix("# My Page\n"), "Expected title 'My Page', got: \(result)")
     }
+
+    // MARK: - Deep Heading Rendering (heading_4/5/6, undocumented Notion block types)
+
+    func testHeading4RendersAsFourHashes() throws {
+        let json = """
+        {
+            "object": "block",
+            "id": "block-heading4",
+            "parent": {"type": "page_id", "page_id": "parent-page-id"},
+            "type": "heading_4",
+            "created_time": "2025-01-01T00:00:00.000Z",
+            "created_by": {"object": "user", "id": "user-abc"},
+            "last_edited_time": "2025-01-01T00:00:00.000Z",
+            "last_edited_by": {"object": "user", "id": "user-abc"},
+            "archived": false,
+            "in_trash": false,
+            "has_children": false,
+            "heading_4": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "Deep Heading 4"}, "plain_text": "Deep Heading 4",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "color": "default",
+                "is_toggleable": false
+            }
+        }
+        """
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        let result = try renderer.render([block])
+        XCTAssertTrue(result.contains("#### Deep Heading 4"), "Expected '#### Deep Heading 4', got: \(result)")
+    }
+
+    func testHeading5RendersAsFiveHashes() throws {
+        let json = """
+        {
+            "object": "block",
+            "id": "block-heading5",
+            "parent": {"type": "page_id", "page_id": "parent-page-id"},
+            "type": "heading_5",
+            "created_time": "2025-01-01T00:00:00.000Z",
+            "created_by": {"object": "user", "id": "user-abc"},
+            "last_edited_time": "2025-01-01T00:00:00.000Z",
+            "last_edited_by": {"object": "user", "id": "user-abc"},
+            "archived": false,
+            "in_trash": false,
+            "has_children": false,
+            "heading_5": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "Deep Heading 5"}, "plain_text": "Deep Heading 5",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "color": "default",
+                "is_toggleable": false
+            }
+        }
+        """
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        let result = try renderer.render([block])
+        XCTAssertTrue(result.contains("##### Deep Heading 5"), "Expected '##### Deep Heading 5', got: \(result)")
+    }
+
+    func testHeading6RendersAsSixHashes() throws {
+        let json = """
+        {
+            "object": "block",
+            "id": "block-heading6",
+            "parent": {"type": "page_id", "page_id": "parent-page-id"},
+            "type": "heading_6",
+            "created_time": "2025-01-01T00:00:00.000Z",
+            "created_by": {"object": "user", "id": "user-abc"},
+            "last_edited_time": "2025-01-01T00:00:00.000Z",
+            "last_edited_by": {"object": "user", "id": "user-abc"},
+            "archived": false,
+            "in_trash": false,
+            "has_children": false,
+            "heading_6": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "Deep Heading 6"}, "plain_text": "Deep Heading 6",
+                     "annotations": {"bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"}}
+                ],
+                "color": "default",
+                "is_toggleable": false
+            }
+        }
+        """
+        let block = try decoder.decode(Block.self, from: json.data(using: .utf8)!)
+        let result = try renderer.render([block])
+        XCTAssertTrue(result.contains("###### Deep Heading 6"), "Expected '###### Deep Heading 6', got: \(result)")
+    }
 }

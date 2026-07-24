@@ -84,6 +84,9 @@ public struct Block: NotionItem {
         case heading1 = "heading_1"
         case heading2 = "heading_2"
         case heading3 = "heading_3"
+        case heading4 = "heading_4"
+        case heading5 = "heading_5"
+        case heading6 = "heading_6"
         case id
         case inTrash = "in_trash"
         case lastEditedBy = "last_edited_by"
@@ -157,6 +160,12 @@ public struct Block: NotionItem {
             blockTypeObject = .heading2(try container.decode(Heading2Block.self, forKey: .heading2))
         case .heading3:
             blockTypeObject = .heading3(try container.decode(Heading3Block.self, forKey: .heading3))
+        case .heading4:
+            blockTypeObject = .heading4(try container.decode(Heading4Block.self, forKey: .heading4))
+        case .heading5:
+            blockTypeObject = .heading5(try container.decode(Heading5Block.self, forKey: .heading5))
+        case .heading6:
+            blockTypeObject = .heading6(try container.decode(Heading6Block.self, forKey: .heading6))
         case .image:
             blockTypeObject = .image(try ImageBlock(from: decoder))
         case .linkPreview:
@@ -246,6 +255,12 @@ public struct Block: NotionItem {
             try container.encode(value, forKey: .heading2)
         case .heading3(let value):
             try container.encode(value, forKey: .heading3)
+        case .heading4(let value):
+            try container.encode(value, forKey: .heading4)
+        case .heading5(let value):
+            try container.encode(value, forKey: .heading5)
+        case .heading6(let value):
+            try container.encode(value, forKey: .heading6)
         case .image(let value):
             try value.encode(to: encoder)
         case .linkPreview(let value):
@@ -300,6 +315,9 @@ public enum BlockType: String, Codable {
     case heading1 = "heading_1"
     case heading2 = "heading_2"
     case heading3 = "heading_3"
+    case heading4 = "heading_4"
+    case heading5 = "heading_5"
+    case heading6 = "heading_6"
     case image
     case linkPreview = "link_preview"
     case linkToPage = "link_to_page"
@@ -336,6 +354,9 @@ public enum BlockTypeObject: Codable {
     case heading1(Heading1Block)
     case heading2(Heading2Block)
     case heading3(Heading3Block)
+    case heading4(Heading4Block)
+    case heading5(Heading5Block)
+    case heading6(Heading6Block)
     case image(ImageBlock)
     case linkPreview(LinkPreviewBlock)
     case linkToPage(LinkToPageBlock)
@@ -517,6 +538,36 @@ public struct Heading2Block: Codable {
 }
 
 public struct Heading3Block: Codable {
+    public let text: [RichText]
+    public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
+}
+
+public struct Heading4Block: Codable {
+    public let text: [RichText]
+    public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
+}
+
+public struct Heading5Block: Codable {
+    public let text: [RichText]
+    public let color: Color
+
+    enum CodingKeys: String, CodingKey {
+        case text = "rich_text"
+        case color
+    }
+}
+
+public struct Heading6Block: Codable {
     public let text: [RichText]
     public let color: Color
 
