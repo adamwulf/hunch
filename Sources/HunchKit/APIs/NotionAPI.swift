@@ -57,7 +57,7 @@ public class NotionAPI {
         case invalidResponse
         case invalidResponseStatus(_ status: Int)
         case noData
-        case decodeError(_ error: Error)
+        case decodeError(_ error: Error, context: String? = nil)
         case encodeError(_ error: Error)
         case rateLimitExceeded(retryAfter: TimeInterval)
 
@@ -75,12 +75,51 @@ public class NotionAPI {
                 return "invalid response status: \(statusCode)"
             case .noData:
                 return "no data"
-            case .decodeError(let error):
-                return "decode error: \(error.localizedDescription)"
+            case .decodeError(let error, let context):
+                var message = "decode error"
+                if let context = context {
+                    message += " (\(context))"
+                }
+                message += ": \(NotionAPIServiceError.decodingDetail(error))"
+                return message
             case .encodeError(let error):
                 return "encode error: \(error.localizedDescription)"
             case .rateLimitExceeded(let retryAfter):
                 return "Rate limit exceeded. Retry after \(retryAfter) seconds"
+            }
+        }
+
+        /// Extracts the coding path and underlying reason from a `DecodingError`
+        /// so callers can see which field failed and why (e.g. an undocumented
+        /// block `type` value), rather than the opaque "isn't in the correct
+        /// format" that `localizedDescription` produces. Falls back to the
+        /// error's own description for non-decoding errors.
+        static func decodingDetail(_ error: Error) -> String {
+            guard let decodingError = error as? DecodingError else {
+                return error.localizedDescription
+            }
+
+            func path(_ context: DecodingError.Context) -> String {
+                let components = context.codingPath.map { key -> String in
+                    if let index = key.intValue {
+                        return "[\(index)]"
+                    }
+                    return key.stringValue
+                }
+                return components.isEmpty ? "<root>" : components.joined(separator: ".")
+            }
+
+            switch decodingError {
+            case .dataCorrupted(let context):
+                return "at \(path(context)): \(context.debugDescription)"
+            case .keyNotFound(let key, let context):
+                return "at \(path(context)): missing key \"\(key.stringValue)\""
+            case .typeMismatch(let type, let context):
+                return "at \(path(context)): type mismatch for \(type): \(context.debugDescription)"
+            case .valueNotFound(let type, let context):
+                return "at \(path(context)): missing value for \(type): \(context.debugDescription)"
+            @unknown default:
+                return decodingError.localizedDescription
             }
         }
     }
@@ -172,7 +211,7 @@ public class NotionAPI {
                     let values = try self.jsonDecoder.decode(T.self, from: data)
                     completion(.success(values))
                 } catch {
-                    completion(.failure(.decodeError(error)))
+                    completion(.failure(.decodeError(error, context: url.path(percentEncoded: false))))
                 }
             case .failure(let error):
                 completion(.failure(.apiError(error)))
