@@ -22,7 +22,7 @@ final class YouTubeRateLimiterTests: XCTestCase {
         let limiter = fastLimiter()
         let counter = CallCounter()
 
-        let result: String = try await limiter.withBackoff {
+        let result = try await limiter.withBackoff { () -> String in
             counter.count += 1
             if counter.count == 1 {
                 throw self.banned
