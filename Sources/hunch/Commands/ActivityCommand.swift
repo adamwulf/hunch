@@ -139,7 +139,7 @@ struct ActivityCommand: AsyncParsableCommand {
                 switch (info, transcript) {
                 case (nil, nil):
                     try await Task.sleep(for: .milliseconds(300))
-                    let fetched = try await YouTubeRateLimiter.shared.withBackoff {
+                    let fetched = try await YouTubeRateLimiter.shared.withBackoff(onBan: .waitItOut) {
                         try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
                     }
                     finalInfo = fetched.withoutTranscript()
@@ -148,7 +148,7 @@ struct ActivityCommand: AsyncParsableCommand {
                 case (nil, .some(let cached)):
                     try await Task.sleep(for: .seconds(1))
                     print("Fetching info: \(video.id)")
-                    let fetched = try await YouTubeRateLimiter.shared.withBackoff {
+                    let fetched = try await YouTubeRateLimiter.shared.withBackoff(onBan: .waitItOut) {
                         try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
                     }
                     finalInfo = fetched.withoutTranscript()
@@ -157,7 +157,7 @@ struct ActivityCommand: AsyncParsableCommand {
                     try await Task.sleep(for: .seconds(1))
                     // Skip fetching transcript if we already have info
                     print("Fetching transcript: \(video.id)")
-                    let moments = try await YouTubeRateLimiter.shared.withBackoff {
+                    let moments = try await YouTubeRateLimiter.shared.withBackoff(onBan: .waitItOut) {
                         try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
                     }
                     finalInfo = cached

@@ -23,7 +23,7 @@ final class YouTubeRateLimiterTests: XCTestCase {
         let limiter = fastLimiter()
         let counter = CallCounter()
 
-        let result = try await limiter.withBackoff { () -> String in
+        let result = try await limiter.withBackoff(onBan: .waitItOut) { () -> String in
             counter.count += 1
             if counter.count == 1 {
                 throw self.banned
@@ -41,7 +41,7 @@ final class YouTubeRateLimiterTests: XCTestCase {
         let counter = CallCounter()
 
         do {
-            _ = try await limiter.withBackoff { () -> String in
+            _ = try await limiter.withBackoff(onBan: .waitItOut) { () -> String in
                 counter.count += 1
                 throw YouTubeTranscriptKit.TranscriptError.noCaptionData
             }
@@ -61,7 +61,7 @@ final class YouTubeRateLimiterTests: XCTestCase {
         let counter = CallCounter()
 
         do {
-            _ = try await limiter.withBackoff { () -> String in
+            _ = try await limiter.withBackoff(onBan: .waitItOut) { () -> String in
                 counter.count += 1
                 throw URLError(.timedOut)
             }
@@ -79,7 +79,7 @@ final class YouTubeRateLimiterTests: XCTestCase {
         let counter = CallCounter()
 
         do {
-            _ = try await limiter.withBackoff { () -> String in
+            _ = try await limiter.withBackoff(onBan: .waitItOut) { () -> String in
                 counter.count += 1
                 throw self.banned
             }
@@ -96,7 +96,7 @@ final class YouTubeRateLimiterTests: XCTestCase {
 
         // Later calls fail immediately instead of hammering YouTube while it is still banning us
         do {
-            _ = try await limiter.withBackoff { () -> String in
+            _ = try await limiter.withBackoff(onBan: .waitItOut) { () -> String in
                 counter.count += 1
                 return "should not run"
             }
@@ -113,7 +113,7 @@ final class YouTubeRateLimiterTests: XCTestCase {
         let counter = CallCounter()
 
         // Trip one rung, then succeed, which should put the ladder back at the bottom
-        _ = try await limiter.withBackoff { () -> String in
+        _ = try await limiter.withBackoff(onBan: .waitItOut) { () -> String in
             counter.count += 1
             if counter.count == 1 {
                 throw self.banned
@@ -123,7 +123,7 @@ final class YouTubeRateLimiterTests: XCTestCase {
 
         // With the ladder reset there are two fresh rungs left, so two more sleeps before it gives up
         do {
-            _ = try await limiter.withBackoff { () -> String in
+            _ = try await limiter.withBackoff(onBan: .waitItOut) { () -> String in
                 counter.count += 1
                 throw self.banned
             }

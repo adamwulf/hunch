@@ -64,7 +64,7 @@ final class YouTubeRateLimiter {
     /// gives up it stays given up for the rest of the run and later calls fail immediately without
     /// touching the network, so a banned run stops talking to YouTube rather than dropping back to
     /// full cadence.
-    func withBackoff<T>(onBan: BanPolicy = .waitItOut, _ operation: () async throws -> T) async throws -> T {
+    func withBackoff<T>(onBan: BanPolicy, _ operation: () async throws -> T) async throws -> T {
         if let exhausted = exhausted {
             throw exhausted
         }
@@ -86,10 +86,10 @@ final class YouTubeRateLimiter {
                 case .skipTheRest:
                     // One banned response already proves the whole IP is banned, so a caller that
                     // will not wait gains nothing by probing again and would only deepen the ban.
-                    throw giveUp(url: url)
+                    throw giveUp(waited: 0, url: url)
                 case .waitItOut:
                     guard let delay = backoff.recordFailure() else {
-                        throw giveUp(url: url)
+                        throw giveUp(waited: waited, url: url)
                     }
 
                     report(statusCode: statusCode, url: url, delay: delay)
@@ -101,7 +101,7 @@ final class YouTubeRateLimiter {
     }
 
     /// Latches the limiter so nothing else in this run tries YouTube again.
-    private func giveUp(url: URL?) -> RateLimitExhausted {
+    private func giveUp(waited: TimeInterval, url: URL?) -> RateLimitExhausted {
         let failure = RateLimitExhausted(waited: waited, url: url)
         exhausted = failure
         return failure
@@ -109,8 +109,8 @@ final class YouTubeRateLimiter {
 
     private func report(statusCode: Int, url: URL?, delay: TimeInterval) {
         let formatter = DateFormatter()
-        // A bare time of day is ambiguous on the 4h and 12h rungs, which are exactly the ones
-        // someone reads the morning after, so name the day once the wait crosses into tomorrow
+        // A bare clock time is ambiguous on the long rungs, which are exactly the ones someone
+        // reads hours later, so name the day too once a wait reaches 4h
         formatter.dateStyle = delay >= 4 * 60 * 60 ? .short : .none
         formatter.timeStyle = .short
         let resumesAt = formatter.string(from: Date().addingTimeInterval(delay))

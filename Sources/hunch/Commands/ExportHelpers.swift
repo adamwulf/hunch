@@ -62,12 +62,14 @@ enum ExportHelpers {
     /// instead of stalling the export for hours the way `hunch activity` deliberately does. The
     /// export commands report the shortfall and exit non zero, and nothing is cached on failure, so
     /// a later run fills the gaps in.
-    static func fetchAndCacheTranscript(for url: String, to path: String) async -> [TranscriptMoment]? {
-        // Once YouTube has banned this IP there is nothing to gain by asking again this run
-        guard !YouTubeRateLimiter.shared.hasGivenUp else { return nil }
+    static func fetchAndCacheTranscript(for url: String, to path: String,
+                                        limiter: YouTubeRateLimiter = .shared) async -> [TranscriptMoment]? {
+        // The limiter already refuses to touch the network once it has given up. This check exists
+        // only so the explanation is printed once rather than once per remaining page.
+        guard !limiter.hasGivenUp else { return nil }
 
         do {
-            let transcript = try await YouTubeRateLimiter.shared.withBackoff(onBan: .skipTheRest) {
+            let transcript = try await limiter.withBackoff(onBan: .skipTheRest) {
                 try await YouTubeTranscriptKit.getTranscript(url: URL(string: url)!)
             }
             let encoder = JSONEncoder()
@@ -87,8 +89,8 @@ enum ExportHelpers {
 
     /// Ends an export non zero when YouTube banned us partway through, so a scripted caller can
     /// tell a complete export from one quietly missing every transcript after page twelve.
-    static func exitCodeForSkippedTranscripts() -> ExitCode? {
-        guard YouTubeRateLimiter.shared.hasGivenUp else { return nil }
+    static func exitCodeForSkippedTranscripts(limiter: YouTubeRateLimiter = .shared) -> ExitCode? {
+        guard limiter.hasGivenUp else { return nil }
         print("Some pages were exported without transcripts because YouTube rate limited this IP. "
               + "Re-run this export once the rate limit clears to fill them in.")
         return .failure
