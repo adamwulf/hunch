@@ -46,12 +46,18 @@ struct RateLimitBackoff {
     }
 
     /// Steps back to the first delay, called after a request succeeds.
+    ///
+    /// Only a success resets the ladder. An unrelated error escaping mid climb leaves it where it
+    /// is, so a network blip after two bans does not hand back a fresh 5m rung.
     mutating func reset() {
         failureCount = 0
     }
 
-    /// Human readable form of a delay, e.g. "5m", "1h", "1h 30m".
+    /// Human readable form of a delay, e.g. "45s", "5m", "1h", "1h 30m".
     static func describe(_ delay: TimeInterval) -> String {
+        // Sub minute delays only come from an injected ladder, but rendering them as "0m" is worse
+        // than useless in a log line
+        guard delay >= 60 else { return "\(Int(delay.rounded()))s" }
         let totalMinutes = Int((delay / 60).rounded())
         guard totalMinutes >= 60 else { return "\(totalMinutes)m" }
         let hours = totalMinutes / 60

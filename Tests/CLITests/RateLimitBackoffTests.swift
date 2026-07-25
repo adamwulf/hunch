@@ -50,6 +50,10 @@ final class RateLimitBackoffTests: XCTestCase {
     }
 
     func testDescribeFormatsMinutesAndHours() {
+        // Sub minute delays only reach describe through an injected ladder, but "0m" would be a lie
+        XCTAssertEqual(RateLimitBackoff.describe(0.01), "0s")
+        XCTAssertEqual(RateLimitBackoff.describe(45), "45s")
+        XCTAssertEqual(RateLimitBackoff.describe(1 * minute), "1m")
         XCTAssertEqual(RateLimitBackoff.describe(5 * minute), "5m")
         XCTAssertEqual(RateLimitBackoff.describe(30 * minute), "30m")
         XCTAssertEqual(RateLimitBackoff.describe(1 * hour), "1h")

@@ -1,25 +1,46 @@
 import Foundation
 import YouTubeTranscriptKit
 
-/// Waits out YouTube rate limits on behalf of every YouTube fetch in a run.
+/// Handles YouTube rate limits on behalf of every YouTube fetch in a run.
 ///
 /// YouTube throttles by IP address, so a rate limit tripped while fetching one video applies to
 /// every other request too. Routing all fetches through a single shared limiter means one backoff
 /// ladder covers the whole run instead of each call site rediscovering the ban on its own.
+///
+/// Not thread safe, and it does not need to be: every call site runs sequentially on the single
+/// task of one command, and ArgumentParser runs one command per process. If YouTube fetches ever
+/// do go concurrent, the fix is not an actor but a shared deadline that callers check before
+/// issuing a request. An actor would make the state access safe while still letting two callers
+/// each burn a rung on the same ban.
 final class YouTubeRateLimiter {
     static let shared = YouTubeRateLimiter()
 
-    /// Thrown once every rung of the backoff ladder has been used and YouTube is still refusing.
+    /// What a caller wants to happen when YouTube turns out to be banning us.
+    enum BanPolicy {
+        /// Climb the ladder, sleeping between attempts, because outlasting the ban is the point.
+        /// Used by `hunch activity`, which exists to fetch YouTube data and has hours to spend.
+        case waitItOut
+
+        /// Give up on YouTube for the rest of the run at the first sign of a ban, without sleeping.
+        /// Used by the export commands, whose real job is Notion. A transcript is a bonus there,
+        /// and nobody running an export wants it to sit for hours waiting on YouTube.
+        case skipTheRest
+    }
+
+    /// Thrown once the limiter has given up on YouTube for the rest of this run.
     struct RateLimitExhausted: LocalizedError {
+        /// How long we slept before giving up, zero when the caller chose not to wait at all.
         let waited: TimeInterval
         let url: URL?
 
         var errorDescription: String? {
-            var message = "YouTube is still rate limiting after \(RateLimitBackoff.describe(waited)) of backoff"
+            var message = waited > 0
+                ? "YouTube is still rate limiting after \(RateLimitBackoff.describe(waited)) of backoff"
+                : "YouTube is rate limiting this IP"
             if let url = url {
-                message += " (last redirected to \(url.absoluteString))"
+                message += " (redirected to \(url.absoluteString))"
             }
-            return message + ". Stopping, re-run later to pick up where this left off."
+            return message + ". Giving up on YouTube for this run, re-run later to pick up where this left off."
         }
     }
 
@@ -31,14 +52,19 @@ final class YouTubeRateLimiter {
         self.backoff = backoff
     }
 
-    /// Runs `operation`, sleeping out any YouTube rate limit and retrying until it succeeds or
-    /// fails for some other reason.
+    /// True once the limiter has given up, so callers can skip work they already know will fail.
+    var hasGivenUp: Bool {
+        return exhausted != nil
+    }
+
+    /// Runs `operation`, handling a YouTube ban according to `onBan`.
     ///
-    /// Only `TranscriptError.rateLimited` earns a sleep — every other error passes straight
-    /// through untouched. Once the ladder is exhausted the limiter stays exhausted for the rest of
-    /// the run and later calls fail immediately without touching the network, so a banned run stops
-    /// talking to YouTube rather than hammering it at full cadence.
-    func withBackoff<T>(_ operation: () async throws -> T) async throws -> T {
+    /// Only `TranscriptError.rateLimited` counts as a ban. Every other error passes straight
+    /// through untouched, so a video with captions disabled still costs nothing. Once the limiter
+    /// gives up it stays given up for the rest of the run and later calls fail immediately without
+    /// touching the network, so a banned run stops talking to YouTube rather than dropping back to
+    /// full cadence.
+    func withBackoff<T>(onBan: BanPolicy = .waitItOut, _ operation: () async throws -> T) async throws -> T {
         if let exhausted = exhausted {
             throw exhausted
         }
@@ -56,22 +82,36 @@ final class YouTubeRateLimiter {
                     throw error
                 }
 
-                guard let delay = backoff.recordFailure() else {
-                    let failure = RateLimitExhausted(waited: waited, url: url)
-                    exhausted = failure
-                    throw failure
-                }
+                switch onBan {
+                case .skipTheRest:
+                    // One banned response already proves the whole IP is banned, so a caller that
+                    // will not wait gains nothing by probing again and would only deepen the ban.
+                    throw giveUp(url: url)
+                case .waitItOut:
+                    guard let delay = backoff.recordFailure() else {
+                        throw giveUp(url: url)
+                    }
 
-                waited += delay
-                report(statusCode: statusCode, url: url, delay: delay)
-                try await Task.sleep(for: .seconds(delay))
+                    report(statusCode: statusCode, url: url, delay: delay)
+                    try await Task.sleep(for: .seconds(delay))
+                    waited += delay
+                }
             }
         }
     }
 
+    /// Latches the limiter so nothing else in this run tries YouTube again.
+    private func giveUp(url: URL?) -> RateLimitExhausted {
+        let failure = RateLimitExhausted(waited: waited, url: url)
+        exhausted = failure
+        return failure
+    }
+
     private func report(statusCode: Int, url: URL?, delay: TimeInterval) {
         let formatter = DateFormatter()
-        formatter.dateStyle = .none
+        // A bare time of day is ambiguous on the 4h and 12h rungs, which are exactly the ones
+        // someone reads the morning after, so name the day once the wait crosses into tomorrow
+        formatter.dateStyle = delay >= 4 * 60 * 60 ? .short : .none
         formatter.timeStyle = .short
         let resumesAt = formatter.string(from: Date().addingTimeInterval(delay))
         let location = url.map { " at \($0.absoluteString)" } ?? ""

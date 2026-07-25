@@ -1,4 +1,5 @@
 import Foundation
+import ArgumentParser
 import HunchKit
 import YouTubeTranscriptKit
 
@@ -54,9 +55,19 @@ enum ExportHelpers {
         return urlComps.url!.absoluteString
     }
 
+    /// Fetches a transcript and caches it beside the exported page, returning nil when there is
+    /// nothing to cache.
+    ///
+    /// An export is mostly a Notion job, so a YouTube ban skips transcripts for the rest of the run
+    /// instead of stalling the export for hours the way `hunch activity` deliberately does. The
+    /// export commands report the shortfall and exit non zero, and nothing is cached on failure, so
+    /// a later run fills the gaps in.
     static func fetchAndCacheTranscript(for url: String, to path: String) async -> [TranscriptMoment]? {
+        // Once YouTube has banned this IP there is nothing to gain by asking again this run
+        guard !YouTubeRateLimiter.shared.hasGivenUp else { return nil }
+
         do {
-            let transcript = try await YouTubeRateLimiter.shared.withBackoff {
+            let transcript = try await YouTubeRateLimiter.shared.withBackoff(onBan: .skipTheRest) {
                 try await YouTubeTranscriptKit.getTranscript(url: URL(string: url)!)
             }
             let encoder = JSONEncoder()
@@ -64,10 +75,23 @@ enum ExportHelpers {
             let jsonData = try encoder.encode(transcript)
             try jsonData.write(to: URL(fileURLWithPath: path))
             return transcript
+        } catch let banned as YouTubeRateLimiter.RateLimitExhausted {
+            // Printed exactly once, since every later page short circuits on the guard above
+            print(banned.localizedDescription)
+            return nil
         } catch {
             print("Failed to fetch transcript for \(url): \(error)")
             return nil
         }
+    }
+
+    /// Ends an export non zero when YouTube banned us partway through, so a scripted caller can
+    /// tell a complete export from one quietly missing every transcript after page twelve.
+    static func exitCodeForSkippedTranscripts() -> ExitCode? {
+        guard YouTubeRateLimiter.shared.hasGivenUp else { return nil }
+        print("Some pages were exported without transcripts because YouTube rate limited this IP. "
+              + "Re-run this export once the rate limit clears to fill them in.")
+        return .failure
     }
 
     static func selectProperties(from properties: [String: Property]) -> [(String, [String])] {

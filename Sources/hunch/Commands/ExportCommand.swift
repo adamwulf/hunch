@@ -220,6 +220,10 @@ struct ExportCommand: AsyncParsableCommand {
             ]
             try fm.setAttributes(attributes, ofItemAtPath: pageDir)
         }
+
+        if let exitCode = ExportHelpers.exitCodeForSkippedTranscripts() {
+            throw exitCode
+        }
     }
 
 }
