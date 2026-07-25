@@ -44,7 +44,8 @@ let package = Package(
             name: "CLITests",
             dependencies: [
                 "hunch",
-                .product(name: "ArgumentParser", package: "swift-argument-parser")
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "YouTubeTranscriptKit", package: "ytt")
             ]
         )
     ]

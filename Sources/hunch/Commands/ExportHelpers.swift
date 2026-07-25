@@ -56,7 +56,9 @@ enum ExportHelpers {
 
     static func fetchAndCacheTranscript(for url: String, to path: String) async -> [TranscriptMoment]? {
         do {
-            let transcript = try await YouTubeTranscriptKit.getTranscript(url: URL(string: url)!)
+            let transcript = try await YouTubeRateLimiter.shared.withBackoff {
+                try await YouTubeTranscriptKit.getTranscript(url: URL(string: url)!)
+            }
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let jsonData = try encoder.encode(transcript)
