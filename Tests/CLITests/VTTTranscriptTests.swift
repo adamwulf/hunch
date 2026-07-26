@@ -238,7 +238,13 @@ final class VTTTranscriptTests: XCTestCase {
     /// through 36,000 folders would kill the export outright rather than cost one cue. `Double`
     /// reads all of these as numbers, which is exactly why the parser cannot.
     func testATimestampThatIsNotANumberDropsOnlyItsOwnCue() {
-        for stamp in ["00:00:nan", "00:00:inf", "00:00:infinity", "00:00:0x1p10", "00:00:99999999999999999999.000"] {
+        let malformed = [
+            "00:00:nan", "00:00:inf", "00:00:infinity", "00:00:0x1p10", "00:00:99999999999999999999.000",
+            // Not numeric extremes, but they used to read as a time rather than as malformed
+            "00:00:", "00::01.000"
+        ]
+
+        for stamp in malformed {
             let parsed = VTTTranscript.parse("""
                 WEBVTT
 
@@ -291,6 +297,19 @@ final class VTTTranscriptTests: XCTestCase {
             """)
 
         XCTAssertEqual(parsed.first?.start ?? 0, 7199.999, accuracy: 0.001)
+    }
+
+    /// The range guard is a backstop for whatever the digit checks let through, not an opinion about
+    /// how long a video may be. A day-long livestream still parses.
+    func testALivestreamLengthTimestampStillParses() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            30:00:00.000 --> 30:00:01.000
+            still going
+            """)
+
+        XCTAssertEqual(parsed.first?.start, 108000)
     }
 
     // MARK: - Caption files nobody generated automatically
@@ -370,6 +389,17 @@ final class VTTTranscriptTests: XCTestCase {
         XCTAssertEqual(parsed.map(\.text), ["first", "second"])
     }
 
+    /// The one shape the termination rule gets wrong, pinned rather than fixed. A blank-looking line
+    /// between two payload lines closes the cue early and drops what follows it. YouTube cannot
+    /// produce this - its padding stands in for a window row that is not there, and an absent row
+    /// only ever sits at an edge - and the alternative rule loses the first spoken line of every
+    /// auto-generated file, which is a far more common file than this one.
+    func testAWhitespaceLineBetweenTwoPayloadLinesEndsTheCueEarly() {
+        let parsed = VTTTranscript.parse("WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nfirst\n \nsecond\n")
+
+        XCTAssertEqual(parsed.map(\.text), ["first"])
+    }
+
     // MARK: - More escapes
 
     func testTheRemainingNamedEscapesDecode() {
@@ -393,7 +423,7 @@ final class VTTTranscriptTests: XCTestCase {
             it&#8217;s a&#160;test &#x27;ok&#x27;
             """)
 
-        XCTAssertEqual(parsed.first?.text, "it\u{2019}s a\u{00A0}test 'ok'")
+        XCTAssertEqual(parsed.first?.text, "it\u{2019}s a test 'ok'")
     }
 
     /// The reason numbered references are decoded before the ampersand: someone writing about an
@@ -419,6 +449,53 @@ final class VTTTranscriptTests: XCTestCase {
             """)
 
         XCTAssertEqual(parsed.first?.text, "issue &#42 and &#; and &#xZZ; stay")
+    }
+
+    /// The bug a two pass decoder cannot avoid. `&#38;` and `&#x26;` both name an ampersand, so
+    /// decoding numbers before names turns `&#38;lt;` into a bracket nobody wrote - and decoding
+    /// names first breaks `&amp;#39;` the same way. Only a pass that never re-reads its own output
+    /// gets both right.
+    func testAnAmpersandAnEscapeProducedIsNotItselfDecoded() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            00:00:01.000 --> 00:00:03.000
+            &#38;lt; and &#x26;lt; and &amp;lt; and &amp;#39; and &#38;#39;
+            """)
+
+        XCTAssertEqual(parsed.first?.text, "&lt; and &lt; and &lt; and &#39; and &#39;")
+    }
+
+    /// One character, three spellings, one set of bytes in content.md. Letting the named spelling
+    /// give a space and the numbered one give U+00A0 would mean a grep across 36,000 files finds one
+    /// and misses the other.
+    func testEverySpellingOfANoBreakSpaceGivesTheSameBytes() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            00:00:01.000 --> 00:00:03.000
+            a&nbsp;b&#160;c&#xA0;d
+            """)
+
+        XCTAssertEqual(parsed.first?.text, "a b c d")
+        XCTAssertEqual(parsed.first?.text.unicodeScalars.map(\.value), [97, 32, 98, 32, 99, 32, 100])
+    }
+
+    /// The renderer writes one transcript line per markdown line and only substitutes `\n`, so a
+    /// decoded carriage return or line separator would break the structure of content.md from inside
+    /// a cue. Every other control character goes with them.
+    func testDecodedControlCharactersCannotBreakTheMarkdownLine() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            00:00:01.000 --> 00:00:03.000
+            before&#13;&#10;after&#8232;more&#0;and&#9;done
+            """)
+
+        // A break becomes a space and everything else is simply removed, which is why `more` and
+        // `and` end up adjacent: nothing invents whitespace that was not there
+        XCTAssertEqual(parsed.first?.text, "before after moreand done")
+        XCTAssertEqual(parsed.first?.text.contains(where: \.isNewline), false)
     }
 
     // MARK: - Reading from disk

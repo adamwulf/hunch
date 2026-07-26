@@ -143,10 +143,12 @@ enum VTTTranscript {
     /// negative time, and twenty digits of seconds overflow into 1e20. The renderer turns whatever
     /// comes back into an `Int`, which for a non-finite or oversized value is a trap rather than a
     /// thrown error - so one bad file would take down an export midway through 36,000 folders
-    /// instead of costing a single cue. The range check is the backstop for the rest: a time no
-    /// video could reach is not a timestamp, whatever it parsed as.
+    /// instead of costing a single cue. The range check is only the backstop for whatever the digit
+    /// checks let through, so it is set where an `Int` conversion is unquestionably safe rather than
+    /// at the length of a plausible video - a 30 hour livestream is a real thing and not this
+    /// function's business to have an opinion about.
     private static func seconds(from stamp: String) -> TimeInterval? {
-        let parts = stamp.split(separator: ":")
+        let parts = stamp.split(separator: ":", omittingEmptySubsequences: false)
         guard (2...3).contains(parts.count), let last = parts.last else { return nil }
 
         var total: TimeInterval = 0
@@ -166,7 +168,7 @@ enum VTTTranscript {
 
         total = total * 60 + secondsInMinute
 
-        guard total.isFinite, (0..<(100 * 3600)).contains(total) else { return nil }
+        guard total.isFinite, (0..<(1000 * 3600)).contains(total) else { return nil }
         return total
     }
 
@@ -204,77 +206,114 @@ enum VTTTranscript {
             }
         }
 
-        return decodeEntities(text).trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalize(decodeEntities(text)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The escapes WebVTT defines, plus the two apostrophe spellings that show up in caption files.
-    ///
-    /// The ampersand is decoded last so that an escaped escape comes out as the literal text someone
-    /// wrote rather than being decoded a second time into the character it names.
-    private static let entities: [(escape: String, character: String)] = [
-        ("&lt;", "<"),
-        ("&gt;", ">"),
-        ("&quot;", "\""),
-        ("&apos;", "'"),
-        // Rendered as an ordinary space rather than U+00A0: this text is headed for markdown prose,
-        // where the two look identical and only one of them can be searched for
-        ("&nbsp;", " "),
-        ("&lrm;", "\u{200E}"),
-        ("&rlm;", "\u{200F}"),
-        ("&amp;", "&")
+    /// The escapes WebVTT defines, plus the apostrophe spelling that caption files use.
+    private static let namedEntities: [String: Character] = [
+        "&lt;": "<",
+        "&gt;": ">",
+        "&quot;": "\"",
+        "&apos;": "'",
+        "&nbsp;": "\u{00A0}",
+        "&lrm;": "\u{200E}",
+        "&rlm;": "\u{200F}",
+        "&amp;": "&"
     ]
 
+    /// Decodes every escape in a single left-to-right pass.
+    ///
+    /// One pass rather than one per escape, because any pass that re-reads what an earlier pass
+    /// wrote will decode text nobody escaped. `&#38;lt;` spells an ampersand followed by the letters
+    /// `lt;`, so decoding numbers first and names second turns it into `<`; swapping the order only
+    /// moves the problem onto `&amp;#39;`. Appending each decoded character straight to the output
+    /// and never looking at it again is what makes the whole class impossible.
     private static func decodeEntities(_ text: String) -> String {
         guard text.contains("&") else { return text }
 
-        // Numbered references first, so that the ampersand replacement below cannot turn a written
-        // out `&amp;#39;` into an apostrophe somebody never typed
-        return entities.reduce(decodeNumericReferences(text)) { decoded, entity in
-            decoded.replacingOccurrences(of: entity.escape, with: entity.character)
-        }
-    }
-
-    /// Decodes `&#8217;` and `&#x27;` style references.
-    ///
-    /// WebVTT does not define these, but caption files carry them anyway - a transcript that came
-    /// through a tool with an HTML step in it arrives full of numbered curly quotes - and left alone
-    /// they render as themselves in the middle of a sentence.
-    private static func decodeNumericReferences(_ text: String) -> String {
-        guard text.contains("&#") else { return text }
-
         var decoded = ""
-        var rest = Substring(text)
+        var index = text.startIndex
 
-        while let marker = rest.range(of: "&#") {
-            let body = rest[marker.upperBound...]
+        while let start = text[index...].firstIndex(of: "&") {
+            decoded += text[index..<start]
 
-            // Bounded, because an unterminated reference must not send this scanning the whole line
-            // looking for a semicolon that belongs to something else entirely
-            guard
-                let end = body.prefix(12).firstIndex(of: ";"),
-                let scalar = numericScalar(body[..<end])
-            else {
-                // Not a reference after all, so it stays exactly as it was written
-                decoded += rest[..<marker.upperBound]
-                rest = body
-                continue
+            // Bounded, so that an ampersand which starts nothing cannot send this scanning the rest
+            // of the line for a semicolon belonging to something else entirely
+            let window = text[start...].prefix(12)
+
+            if let end = window.firstIndex(of: ";"), let character = character(forEscape: text[start...end]) {
+                decoded.append(character)
+                index = text.index(after: end)
+            } else {
+                // Not an escape after all, so the ampersand stays exactly as it was written
+                decoded.append("&")
+                index = text.index(after: start)
             }
-
-            decoded += rest[..<marker.lowerBound]
-            decoded.append(Character(scalar))
-            rest = body[body.index(after: end)...]
         }
 
-        return decoded + rest
+        return decoded + text[index...]
     }
 
-    private static func numericScalar(_ digits: Substring) -> Unicode.Scalar? {
+    /// The character an `&...;` names, or nil if it names nothing.
+    ///
+    /// Numbered references are not part of WebVTT, but a transcript that came through a tool with an
+    /// HTML step in it arrives full of numbered curly quotes, and left alone they render as
+    /// themselves in the middle of a sentence.
+    private static func character(forEscape escape: Substring) -> Character? {
+        if let named = namedEntities[String(escape)] { return named }
+
+        let body = escape.dropFirst().dropLast()
+        guard body.first == "#" else { return nil }
+
+        let digits = body.dropFirst()
         let isHex = digits.first == "x" || digits.first == "X"
         let value = isHex ? digits.dropFirst() : digits
-        guard !value.isEmpty, let code = UInt32(value, radix: isHex ? 16 : 10) else { return nil }
 
         // Nil for a surrogate half or anything past the last code point, which leaves the reference
         // written out rather than inventing a replacement character for it
-        return Unicode.Scalar(code)
+        guard
+            !value.isEmpty,
+            let code = UInt32(value, radix: isHex ? 16 : 10),
+            let scalar = Unicode.Scalar(code)
+        else { return nil }
+
+        return Character(scalar)
+    }
+
+    /// Flattens what a decoded escape can otherwise put in the middle of a markdown line.
+    ///
+    /// A no-break space is spelled `&nbsp;`, `&#160;` and `&#xA0;`, and letting the names and the
+    /// numbers disagree would put two different byte sequences in content.md for one character - a
+    /// grep that finds one spelling and misses the other across tens of thousands of files. They all
+    /// become an ordinary space, which is what they look like in prose anyway.
+    ///
+    /// Line breaks matter more. The renderer writes one transcript line per markdown line and only
+    /// substitutes `\n`, so a decoded carriage return, U+2028 or U+0085 would break the structure of
+    /// the file from inside a cue. Every other control character goes for the same reason: none of
+    /// them is a word anybody said, and all of them survive into the export otherwise.
+    private static func normalize(_ text: String) -> String {
+        guard text.contains(where: needsFlattening) else { return text }
+
+        var flattened = ""
+        for character in text {
+            if character.isNewline || character == "\u{00A0}" || character == "\t" {
+                flattened.append(" ")
+            } else if character.unicodeScalars.contains(where: isControl) {
+                continue
+            } else {
+                flattened.append(character)
+            }
+        }
+        return flattened
+    }
+
+    private static func needsFlattening(_ character: Character) -> Bool {
+        return character.isNewline
+            || character == "\u{00A0}"
+            || character.unicodeScalars.contains(where: isControl)
+    }
+
+    private static func isControl(_ scalar: Unicode.Scalar) -> Bool {
+        return scalar.value < 0x20 || scalar.value == 0x7F
     }
 }

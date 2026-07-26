@@ -87,6 +87,8 @@ struct ActivityCommand: AsyncParsableCommand {
         // the whole pacing budget goes to the ones that actually touch YouTube
         let pacer = FetchPacer()
 
+        var refusals = RefusalTally()
+
         // Process each video, pacing every fetch through `paced` below
         for (index, video) in sortedVideos[skip...].enumerated() {
             // Only print progress every 100 items
@@ -100,6 +102,11 @@ struct ActivityCommand: AsyncParsableCommand {
                 print("\(indexStr) \(dateColumn) \(percentStr)")
                 if let pacing = pacer.rateReport() {
                     print("  \(pacing)")
+                }
+                // Reported as the run goes rather than only at the end, so an export that is stopped
+                // part way through still says how much it wrote down
+                if let refusalReport = refusals.summary {
+                    print("  \(refusalReport)")
                 }
             }
 
@@ -151,7 +158,15 @@ struct ActivityCommand: AsyncParsableCommand {
                         try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
                     }
                     finalInfo = fetched.withoutTranscript()
-                    finalTranscript = fetched.transcript
+                    // The kit swallows both refusals inside this call and returns a nil transcript
+                    // for them, rethrowing anything transient - so a nil here is the same permanent
+                    // answer the catch below records, and leaving it unwritten only bought this video
+                    // one more two-request round trip before it settled
+                    if fetched.transcript == nil {
+                        refusals.recordCombinedFetch()
+                    }
+                    finalTranscript = fetched.transcript ?? ActivityCommand.transcriptAfterFailure(
+                        .listedTracksWereEmpty, cached: cached)
                     print("Fetched \(video.id)\(fetched.transcript == nil ? "" : " with transcript")")
                 case (nil, .some(let cachedTranscript)):
                     print("Fetching info: \(video.id)")
@@ -180,14 +195,11 @@ struct ActivityCommand: AsyncParsableCommand {
                 // run rather than grind through the rest of the videos against a closed door.
                 throw exhausted
             } catch {
-                // The two refusals below are answers rather than failures, and the run records them
-                // just above as such, so printing them as errors would put a line on screen for
-                // every video YouTube has no captions for
-                switch error {
-                case YouTubeTranscriptKit.TranscriptError.noCaptionData,
-                     YouTubeTranscriptKit.TranscriptError.noTranscriptData:
-                    break
-                default:
+                // The two refusals are answers rather than failures and the run writes them down
+                // below, so printing them here would put a line on screen for every video YouTube
+                // will not serve captions for. The tally is what keeps them visible in aggregate.
+                let failure = ActivityCommand.classifyFailure(error)
+                if case .unresolved = failure {
                     print("Error processing \(video.id): \(error)")
                 }
 
@@ -198,7 +210,8 @@ struct ActivityCommand: AsyncParsableCommand {
                 }
 
                 finalInfo = info
-                finalTranscript = ActivityCommand.transcriptAfterFailure(error, cached: cached)
+                refusals.record(failure)
+                finalTranscript = ActivityCommand.transcriptAfterFailure(failure, cached: cached)
             }
 
             // Now download the thumbnail after we have finalInfo. Only the largest is fetched,
@@ -263,12 +276,16 @@ struct ActivityCommand: AsyncParsableCommand {
             let stringsContent = "\"\(video.id)\" = \"\(escapedName)\";"
 
             // Write all data to disk
-            try encoder.encode(video.activities).write(to: activitiesURL)
+            // Written atomically because a run across 36,000 folders gets interrupted, and a half
+            // written file here is not merely lost: transcript.json that does not decode used to be
+            // indistinguishable from one that was never there, and info.json that does not decode
+            // buys the video another fetch
+            try encoder.encode(video.activities).write(to: activitiesURL, options: .atomic)
             if let finalTranscript = finalTranscript {
-                try encoder.encode(finalTranscript).write(to: transcriptURL)
+                try encoder.encode(finalTranscript).write(to: transcriptURL, options: .atomic)
             }
             if let finalInfo = finalInfo {
-                try encoder.encode(finalInfo).write(to: infoURL)
+                try encoder.encode(finalInfo).write(to: infoURL, options: .atomic)
             }
             try stringsContent.write(to: stringsURL, atomically: true, encoding: .utf8)
 
@@ -277,7 +294,8 @@ struct ActivityCommand: AsyncParsableCommand {
             // already recorded as empty is deliberately read as nil to force another attempt, and an
             // attempt that fails writes nothing - so the empty file is still there, and saying
             // otherwise would have the frontmatter contradict the folder it sits in.
-            let renderedTranscript = ActivityCommand.renderedTranscript(fetched: finalTranscript ?? cached, vttAt: vttURL)
+            let renderedTranscript = ActivityCommand.renderedTranscript(fetched: finalTranscript ?? cached.moments,
+                                                                        vttAt: vttURL)
 
             try writeMarkdown(video: video, info: finalInfo, transcript: renderedTranscript,
                               downloadedAssets: downloadedAssets, to: videoURL.path)
@@ -288,6 +306,10 @@ struct ActivityCommand: AsyncParsableCommand {
                 .modificationDate: video.lastSeen
             ]
             try fm.setAttributes(attributes, ofItemAtPath: videoURL.path)
+        }
+
+        if let refusalReport = refusals.summary {
+            print(refusalReport)
         }
     }
 
@@ -316,53 +338,130 @@ struct ActivityCommand: AsyncParsableCommand {
         return try await limiter.withBackoff(onBan: .waitItOut, operation)
     }
 
-    /// What transcript.json currently holds, with an empty file preserved as an empty array.
+    /// What transcript.json currently holds.
     ///
-    /// The distinction this function exists to keep is between an empty array and nil. An empty
-    /// transcript.json is an answer - YouTube was asked for this video's captions and served nothing
-    /// back - and collapsing it to nil reads as "not cached yet", which is what had 1,347 videos
-    /// re-fetched on every run, each spending requests against a rate limit to be told the same
-    /// nothing again. nil is reserved for a file that is absent or unreadable.
-    static func cachedTranscript(at url: URL, decoder: JSONDecoder) -> [TranscriptMoment]? {
-        guard
-            let data = try? Data(contentsOf: url),
-            let loaded = try? decoder.decode([TranscriptMoment].self, from: data)
-        else { return nil }
-        return loaded
+    /// The distinction this exists to keep is between an empty transcript and no transcript. An
+    /// empty transcript.json is an answer - YouTube was asked for this video's captions and served
+    /// nothing back - and reading it as "not cached yet" is what had 1,347 videos re-fetched on every
+    /// run, each spending requests against a rate limit to be told the same nothing again.
+    ///
+    /// A file that is there but did not decode is kept apart from one that is not there at all,
+    /// because a refusal is written over the second and never over the first. Collapsing them lost
+    /// the contents of a half-written transcript.json and marked the video caption-free forever, for
+    /// a video whose transcript had never been read.
+    enum CachedTranscript {
+        case missing
+        case unreadable
+        case transcript([TranscriptMoment])
+
+        /// What is on disk, or nil where nothing readable is.
+        var moments: [TranscriptMoment]? {
+            guard case .transcript(let moments) = self else { return nil }
+            return moments
+        }
+    }
+
+    static func cachedTranscript(at url: URL, decoder: JSONDecoder) -> CachedTranscript {
+        guard let data = try? Data(contentsOf: url) else { return .missing }
+        guard let loaded = try? decoder.decode([TranscriptMoment].self, from: data) else { return .unreadable }
+        return .transcript(loaded)
     }
 
     /// What the fetch below should treat as already known.
     ///
-    /// Normally that is whatever is on disk. Under --refetch-empty-transcripts a recorded refusal is
+    /// Normally that is whatever decoded. Under --refetch-empty-transcripts a recorded refusal is
     /// deliberately forgotten, so the video goes back down a fetch branch and YouTube is asked
     /// again - the way back for the day YouTube starts serving the tracks it refuses now, without
     /// anyone having to find and delete thousands of four-byte files by hand.
-    static func transcriptToBuildOn(cached: [TranscriptMoment]?, refetchEmpty: Bool) -> [TranscriptMoment]? {
-        guard refetchEmpty, cached?.isEmpty == true else { return cached }
-        return nil
+    static func transcriptToBuildOn(cached: CachedTranscript, refetchEmpty: Bool) -> [TranscriptMoment]? {
+        guard let moments = cached.moments else { return nil }
+        return refetchEmpty && moments.isEmpty ? nil : moments
+    }
+
+    /// Why a transcript fetch came back without one.
+    enum FetchFailure {
+        /// `noCaptionData`: YouTube's player response listed no caption tracks for this video.
+        case noTracksListed
+        /// `noTranscriptData`: tracks were listed, and fetching them produced nothing.
+        case listedTracksWereEmpty
+        /// Anything else - a ban, a dropped connection, HTML that did not parse.
+        case unresolved
+    }
+
+    static func classifyFailure(_ error: Error) -> FetchFailure {
+        switch error {
+        case YouTubeTranscriptKit.TranscriptError.noCaptionData:
+            return .noTracksListed
+        case YouTubeTranscriptKit.TranscriptError.noTranscriptData:
+            return .listedTracksWereEmpty
+        default:
+            return .unresolved
+        }
     }
 
     /// What a failed transcript fetch leaves on disk.
     ///
-    /// Two of the kit's errors are answers rather than failures: `noCaptionData` means the video has
-    /// no caption tracks at all, and `noTranscriptData` means every track it does have came back
-    /// with nothing in it. The kit rules out a ban or a dropped connection before either can be
-    /// thrown, so both describe the video rather than the moment, and a retry finds the same thing.
-    /// Recording them as an empty transcript is what stops this from being asked again forever - it
-    /// is the same judgement the empty files already on disk represent, made when the refusal
-    /// happens rather than only when an older run happened to leave a file behind.
+    /// Both refusals are recorded as an empty transcript, and neither is recorded because the video
+    /// is known to have no captions. `noTracksListed` does mean that, as far as YouTube's player
+    /// response is concerned. `listedTracksWereEmpty` means the opposite: YouTube named caption
+    /// tracks and then served nothing when they were fetched, which is the zero-byte answer this
+    /// whole change exists around - many of those videos demonstrably do have captions, since yt-dlp
+    /// pulled 3,183 of them through a client the web endpoint does not serve.
     ///
-    /// Everything else - a ban, a dropped connection, HTML that did not parse - says nothing about
-    /// whether the video has captions, so the cache is left exactly as it was and the next run asks
-    /// again. And if YouTube ever restores these tracks corpus-wide, the recorded refusals are what
-    /// --refetch-empty-transcripts exists to clear.
-    static func transcriptAfterFailure(_ error: Error, cached: [TranscriptMoment]?) -> [TranscriptMoment]? {
-        switch error {
-        case YouTubeTranscriptKit.TranscriptError.noCaptionData,
-             YouTubeTranscriptKit.TranscriptError.noTranscriptData:
-            return cached ?? []
-        default:
-            return cached
+    /// What makes recording both right is not that the captions are gone, but that asking again over
+    /// the web changes nothing and costs two requests against a rate limit. That holds because the
+    /// kit rules out a ban, a timeout or a 5xx before either error can be constructed, so neither
+    /// describes a bad moment. The one that could start working again is `listedTracksWereEmpty`, and
+    /// --refetch-empty-transcripts is what clears it when it does.
+    ///
+    /// Every other failure leaves the cache exactly as it was: a refusal recorded from a dropped
+    /// connection would be a lie with no expiry. So does a file that did not decode - overwriting
+    /// that would destroy a transcript rather than record the absence of one.
+    static func transcriptAfterFailure(_ failure: FetchFailure, cached: CachedTranscript) -> [TranscriptMoment]? {
+        switch (failure, cached) {
+        case (.unresolved, _), (_, .unreadable):
+            return cached.moments
+        case (_, .missing):
+            return []
+        case (_, .transcript(let moments)):
+            return moments
+        }
+    }
+
+    /// Tallies the refusals a run writes down, so that a corpus-wide break is visible while it is
+    /// still cheap to undo.
+    ///
+    /// The kit reports `noCaptionData` both when a video genuinely has no captions and when its own
+    /// decoder stops matching YouTube's player response: the decode failure is swallowed and an empty
+    /// track list is all that reaches us. Now that a run writes those refusals down, a schema change
+    /// on YouTube's side would mark every video caption-free on one run and then be invisible on
+    /// every run after it, because nothing would ever fetch again. A count does not tell the two
+    /// apart, but a run that records 30,000 refusals reads very differently from one that records 40.
+    struct RefusalTally {
+        private(set) var noTracksListed = 0
+        private(set) var listedTracksWereEmpty = 0
+        private(set) var duringCombinedFetch = 0
+
+        var total: Int { noTracksListed + listedTracksWereEmpty + duringCombinedFetch }
+
+        mutating func record(_ failure: FetchFailure) {
+            switch failure {
+            case .noTracksListed: noTracksListed += 1
+            case .listedTracksWereEmpty: listedTracksWereEmpty += 1
+            case .unresolved: break
+            }
+        }
+
+        /// The combined fetch swallows both refusals inside the kit and hands back a nil transcript,
+        /// so which one it was cannot be recovered here.
+        mutating func recordCombinedFetch() {
+            duringCombinedFetch += 1
+        }
+
+        var summary: String? {
+            guard total > 0 else { return nil }
+            return "recorded \(total) transcript refusals: \(noTracksListed) with no tracks listed, "
+                + "\(listedTracksWereEmpty) whose tracks came back empty, \(duringCombinedFetch) during a combined fetch"
         }
     }
 

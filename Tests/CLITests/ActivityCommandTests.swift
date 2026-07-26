@@ -25,103 +25,131 @@ final class ActivityCommandTests: XCTestCase {
 
     // MARK: - What is on disk
 
-    func testAMissingTranscriptFileIsNil() {
+    func testAMissingTranscriptFileReadsAsMissing() {
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathComponent("transcript.json")
 
-        XCTAssertNil(ActivityCommand.cachedTranscript(at: missing, decoder: decoder))
+        guard case .missing = ActivityCommand.cachedTranscript(at: missing, decoder: decoder) else {
+            return XCTFail("a path with no file at it is not a cached transcript")
+        }
     }
 
-    func testAnUnreadableTranscriptFileIsNil() throws {
+    /// Kept apart from missing on purpose: a refusal is written over a file that is not there and
+    /// never over one that is. Collapsing the two destroyed half-written transcripts.
+    func testAFileThatDoesNotDecodeReadsAsUnreadableRatherThanMissing() throws {
         let url = try writeJSON("{ this is not a transcript")
 
-        XCTAssertNil(ActivityCommand.cachedTranscript(at: url, decoder: decoder))
+        guard case .unreadable = ActivityCommand.cachedTranscript(at: url, decoder: decoder) else {
+            return XCTFail("a file that did not decode must not read as one that was never written")
+        }
     }
 
     /// The line the whole change turns on. An empty file has to survive the round trip as an empty
-    /// array, because collapsing it to nil is what reads as "not cached yet" and sends the video
-    /// back to YouTube for an answer it already has.
-    func testAnEmptyTranscriptFileSurvivesAsAnEmptyArray() throws {
+    /// transcript, because reading it as "nothing cached" is what sends the video back to YouTube
+    /// for an answer it already has.
+    func testAnEmptyTranscriptFileSurvivesAsAnEmptyTranscript() throws {
         let url = try writeJSON("[]")
 
-        let cached = ActivityCommand.cachedTranscript(at: url, decoder: decoder)
-
-        XCTAssertNotNil(cached)
-        XCTAssertEqual(cached?.count, 0)
+        XCTAssertEqual(ActivityCommand.cachedTranscript(at: url, decoder: decoder).moments?.count, 0)
     }
 
     func testAPopulatedTranscriptFileDecodes() throws {
         let url = try writeJSON(momentJSON)
 
-        XCTAssertEqual(ActivityCommand.cachedTranscript(at: url, decoder: decoder)?.count, 1)
+        XCTAssertEqual(ActivityCommand.cachedTranscript(at: url, decoder: decoder).moments?.count, 1)
     }
 
     // MARK: - What the fetch builds on
 
     /// Without the flag, an empty answer is left standing and the video costs nothing.
     func testAnEmptyCacheIsLeftStandingByDefault() {
-        XCTAssertEqual(ActivityCommand.transcriptToBuildOn(cached: [], refetchEmpty: false)?.count, 0)
+        XCTAssertEqual(ActivityCommand.transcriptToBuildOn(cached: .transcript([]), refetchEmpty: false)?.count, 0)
     }
 
     /// With it, the same file is deliberately forgotten so the video goes back down a fetch branch.
     func testAnEmptyCacheIsForgottenWhenAskingAgain() {
-        XCTAssertNil(ActivityCommand.transcriptToBuildOn(cached: [], refetchEmpty: true))
+        XCTAssertNil(ActivityCommand.transcriptToBuildOn(cached: .transcript([]), refetchEmpty: true))
     }
 
     /// The flag only reopens empty answers. A transcript with words in it is never re-fetched.
     func testAPopulatedCacheIsKeptEvenWhenAskingAgain() throws {
-        let cached = try moments()
+        let cached = ActivityCommand.CachedTranscript.transcript(try moments())
 
         XCTAssertEqual(ActivityCommand.transcriptToBuildOn(cached: cached, refetchEmpty: true)?.count, 1)
     }
 
     func testAMissingCacheStaysMissing() {
-        XCTAssertNil(ActivityCommand.transcriptToBuildOn(cached: nil, refetchEmpty: false))
+        XCTAssertNil(ActivityCommand.transcriptToBuildOn(cached: .missing, refetchEmpty: false))
+    }
+
+    func testAnUnreadableCacheIsNothingToBuildOn() {
+        XCTAssertNil(ActivityCommand.transcriptToBuildOn(cached: .unreadable, refetchEmpty: false))
     }
 
     // MARK: - What a failed fetch leaves behind
 
-    /// A video with no caption tracks at all is answered, not unlucky. Recording that is what stops
-    /// it being asked again on every run for the rest of the corpus's life.
-    func testAVideoWithNoCaptionsRecordsTheRefusal() {
-        let recorded = ActivityCommand.transcriptAfterFailure(
-            YouTubeTranscriptKit.TranscriptError.noCaptionData, cached: nil)
-
-        XCTAssertEqual(recorded?.count, 0)
+    func testTheTwoRefusalsAreToldApartFromEverythingElse() {
+        guard
+            case .noTracksListed = ActivityCommand.classifyFailure(YouTubeTranscriptKit.TranscriptError.noCaptionData),
+            case .listedTracksWereEmpty
+                = ActivityCommand.classifyFailure(YouTubeTranscriptKit.TranscriptError.noTranscriptData),
+            case .unresolved = ActivityCommand.classifyFailure(URLError(.timedOut))
+        else {
+            return XCTFail("a refusal and a failure must not be classified the same way")
+        }
     }
 
-    /// Same for a video whose caption tracks all came back with nothing in them - the kit rules out
-    /// a ban before it throws this, so it describes the video rather than the moment.
-    func testAVideoWhoseTracksAreAllEmptyRecordsTheRefusal() {
-        let recorded = ActivityCommand.transcriptAfterFailure(
-            YouTubeTranscriptKit.TranscriptError.noTranscriptData, cached: nil)
+    /// A video whose player response lists no caption tracks is answered, not unlucky. Recording
+    /// that is what stops it being asked again on every run for the rest of the corpus's life.
+    func testAVideoWithNoCaptionsRecordsTheRefusal() {
+        XCTAssertEqual(ActivityCommand.transcriptAfterFailure(.noTracksListed, cached: .missing)?.count, 0)
+    }
 
-        XCTAssertEqual(recorded?.count, 0)
+    /// Same for a video whose listed tracks all came back empty, which is the zero-byte answer this
+    /// change exists around - not because the captions are gone, but because asking over the web
+    /// again changes nothing and costs two requests.
+    func testAVideoWhoseTracksCameBackEmptyRecordsTheRefusal() {
+        XCTAssertEqual(ActivityCommand.transcriptAfterFailure(.listedTracksWereEmpty, cached: .missing)?.count, 0)
     }
 
     /// The distinction that keeps this safe. A dropped connection says nothing about whether the
-    /// video has captions, so recording an empty answer for it would cache a lie permanently.
-    func testATransientFailureLeavesTheCacheAlone() {
-        let recorded = ActivityCommand.transcriptAfterFailure(
-            YouTubeTranscriptKit.TranscriptError.networkError(URLError(.timedOut)), cached: nil)
-
-        XCTAssertNil(recorded)
-    }
-
-    func testABanLeavesTheCacheAlone() {
-        let recorded = ActivityCommand.transcriptAfterFailure(
-            YouTubeTranscriptKit.TranscriptError.rateLimited(statusCode: 429, url: nil), cached: nil)
-
-        XCTAssertNil(recorded)
+    /// video has captions, so recording an empty answer for it would cache a lie with no expiry.
+    func testAnUnresolvedFailureLeavesTheCacheAlone() {
+        XCTAssertNil(ActivityCommand.transcriptAfterFailure(.unresolved, cached: .missing))
     }
 
     /// And a refusal never overwrites words already on disk.
     func testARefusalNeverClobbersATranscriptAlreadyThere() throws {
-        let recorded = ActivityCommand.transcriptAfterFailure(
-            YouTubeTranscriptKit.TranscriptError.noCaptionData, cached: try moments())
+        let cached = ActivityCommand.CachedTranscript.transcript(try moments())
 
-        XCTAssertEqual(recorded?.count, 1)
+        XCTAssertEqual(ActivityCommand.transcriptAfterFailure(.noTracksListed, cached: cached)?.count, 1)
+    }
+
+    /// The one that matters most: a transcript.json that is there but did not decode is never
+    /// written over. It may be a half-written file from an interrupted run, and replacing it with an
+    /// empty transcript would mark the video caption-free forever without its transcript ever having
+    /// been read.
+    func testARefusalIsNeverRecordedOverAFileThatDidNotDecode() {
+        XCTAssertNil(ActivityCommand.transcriptAfterFailure(.noTracksListed, cached: .unreadable))
+    }
+
+    // MARK: - Counting what was written down
+
+    /// A caption-parser break and a video with no captions arrive as the same error, and now that a
+    /// run writes that down, one bad run would mark the whole corpus caption-free and then never
+    /// fetch again. The count is what makes 30,000 refusals look different from 40.
+    func testTheRunCountsWhatItWroteDown() {
+        var tally = ActivityCommand.RefusalTally()
+        XCTAssertNil(tally.summary, "a run that recorded nothing has nothing to report")
+
+        tally.record(.noTracksListed)
+        tally.record(.listedTracksWereEmpty)
+        tally.record(.unresolved)
+        tally.recordCombinedFetch()
+
+        XCTAssertEqual(tally.total, 3, "an unresolved failure is not a refusal and nothing was written for it")
+        XCTAssertEqual(tally.summary?.contains("recorded 3 transcript refusals"), true)
     }
 
     // MARK: - Which transcript gets rendered
