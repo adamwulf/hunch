@@ -163,7 +163,7 @@ struct ActivityCommand: AsyncParsableCommand {
                     // answer the catch below records, and leaving it unwritten only bought this video
                     // one more two-request round trip before it settled
                     if fetched.transcript == nil {
-                        refusals.recordCombinedFetch()
+                        refusals.recordCombinedFetch(cached: cached)
                     }
                     finalTranscript = fetched.transcript ?? ActivityCommand.transcriptAfterFailure(
                         .listedTracksWereEmpty, cached: cached)
@@ -446,8 +446,15 @@ struct ActivityCommand: AsyncParsableCommand {
             var duringCombinedFetch = 0
             var blockedByUnreadableFile = 0
 
+            /// Refusals that reached disk. Deliberately does not include the ones held back, since
+            /// the headline below says "recorded" and a run that wrote nothing at all must not read
+            /// as one that wrote five.
+            var recorded: Int {
+                return noTracksListed + listedTracksWereEmpty + duringCombinedFetch
+            }
+
             var total: Int {
-                return noTracksListed + listedTracksWereEmpty + duringCombinedFetch + blockedByUnreadableFile
+                return recorded + blockedByUnreadableFile
             }
 
             static func - (lhs: Counts, rhs: Counts) -> Counts {
@@ -459,10 +466,15 @@ struct ActivityCommand: AsyncParsableCommand {
 
             func summary(_ qualifier: String) -> String? {
                 guard total > 0 else { return nil }
-                return "recorded \(total) transcript refusals\(qualifier): \(noTracksListed) with no tracks listed, "
+
+                let heldBack = blockedByUnreadableFile > 0
+                    ? "; \(blockedByUnreadableFile) more held back by a file that did not decode, and so asked again every run"
+                    : ""
+
+                return "recorded \(recorded) transcript refusals\(qualifier): \(noTracksListed) with no tracks listed, "
                     + "\(listedTracksWereEmpty) whose tracks came back empty, "
-                    + "\(duringCombinedFetch) during a combined fetch, "
-                    + "\(blockedByUnreadableFile) held back by a file that did not decode"
+                    + "\(duringCombinedFetch) during a combined fetch"
+                    + heldBack
             }
         }
 
@@ -494,7 +506,15 @@ struct ActivityCommand: AsyncParsableCommand {
 
         /// The combined fetch swallows both refusals inside the kit and hands back a nil transcript,
         /// so which one it was cannot be recovered here.
-        mutating func recordCombinedFetch() {
+        ///
+        /// Takes the cache for the same reason `record` does: this refusal is not written over a file
+        /// that failed to decode either, and counting it as recorded would file a stranded video
+        /// under the bucket that says it settled.
+        mutating func recordCombinedFetch(cached: CachedTranscript) {
+            if case .unreadable = cached {
+                counts.blockedByUnreadableFile += 1
+                return
+            }
             counts.duringCombinedFetch += 1
         }
 

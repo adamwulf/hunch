@@ -146,9 +146,9 @@ final class ActivityCommandTests: XCTestCase {
         tally.record(.noTracksListed, cached: .missing)
         tally.record(.listedTracksWereEmpty, cached: .missing)
         tally.record(.unresolved, cached: .missing)
-        tally.recordCombinedFetch()
+        tally.recordCombinedFetch(cached: .missing)
 
-        XCTAssertEqual(tally.counts.total, 3, "an unresolved failure is not a refusal and nothing was written for it")
+        XCTAssertEqual(tally.counts.recorded, 3, "an unresolved failure is not a refusal and nothing was written for it")
         XCTAssertEqual(tally.summary?.contains("recorded 3 transcript refusals"), true)
     }
 
@@ -162,7 +162,40 @@ final class ActivityCommandTests: XCTestCase {
 
         XCTAssertEqual(tally.counts.blockedByUnreadableFile, 1)
         XCTAssertEqual(tally.counts.noTracksListed, 0, "nothing was written down for this video")
-        XCTAssertEqual(tally.summary?.contains("1 held back by a file that did not decode"), true)
+        XCTAssertEqual(tally.counts.recorded, 0, "a run that wrote nothing must not read as one that wrote something")
+        XCTAssertEqual(tally.summary?.contains("recorded 0 transcript refusals"), true)
+        XCTAssertEqual(tally.summary?.contains("1 more held back by a file that did not decode"), true)
+    }
+
+    /// The combined fetch reaches the same rule by a different door, and used to miss it: it counted
+    /// a refusal that transcriptAfterFailure then declined to write, so a stranded video was filed
+    /// under the bucket that says it settled - in the one place built to stop exactly that.
+    func testACombinedFetchOverAnUnreadableFileIsHeldBackToo() {
+        var tally = ActivityCommand.RefusalTally()
+
+        tally.recordCombinedFetch(cached: .unreadable)
+
+        XCTAssertEqual(tally.counts.blockedByUnreadableFile, 1)
+        XCTAssertEqual(tally.counts.duringCombinedFetch, 0)
+    }
+
+    /// The count exists to make stranding visible, so it must never be the thing hiding it. One
+    /// direction only: everything counted as recorded reached disk. The converse is not a rule -
+    /// an unresolved failure writes the cache back unchanged without any refusal being recorded.
+    func testNothingIsCountedAsRecordedThatIsNotWritten() {
+        let caches: [ActivityCommand.CachedTranscript] = [.missing, .unreadable, .transcript([])]
+        let failures: [ActivityCommand.FetchFailure] = [.noTracksListed, .listedTracksWereEmpty, .unresolved]
+
+        for cached in caches {
+            for failure in failures {
+                var tally = ActivityCommand.RefusalTally()
+                tally.record(failure, cached: cached)
+                guard tally.counts.recorded > 0 else { continue }
+
+                XCTAssertNotNil(ActivityCommand.transcriptAfterFailure(failure, cached: cached),
+                                "counted \(failure) over \(cached) as recorded, but nothing was written")
+            }
+        }
     }
 
     /// A block rather than a running total. A break part way through 36,000 videos reads as 740,
