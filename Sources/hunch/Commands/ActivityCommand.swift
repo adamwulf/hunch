@@ -204,6 +204,9 @@ struct ActivityCommand: AsyncParsableCommand {
                     // than as a thumbnail that would not download
                     try await Task.sleep(for: .seconds(pacer.delayBeforeNextAssetFetch()))
 
+                    // Asked of the downloader rather than of the error, because its own retry loop
+                    // absorbs the throttling that clears on a second attempt and would otherwise
+                    // report a clean run while the asset host was pushing back
                     let throttlesBefore = FileDownloader.rateLimitCount
                     do {
                         downloadedAssets[thumbnail.url] = try await FileDownloader.downloadFile(
@@ -212,10 +215,13 @@ struct ActivityCommand: AsyncParsableCommand {
                         print("Failed to download thumbnail: \(url)")
                     }
 
-                    // Asked of the downloader rather than of the error, because its own retry loop
-                    // absorbs the throttling that clears on a second attempt and would otherwise
-                    // report a clean run while the asset host was pushing back
-                    pacer.recordAssetOutcome(throttled: FileDownloader.rateLimitCount > throttlesBefore)
+                    // A thumbnail that 404s belongs to a video that is gone, which says nothing
+                    // about how fast this run is going. Nothing is cached for it either, so it fails
+                    // again on every future run - scoring that as evidence of anything, in either
+                    // direction, would be reading the same non-event forever.
+                    if FileDownloader.rateLimitCount > throttlesBefore {
+                        pacer.recordAssetThrottle()
+                    }
                 }
             }
 

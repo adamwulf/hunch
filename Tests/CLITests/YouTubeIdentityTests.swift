@@ -25,14 +25,15 @@ final class YouTubeIdentityTests: XCTestCase {
         XCTAssertEqual(headers["Accept-Language"], "en-US,en;q=0.9")
     }
 
-    /// Thumbnails carry the same headers, but they are handed to the downloader per request rather
-    /// than installed on it, because that downloader also serves the Notion export path and an
-    /// export has no business claiming to be a browser to Notion.
-    func testTheIdentityIsNotInstalledGlobally() {
-        YouTubeIdentity.install()
-
-        XCTAssertNil(YouTubeIdentity.headers["Accept"], "only headers that do not vary per request belong in the set")
-        XCTAssertEqual(YouTubeIdentity.headers.count, 2, "a header added here reaches every request that passes the set along")
+    /// A canary rather than a behaviour test. Nothing installs this set globally any more - the
+    /// downloader takes headers per request, so the Notion export path cannot inherit them and the
+    /// compiler enforces that far better than a test could. What is worth pinning is the size: every
+    /// header added here rides along on every request that passes the set on, which is the reasoning
+    /// that kept Accept and the Sec-Fetch family out of it, and that reasoning is easy to forget
+    /// while adding "just one more".
+    func testTheHeaderSetStaysDeliberatelySmall() {
+        XCTAssertEqual(YouTubeIdentity.headers.count, 2,
+                       "adding a header here means sending it on every request, so weigh it against testOnlyPerClientHeadersAreSent")
     }
 
     /// Each of these tokens looks like a mistake and is not. They were read out of a real browser,

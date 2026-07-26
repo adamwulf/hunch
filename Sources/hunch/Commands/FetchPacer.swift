@@ -66,12 +66,21 @@ final class FetchPacer {
     /// at all: enough that a resumed run cannot fire thousands of image requests back to back,
     /// little enough that it does not dominate a run whose real work is elsewhere.
     let assetDelay: TimeInterval
-    /// What the baseline is multiplied by each time YouTube rate limits us.
+    /// What the baseline is multiplied by each time a host rate limits us: once per rate limited
+    /// response from youtube.com, and once per throttled thumbnail however many responses that
+    /// download actually drew.
     let slowdownFactor: Double
     /// What the baseline is multiplied by once a clean streak completes. Deliberately gentler than
     /// `slowdownFactor`: give ground quickly, take it back slowly.
     let speedupFactor: Double
-    /// Clean fetches needed before the baseline creeps back down one notch.
+    /// Clean youtube.com fetches needed before the baseline creeps back down one notch.
+    ///
+    /// Only fetches, never thumbnails, and the asymmetry with `slowdownFactor` is deliberate:
+    /// throttling at the asset host is decent evidence this IP is asking for too much and worth
+    /// slowing down for, while a thumbnail that downloads cleanly says nothing about how youtube.com
+    /// feels and is no reason to speed back up. Crediting it would let a resumed run whose
+    /// thumbnails all miss the cache walk the baseline from the ceiling to the floor on the strength
+    /// of a different host's opinion, without having asked youtube.com for anything at all.
     let cleanStreakForSpeedup: Int
     /// Half width of the jitter band as a fraction of the delay: 0.5 spreads 2s over 1s...3s.
     let jitter: Double
@@ -180,20 +189,18 @@ final class FetchPacer {
         slowDown(steps: rateLimits)
     }
 
-    /// Records how a thumbnail download went.
+    /// Records that the asset host throttled a thumbnail download.
     ///
     /// One signal per download rather than one per rate limited response, because the asset host
     /// retries internally and can absorb several 429s in a couple of seconds. Slowing the run down
-    /// once per absorbed response would let a single busy thumbnail cost more than a real IP ban
-    /// does. A clean download credits the streak exactly as a clean fetch does, because a signal
-    /// that can only ever slow a run down and never give anything back is a ratchet rather than a
-    /// control loop.
-    func recordAssetOutcome(throttled: Bool) {
-        guard throttled else {
-            creditCleanRequest()
-            return
-        }
-
+    /// once per absorbed response would let a single busy thumbnail cost more than a real IP ban.
+    ///
+    /// There is deliberately no clean counterpart. Being throttled anywhere is evidence this IP is
+    /// asking for too much, so it is worth acting on wherever it comes from; a thumbnail arriving
+    /// cleanly is not evidence about youtube.com and must not buy a speedup there. See
+    /// `cleanStreakForSpeedup`. The ratchet that asymmetry usually implies does not bite here,
+    /// because the clean fetches that do credit the streak are the same ones the baseline governs.
+    func recordAssetThrottle() {
         assetRateLimitCount += 1
         slowDown(steps: 1)
     }

@@ -180,24 +180,29 @@ final class FetchPacerTests: XCTestCase {
     func testAThrottledThumbnailSlowsTheRunOnce() {
         let pacer = steadyPacer()
 
-        pacer.recordAssetOutcome(throttled: true)
+        pacer.recordAssetThrottle()
 
         XCTAssertEqual(pacer.currentDelay, 4, accuracy: 0.0001)
         XCTAssertEqual(pacer.assetRateLimitCount, 1)
         XCTAssertEqual(pacer.rateLimitCount, 0, "a busy image host is not the IP ban that ends a run")
     }
 
-    /// A signal that can only ever slow a run down and never give anything back is a ratchet rather
-    /// than a control loop, so a clean thumbnail credits the streak like any other clean request.
-    func testACleanThumbnailCreditsTheStreak() {
+    /// The asymmetry is the point: being throttled anywhere is evidence this IP is asking for too
+    /// much, while a thumbnail arriving cleanly says nothing about youtube.com. Crediting it would
+    /// let a resumed run whose thumbnails all miss the cache walk the baseline from the ceiling to
+    /// the floor without asking youtube.com for anything at all.
+    func testOnlyCleanYouTubeFetchesCreditTheStreak() {
         let pacer = steadyPacer(speedupFactor: 0.5, cleanStreakForSpeedup: 2)
 
-        pacer.recordAssetOutcome(throttled: true)
+        pacer.recordAssetThrottle()
         XCTAssertEqual(pacer.currentDelay, 4, accuracy: 0.0001)
 
-        pacer.recordAssetOutcome(throttled: false)
-        pacer.recordAssetOutcome(throttled: false)
-        XCTAssertEqual(pacer.currentDelay, 2, accuracy: 0.0001)
+        // However many thumbnails come back clean, the baseline holds where the throttle left it
+        pacer.recordOutcome(rateLimits: 0)
+        XCTAssertEqual(pacer.currentDelay, 4, accuracy: 0.0001, "one clean fetch is not a streak")
+
+        pacer.recordOutcome(rateLimits: 0)
+        XCTAssertEqual(pacer.currentDelay, 2, accuracy: 0.0001, "two are, and only fetches count toward them")
     }
 
     func testAssetDownloadsStretchWithTheSlowedBaseline() {
@@ -323,7 +328,7 @@ final class FetchPacerTests: XCTestCase {
         _ = pacer.delayBeforeNextFetch(requests: 2)
         pacer.recordOutcome(rateLimits: 1)
         _ = pacer.delayBeforeNextAssetFetch()
-        pacer.recordAssetOutcome(throttled: true)
+        pacer.recordAssetThrottle()
         clock = clock.addingTimeInterval(60)
 
         XCTAssertEqual(pacer.rateReport(),
