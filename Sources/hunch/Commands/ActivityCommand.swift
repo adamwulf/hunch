@@ -438,6 +438,11 @@ struct ActivityCommand: AsyncParsableCommand {
     /// caption-free on one run and then be invisible on every run after it, because nothing would
     /// ever fetch again. A count does not disambiguate them, but a run that records 30,000 reads
     /// very differently from one that records 40.
+    ///
+    /// The ambiguity is documented upstream rather than fixed, and cannot be fixed there: a video
+    /// without captions and a malformed blob both arrive as a missing key. So the trap re-arms on
+    /// every YouTube schema change and this is the only thing watching for it, which makes it part
+    /// of what keeps the corpus correct rather than decoration on the progress output.
     struct RefusalTally {
         /// Which kind of refusal was recorded, or why one was not.
         struct Counts {

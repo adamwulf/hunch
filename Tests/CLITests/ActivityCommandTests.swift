@@ -179,22 +179,42 @@ final class ActivityCommandTests: XCTestCase {
         XCTAssertEqual(tally.counts.duringCombinedFetch, 0)
     }
 
-    /// The count exists to make stranding visible, so it must never be the thing hiding it. One
-    /// direction only: everything counted as recorded reached disk. The converse is not a rule -
-    /// an unresolved failure writes the cache back unchanged without any refusal being recorded.
-    func testNothingIsCountedAsRecordedThatIsNotWritten() {
-        let caches: [ActivityCommand.CachedTranscript] = [.missing, .unreadable, .transcript([])]
+    /// The count exists to make stranding visible, so it must never be the thing hiding it.
+    ///
+    /// Two properties, and the second is the one that actually broke. Counted-implies-written holds
+    /// one way only, because an unresolved failure writes the cache back unchanged while recording
+    /// nothing - a symmetric assertion would fail on that row. But both doors into the tally must
+    /// also classify a given cache the same way as each other, and agreeing with the writer
+    /// separately is weaker than agreeing between themselves: the combined fetch counted a refusal
+    /// the writer then declined to write, and only mutual agreement catches that.
+    func testBothWaysIntoTheTallyAgreeWithTheWriterAndWithEachOther() throws {
+        let caches: [ActivityCommand.CachedTranscript] = [
+            .missing, .unreadable, .transcript([]), .transcript(try moments())
+        ]
         let failures: [ActivityCommand.FetchFailure] = [.noTracksListed, .listedTracksWereEmpty, .unresolved]
 
         for cached in caches {
             for failure in failures {
                 var tally = ActivityCommand.RefusalTally()
                 tally.record(failure, cached: cached)
-                guard tally.counts.recorded > 0 else { continue }
 
-                XCTAssertNotNil(ActivityCommand.transcriptAfterFailure(failure, cached: cached),
-                                "counted \(failure) over \(cached) as recorded, but nothing was written")
+                if tally.counts.recorded > 0 {
+                    XCTAssertNotNil(ActivityCommand.transcriptAfterFailure(failure, cached: cached),
+                                    "counted \(failure) over \(cached) as recorded, but nothing was written")
+                }
             }
+
+            var throughCombinedFetch = ActivityCommand.RefusalTally()
+            throughCombinedFetch.recordCombinedFetch(cached: cached)
+
+            var throughRecord = ActivityCommand.RefusalTally()
+            throughRecord.record(.listedTracksWereEmpty, cached: cached)
+
+            XCTAssertEqual(throughCombinedFetch.counts.recorded, throughRecord.counts.recorded,
+                           "the two doors disagree about whether \(cached) was recorded")
+            XCTAssertEqual(throughCombinedFetch.counts.blockedByUnreadableFile,
+                           throughRecord.counts.blockedByUnreadableFile,
+                           "the two doors disagree about whether \(cached) strands the video")
         }
     }
 
