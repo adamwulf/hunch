@@ -498,6 +498,34 @@ final class VTTTranscriptTests: XCTestCase {
         XCTAssertEqual(parsed.first?.text.contains(where: \.isNewline), false)
     }
 
+    /// A numbered escape can name a C1 control as easily as a C0 one, and U+0085 is a line break
+    /// living in that block - so leaving the upper range out would have let a cue break the markdown
+    /// after all.
+    func testC1ControlsAreFlattenedToo() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            00:00:01.000 --> 00:00:03.000
+            before&#133;after&#144;done
+            """)
+
+        XCTAssertEqual(parsed.first?.text, "before afterdone")
+        XCTAssertEqual(parsed.first?.text.unicodeScalars.contains { (0x7F...0x9F).contains($0.value) }, false)
+    }
+
+    /// `UInt32(_:radix:)` takes a leading sign, so this used to decode to an apostrophe nobody wrote
+    /// - the same hole the timestamps had before the digit checks went in.
+    func testASignedNumberedEscapeIsNotAnEscape() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            00:00:01.000 --> 00:00:03.000
+            it&#+39;s and it&#-39;s
+            """)
+
+        XCTAssertEqual(parsed.first?.text, "it&#+39;s and it&#-39;s")
+    }
+
     // MARK: - Reading from disk
 
     func testLoadingAFileThatIsNotThereIsNil() {

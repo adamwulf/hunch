@@ -271,8 +271,12 @@ enum VTTTranscript {
 
         // Nil for a surrogate half or anything past the last code point, which leaves the reference
         // written out rather than inventing a replacement character for it
+        // Checked to be digits before being read as a number, because `UInt32(_:radix:)` accepts a
+        // leading sign - so `&#+39;` would otherwise decode to an apostrophe nobody wrote, which is
+        // the same hole the timestamps had
         guard
             !value.isEmpty,
+            value.allSatisfy({ isHex ? ($0.isASCII && $0.isHexDigit) : isDigit($0) }),
             let code = UInt32(value, radix: isHex ? 16 : 10),
             let scalar = Unicode.Scalar(code)
         else { return nil }
@@ -290,9 +294,10 @@ enum VTTTranscript {
     /// Line breaks matter more. The renderer writes one transcript line per markdown line and only
     /// substitutes `\n`, so a decoded carriage return, U+2028 or U+0085 would break the structure of
     /// the file from inside a cue. Every other control character goes for the same reason: none of
-    /// them is a word anybody said, and all of them survive into the export otherwise.
+    /// them is a word anybody said, and all of them survive into the export otherwise. That means
+    /// both control blocks - a numbered escape can name a C1 as easily as a C0.
     private static func normalize(_ text: String) -> String {
-        guard text.contains(where: needsFlattening) else { return text }
+        guard needsFlattening(text) else { return text }
 
         var flattened = ""
         for character in text {
@@ -307,13 +312,21 @@ enum VTTTranscript {
         return flattened
     }
 
-    private static func needsFlattening(_ character: Character) -> Bool {
-        return character.isNewline
-            || character == "\u{00A0}"
-            || character.unicodeScalars.contains(where: isControl)
+    /// Asked of the scalars rather than the characters, which is the same question at a fraction of
+    /// the cost: every newline this flattens is either a control scalar or one of the two separators
+    /// named here, and the `\r\n` cluster is caught by either half of itself.
+    private static func needsFlattening(_ text: String) -> Bool {
+        return text.unicodeScalars.contains { scalar in
+            isControl(scalar)
+                || scalar.value == 0x00A0
+                || scalar.value == 0x2028
+                || scalar.value == 0x2029
+        }
     }
 
+    /// Both control blocks: C0 and delete, and the C1 range that a numbered escape can name just as
+    /// easily - U+0085 is a line break that lives in it.
     private static func isControl(_ scalar: Unicode.Scalar) -> Bool {
-        return scalar.value < 0x20 || scalar.value == 0x7F
+        return scalar.value < 0x20 || (0x7F...0x9F).contains(scalar.value)
     }
 }
