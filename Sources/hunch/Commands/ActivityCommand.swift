@@ -70,18 +70,12 @@ struct ActivityCommand: AsyncParsableCommand {
 
         let skip = 0
 
-        // Process each video with rate limiting
+        // Paces the fetches rather than the loop, so the videos already on disk cost nothing and
+        // the whole pacing budget goes to the ones that actually touch YouTube
+        let pacer = FetchPacer()
+
+        // Process each video, pacing every fetch through `paced` below
         for (index, video) in sortedVideos[skip...].enumerated() {
-            if index > 0, index % 17 == 0 {
-                print("Resting for 2 seconds...")
-                try await Task.sleep(for: .seconds(2))
-            } else if index > 0, index % 50 == 0 {
-                print("Resting for 5 seconds...")
-                try await Task.sleep(for: .seconds(5))
-            } else if index > 0, index % (37 * 7) == 0 {
-                print("Resting for 37 seconds...")
-                try await Task.sleep(for: .seconds(17))
-            }
             // Only print progress every 100 items
             if index % 100 == 0 {
                 let trueIndex = index + skip
@@ -91,6 +85,9 @@ struct ActivityCommand: AsyncParsableCommand {
                 let dateColumn = dateStr.padding(toLength: 10, withPad: " ", startingAt: 0)
                 let percentStr = String(format: "%6.1f%%", progress)
                 print("\(indexStr) \(dateColumn) \(percentStr)")
+                if let pacing = pacer.rateReport() {
+                    print("  \(pacing)")
+                }
             }
 
             // Build all URLs
@@ -138,26 +135,23 @@ struct ActivityCommand: AsyncParsableCommand {
             do {
                 switch (info, transcript) {
                 case (nil, nil):
-                    try await Task.sleep(for: .milliseconds(300))
-                    let fetched = try await YouTubeRateLimiter.shared.withBackoff(onBan: .waitItOut) {
+                    let fetched = try await paced(pacer, requests: 2) {
                         try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
                     }
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = fetched.transcript
                     print("Fetched \(video.id)\(fetched.transcript == nil ? "" : " with transcript")")
                 case (nil, .some(let cached)):
-                    try await Task.sleep(for: .seconds(1))
                     print("Fetching info: \(video.id)")
-                    let fetched = try await YouTubeRateLimiter.shared.withBackoff(onBan: .waitItOut) {
+                    let fetched = try await paced(pacer, requests: 1) {
                         try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
                     }
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = cached
                 case (.some(let cached), nil):
-                    try await Task.sleep(for: .seconds(1))
                     // Skip fetching transcript if we already have info
                     print("Fetching transcript: \(video.id)")
-                    let moments = try await YouTubeRateLimiter.shared.withBackoff(onBan: .waitItOut) {
+                    let moments = try await paced(pacer, requests: 2) {
                         try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
                     }
                     finalInfo = cached
@@ -190,19 +184,43 @@ struct ActivityCommand: AsyncParsableCommand {
                 finalTranscript = transcript
             }
 
-            // Now download thumbnails after we have finalInfo
-            if let thumbnails = finalInfo?.thumbnails {
-                // Create assets directory only if we have thumbnails
+            // Now download the thumbnail after we have finalInfo. Only the largest is fetched,
+            // because only the largest is ever rendered: pulling all five wrote four files nothing
+            // reads, which was merely wasteful while the loop was unpaced and is hours of waiting
+            // now that every miss takes its turn.
+            if let thumbnail = ActivityCommand.largestThumbnail(of: finalInfo), let url = URL(string: thumbnail.url) {
+                // Create assets directory only if we have a thumbnail
                 try fm.createDirectory(at: assetsDir, withIntermediateDirectories: true)
+                let assetsPath = assetsDir.path(percentEncoded: false)
 
-                for thumbnail in thumbnails {
-                    if let url = URL(string: thumbnail.url) {
-                        do {
-                            let asset = try await FileDownloader.downloadFile(from: url, to: assetsDir.path(percentEncoded: false))
-                            downloadedAssets[thumbnail.url] = asset
-                        } catch {
-                            print("Failed to download thumbnail: \(url)")
-                        }
+                // This runs for cached videos too, since the markdown needs the thumbnail's local
+                // path whether or not this run fetched the video. Asking the cache first is what
+                // keeps that free: only a miss reaches the network, and only a miss is worth waiting
+                // for.
+                if let cached = FileDownloader.cachedAsset(from: url, in: assetsPath) {
+                    downloadedAssets[thumbnail.url] = cached
+                } else {
+                    // Outside the catch below, so that a cancelled run reads as cancelled rather
+                    // than as a thumbnail that would not download
+                    try await Task.sleep(for: .seconds(pacer.delayBeforeNextAssetFetch()))
+
+                    // Asked of the downloader rather than of the error, because its own retry loop
+                    // absorbs the throttling that clears on a second attempt and would otherwise
+                    // report a clean run while the asset host was pushing back
+                    let throttlesBefore = FileDownloader.rateLimitCount
+                    do {
+                        downloadedAssets[thumbnail.url] = try await FileDownloader.downloadFile(
+                            from: url, to: assetsPath, headers: YouTubeIdentity.headers)
+                    } catch {
+                        print("Failed to download thumbnail: \(url)")
+                    }
+
+                    // A thumbnail that 404s belongs to a video that is gone, which says nothing
+                    // about how fast this run is going. Nothing is cached for it either, so it fails
+                    // again on every future run - scoring that as evidence of anything, in either
+                    // direction, would be reading the same non-event forever.
+                    if FileDownloader.rateLimitCount > throttlesBefore {
+                        pacer.recordAssetThrottle()
                     }
                 }
             }
@@ -247,6 +265,38 @@ struct ActivityCommand: AsyncParsableCommand {
             ]
             try fm.setAttributes(attributes, ofItemAtPath: videoURL.path)
         }
+    }
+
+    /// Runs one YouTube fetch at the pacer's cadence, then feeds the outcome back into it.
+    ///
+    /// Waiting here rather than at the top of the loop is the whole point: a cached video never
+    /// reaches this method, so a resumed run does not spend seconds apiece resting between videos it
+    /// already has on disk. The ban count is read off the limiter on both the success and the
+    /// failure path, because backoff swallows the bans it waits out and those are precisely the ones
+    /// the rest of the run should slow down for.
+    private func paced<T>(_ pacer: FetchPacer, requests: Int, _ operation: () async throws -> T) async throws -> T {
+        let limiter = YouTubeRateLimiter.shared
+
+        // A limiter that has already given up throws without touching the network. Sleeping for a
+        // fetch that will not happen wastes the wait, and scoring the refusal through the diff below
+        // would count a ban as a clean fetch and nudge the pacer toward speeding up.
+        guard !limiter.hasGivenUp else {
+            return try await limiter.withBackoff(onBan: .waitItOut, operation)
+        }
+
+        try await Task.sleep(for: .seconds(pacer.delayBeforeNextFetch(requests: requests)))
+
+        let rateLimitsBefore = limiter.rateLimitCount
+        defer { pacer.recordOutcome(rateLimits: limiter.rateLimitCount - rateLimitsBefore) }
+
+        return try await limiter.withBackoff(onBan: .waitItOut, operation)
+    }
+
+    /// The one thumbnail a video's markdown renders, so the download and the render cannot disagree
+    /// about which one that is. Downloading a thumbnail the renderer will not name buys nothing but
+    /// another request to the asset host.
+    private static func largestThumbnail(of info: VideoInfo?) -> VideoThumbnail? {
+        return info?.thumbnails?.sorted(by: { $0.width * $0.height > $1.width * $1.height }).first
     }
 
     private func parseActivities(from url: URL) async throws -> [VideoData] {
@@ -317,7 +367,7 @@ struct ActivityCommand: AsyncParsableCommand {
         let renderer = MarkdownRenderer(level: 0, ignoreColor: false, ignoreUnderline: false, downloadedAssets: downloadedAssets)
 
         // Add largest thumbnail if available
-        if let thumbnails = info?.thumbnails?.sorted(by: { $0.width * $0.height > $1.width * $1.height }), let thumb = thumbnails.first {
+        if let thumb = ActivityCommand.largestThumbnail(of: info) {
             let imageBlock = Block(
                 object: "block",
                 id: video.id,

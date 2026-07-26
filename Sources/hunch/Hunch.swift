@@ -39,6 +39,10 @@ struct Hunch: AsyncParsableCommand {
             NotionAPI.shared.token = DotEnv.loadValue(forKey: "NOTION_KEY")
         }
 
+        // Every command that touches YouTube presents the same client, so this belongs here rather
+        // than in the one command that fetches the most
+        YouTubeIdentity.install()
+
         do {
             var command = try parseAsRoot()
             if var asyncCommand = command as? AsyncParsableCommand {
