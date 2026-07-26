@@ -143,13 +143,44 @@ final class ActivityCommandTests: XCTestCase {
         var tally = ActivityCommand.RefusalTally()
         XCTAssertNil(tally.summary, "a run that recorded nothing has nothing to report")
 
-        tally.record(.noTracksListed)
-        tally.record(.listedTracksWereEmpty)
-        tally.record(.unresolved)
+        tally.record(.noTracksListed, cached: .missing)
+        tally.record(.listedTracksWereEmpty, cached: .missing)
+        tally.record(.unresolved, cached: .missing)
         tally.recordCombinedFetch()
 
-        XCTAssertEqual(tally.total, 3, "an unresolved failure is not a refusal and nothing was written for it")
+        XCTAssertEqual(tally.counts.total, 3, "an unresolved failure is not a refusal and nothing was written for it")
         XCTAssertEqual(tally.summary?.contains("recorded 3 transcript refusals"), true)
+    }
+
+    /// The one population that does not settle by itself. A refusal over a file that did not decode
+    /// is deliberately not written, so the video is asked about again on every run for good - and
+    /// counting it apart is what stops that being silent.
+    func testAVideoHeldBackByAnUnreadableFileIsCountedApart() {
+        var tally = ActivityCommand.RefusalTally()
+
+        tally.record(.noTracksListed, cached: .unreadable)
+
+        XCTAssertEqual(tally.counts.blockedByUnreadableFile, 1)
+        XCTAssertEqual(tally.counts.noTracksListed, 0, "nothing was written down for this video")
+        XCTAssertEqual(tally.summary?.contains("1 held back by a file that did not decode"), true)
+    }
+
+    /// A block rather than a running total. A break part way through 36,000 videos reads as 740,
+    /// 840, 940 in a total, which is indistinguishable from ordinary accumulation.
+    func testThePeriodicReportDescribesItsOwnBlock() {
+        var tally = ActivityCommand.RefusalTally()
+
+        tally.record(.noTracksListed, cached: .missing)
+        XCTAssertEqual(tally.takeBlockSinceLastReport()?.contains("recorded 1 transcript refusals"), true)
+
+        XCTAssertNil(tally.takeBlockSinceLastReport(), "a block with nothing in it says nothing")
+
+        tally.record(.noTracksListed, cached: .missing)
+        tally.record(.noTracksListed, cached: .missing)
+        XCTAssertEqual(tally.takeBlockSinceLastReport()?.contains("recorded 2 transcript refusals"), true)
+
+        XCTAssertEqual(tally.summary?.contains("recorded 3 transcript refusals"), true,
+                       "the run total still counts everything, however it was reported along the way")
     }
 
     // MARK: - Which transcript gets rendered

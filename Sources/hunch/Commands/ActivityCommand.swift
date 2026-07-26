@@ -105,7 +105,7 @@ struct ActivityCommand: AsyncParsableCommand {
                 }
                 // Reported as the run goes rather than only at the end, so an export that is stopped
                 // part way through still says how much it wrote down
-                if let refusalReport = refusals.summary {
+                if let refusalReport = refusals.takeBlockSinceLastReport() {
                     print("  \(refusalReport)")
                 }
             }
@@ -210,7 +210,7 @@ struct ActivityCommand: AsyncParsableCommand {
                 }
 
                 finalInfo = info
-                refusals.record(failure)
+                refusals.record(failure, cached: cached)
                 finalTranscript = ActivityCommand.transcriptAfterFailure(failure, cached: cached)
             }
 
@@ -431,23 +431,63 @@ struct ActivityCommand: AsyncParsableCommand {
     /// Tallies the refusals a run writes down, so that a corpus-wide break is visible while it is
     /// still cheap to undo.
     ///
-    /// The kit reports `noCaptionData` both when a video genuinely has no captions and when its own
-    /// decoder stops matching YouTube's player response: the decode failure is swallowed and an empty
-    /// track list is all that reaches us. Now that a run writes those refusals down, a schema change
-    /// on YouTube's side would mark every video caption-free on one run and then be invisible on
-    /// every run after it, because nothing would ever fetch again. A count does not tell the two
-    /// apart, but a run that records 30,000 refusals reads very differently from one that records 40.
+    /// The kit reports `noCaptionData` both when a video genuinely has no captions and when a
+    /// player-response blob fails to decode - it says so itself, because a video without captions
+    /// reaches the same place as a missing key and the two cannot be told apart. Now that a run
+    /// writes those refusals down, a schema change on YouTube's side would mark every video
+    /// caption-free on one run and then be invisible on every run after it, because nothing would
+    /// ever fetch again. A count does not disambiguate them, but a run that records 30,000 reads
+    /// very differently from one that records 40.
     struct RefusalTally {
-        private(set) var noTracksListed = 0
-        private(set) var listedTracksWereEmpty = 0
-        private(set) var duringCombinedFetch = 0
+        /// Which kind of refusal was recorded, or why one was not.
+        struct Counts {
+            var noTracksListed = 0
+            var listedTracksWereEmpty = 0
+            var duringCombinedFetch = 0
+            var blockedByUnreadableFile = 0
 
-        var total: Int { noTracksListed + listedTracksWereEmpty + duringCombinedFetch }
+            var total: Int {
+                return noTracksListed + listedTracksWereEmpty + duringCombinedFetch + blockedByUnreadableFile
+            }
 
-        mutating func record(_ failure: FetchFailure) {
+            static func - (lhs: Counts, rhs: Counts) -> Counts {
+                return Counts(noTracksListed: lhs.noTracksListed - rhs.noTracksListed,
+                              listedTracksWereEmpty: lhs.listedTracksWereEmpty - rhs.listedTracksWereEmpty,
+                              duringCombinedFetch: lhs.duringCombinedFetch - rhs.duringCombinedFetch,
+                              blockedByUnreadableFile: lhs.blockedByUnreadableFile - rhs.blockedByUnreadableFile)
+            }
+
+            func summary(_ qualifier: String) -> String? {
+                guard total > 0 else { return nil }
+                return "recorded \(total) transcript refusals\(qualifier): \(noTracksListed) with no tracks listed, "
+                    + "\(listedTracksWereEmpty) whose tracks came back empty, "
+                    + "\(duringCombinedFetch) during a combined fetch, "
+                    + "\(blockedByUnreadableFile) held back by a file that did not decode"
+            }
+        }
+
+        private(set) var counts = Counts()
+
+        /// What the last periodic report already said, so the next one can describe its own block.
+        private var reported = Counts()
+
+        /// Derives the same decision `transcriptAfterFailure` makes, from the same two inputs, so
+        /// that what is counted cannot drift from what is written.
+        mutating func record(_ failure: FetchFailure, cached: CachedTranscript) {
+            guard !isUnresolved(failure) else { return }
+
+            // A refusal that lands on a file which did not decode is deliberately not written, so
+            // this video will be asked about again on every run from here on. Counted apart, because
+            // that set is the only one here that does not settle by itself - and the silence around
+            // it was the whole cost of choosing not to overwrite a file nobody could read.
+            if case .unreadable = cached {
+                counts.blockedByUnreadableFile += 1
+                return
+            }
+
             switch failure {
-            case .noTracksListed: noTracksListed += 1
-            case .listedTracksWereEmpty: listedTracksWereEmpty += 1
+            case .noTracksListed: counts.noTracksListed += 1
+            case .listedTracksWereEmpty: counts.listedTracksWereEmpty += 1
             case .unresolved: break
             }
         }
@@ -455,13 +495,27 @@ struct ActivityCommand: AsyncParsableCommand {
         /// The combined fetch swallows both refusals inside the kit and hands back a nil transcript,
         /// so which one it was cannot be recovered here.
         mutating func recordCombinedFetch() {
-            duringCombinedFetch += 1
+            counts.duringCombinedFetch += 1
+        }
+
+        /// What has been recorded since this was last asked.
+        ///
+        /// A block rather than a running total, because a break part way through 36,000 videos reads
+        /// as 740, 840, 940 in a total - indistinguishable from ordinary accumulation - and as
+        /// 4, 3, 4, 100, 100, 100 in a block.
+        mutating func takeBlockSinceLastReport() -> String? {
+            let block = counts - reported
+            reported = counts
+            return block.summary(" since the last report")
         }
 
         var summary: String? {
-            guard total > 0 else { return nil }
-            return "recorded \(total) transcript refusals: \(noTracksListed) with no tracks listed, "
-                + "\(listedTracksWereEmpty) whose tracks came back empty, \(duringCombinedFetch) during a combined fetch"
+            return counts.summary("")
+        }
+
+        private func isUnresolved(_ failure: FetchFailure) -> Bool {
+            if case .unresolved = failure { return true }
+            return false
         }
     }
 
