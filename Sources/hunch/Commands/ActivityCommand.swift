@@ -70,18 +70,12 @@ struct ActivityCommand: AsyncParsableCommand {
 
         let skip = 0
 
-        // Process each video with rate limiting
+        // Paces the fetches rather than the loop, so the videos already on disk cost nothing and
+        // the whole pacing budget goes to the ones that actually touch YouTube
+        let pacer = FetchPacer()
+
+        // Process each video, pacing every fetch through `paced` below
         for (index, video) in sortedVideos[skip...].enumerated() {
-            if index > 0, index % 17 == 0 {
-                print("Resting for 2 seconds...")
-                try await Task.sleep(for: .seconds(2))
-            } else if index > 0, index % 50 == 0 {
-                print("Resting for 5 seconds...")
-                try await Task.sleep(for: .seconds(5))
-            } else if index > 0, index % (37 * 7) == 0 {
-                print("Resting for 37 seconds...")
-                try await Task.sleep(for: .seconds(17))
-            }
             // Only print progress every 100 items
             if index % 100 == 0 {
                 let trueIndex = index + skip
@@ -91,6 +85,9 @@ struct ActivityCommand: AsyncParsableCommand {
                 let dateColumn = dateStr.padding(toLength: 10, withPad: " ", startingAt: 0)
                 let percentStr = String(format: "%6.1f%%", progress)
                 print("\(indexStr) \(dateColumn) \(percentStr)")
+                if let pacing = pacer.rateReport() {
+                    print("  \(pacing)")
+                }
             }
 
             // Build all URLs
@@ -138,26 +135,23 @@ struct ActivityCommand: AsyncParsableCommand {
             do {
                 switch (info, transcript) {
                 case (nil, nil):
-                    try await Task.sleep(for: .milliseconds(300))
-                    let fetched = try await YouTubeRateLimiter.shared.withBackoff(onBan: .waitItOut) {
+                    let fetched = try await paced(pacer) {
                         try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
                     }
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = fetched.transcript
                     print("Fetched \(video.id)\(fetched.transcript == nil ? "" : " with transcript")")
                 case (nil, .some(let cached)):
-                    try await Task.sleep(for: .seconds(1))
                     print("Fetching info: \(video.id)")
-                    let fetched = try await YouTubeRateLimiter.shared.withBackoff(onBan: .waitItOut) {
+                    let fetched = try await paced(pacer) {
                         try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
                     }
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = cached
                 case (.some(let cached), nil):
-                    try await Task.sleep(for: .seconds(1))
                     // Skip fetching transcript if we already have info
                     print("Fetching transcript: \(video.id)")
-                    let moments = try await YouTubeRateLimiter.shared.withBackoff(onBan: .waitItOut) {
+                    let moments = try await paced(pacer) {
                         try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
                     }
                     finalInfo = cached
@@ -247,6 +241,23 @@ struct ActivityCommand: AsyncParsableCommand {
             ]
             try fm.setAttributes(attributes, ofItemAtPath: videoURL.path)
         }
+    }
+
+    /// Runs one YouTube fetch at the pacer's cadence, then feeds the outcome back into it.
+    ///
+    /// Waiting here rather than at the top of the loop is the whole point: a cached video never
+    /// reaches this method, so a resumed run does not spend seconds apiece resting between videos it
+    /// already has on disk. The ban count is read off the limiter on both the success and the
+    /// failure path, because backoff swallows the bans it waits out and those are precisely the ones
+    /// the rest of the run should slow down for.
+    private func paced<T>(_ pacer: FetchPacer, _ operation: () async throws -> T) async throws -> T {
+        let limiter = YouTubeRateLimiter.shared
+        try await Task.sleep(for: .seconds(pacer.delayBeforeNextFetch()))
+
+        let rateLimitsBefore = limiter.rateLimitCount
+        defer { pacer.recordOutcome(rateLimits: limiter.rateLimitCount - rateLimitsBefore) }
+
+        return try await limiter.withBackoff(onBan: .waitItOut, operation)
     }
 
     private func parseActivities(from url: URL) async throws -> [VideoData] {

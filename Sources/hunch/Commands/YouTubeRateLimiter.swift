@@ -48,6 +48,14 @@ final class YouTubeRateLimiter {
     private var waited: TimeInterval = 0
     private var exhausted: RateLimitExhausted?
 
+    /// Every rate limited response this run has seen, including the ones the ladder waited out
+    /// rather than only the ones that reached a caller.
+    ///
+    /// `FetchPacer` reads it to pace the rest of the run. A ban that backoff absorbed is invisible
+    /// from a call site, which is a problem, because it is exactly the evidence that the steady
+    /// state is running too fast. Counting it here is the only place that evidence exists.
+    private(set) var rateLimitCount = 0
+
     init(backoff: RateLimitBackoff = RateLimitBackoff()) {
         self.backoff = backoff
     }
@@ -81,6 +89,9 @@ final class YouTubeRateLimiter {
                 guard case YouTubeTranscriptKit.TranscriptError.rateLimited(let statusCode, let url) = error else {
                     throw error
                 }
+
+                // Counted before the policy split so both policies feed the same tally
+                rateLimitCount += 1
 
                 switch onBan {
                 case .skipTheRest:
