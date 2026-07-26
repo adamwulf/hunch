@@ -46,7 +46,8 @@ let package = Package(
                 "hunch",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "YouTubeTranscriptKit", package: "ytt")
-            ]
+            ],
+            resources: [.copy("Fixtures")]
         )
     ]
 )

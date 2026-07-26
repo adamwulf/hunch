@@ -27,6 +27,12 @@ struct ActivityCommand: AsyncParsableCommand {
         }
     }
 
+    /// The transcript content.md renders, and what its frontmatter says about where it came from.
+    struct RenderedTranscript {
+        let lines: [TranscriptLine]
+        let source: TranscriptSource
+    }
+
     static var configuration = CommandConfiguration(
         commandName: "activity",
         abstract: "Parse Google Takeout MyActivity.html file"
@@ -37,6 +43,13 @@ struct ActivityCommand: AsyncParsableCommand {
 
     @Option(name: .shortAndLong, help: "Output directory path")
     var outputDir: String = "./activity_export"
+
+    /// An empty transcript.json is normally taken at its word and the video skipped without a
+    /// request, which is right for as long as YouTube keeps refusing the tracks it refuses today.
+    /// This is the way back: set it when there is reason to think that has changed, and every video
+    /// cached as having no transcript is asked again.
+    @Flag(name: .long, help: "Ask YouTube again for videos whose cached transcript is empty")
+    var refetchEmptyTranscripts = false
 
     mutating func run() async throws {
         let fm = FileManager.default
@@ -70,6 +83,9 @@ struct ActivityCommand: AsyncParsableCommand {
 
         let skip = 0
 
+        // Read once here because `run` is mutating and the loop below cannot capture its properties
+        let refetchEmpty = refetchEmptyTranscripts
+
         // Paces the fetches rather than the loop, so the videos already on disk cost nothing and
         // the whole pacing budget goes to the ones that actually touch YouTube
         let pacer = FetchPacer()
@@ -96,6 +112,7 @@ struct ActivityCommand: AsyncParsableCommand {
             let activitiesURL = videoURL.appendingPathComponent("activities.json")
             let infoURL = videoURL.appendingPathComponent("info.json")
             let transcriptURL = videoURL.appendingPathComponent("transcript.json")
+            let vttURL = videoURL.appendingPathComponent("transcript.vtt")
             let stringsURL = localizedURL.appendingPathComponent("Base.strings")
             let assetsDir = videoURL.appendingPathComponent("assets")
 
@@ -121,12 +138,16 @@ struct ActivityCommand: AsyncParsableCommand {
                 return try? decoder.decode(VideoInfo.self, from: data)
             }()
 
+            // An empty transcript.json is an answer, not a gap: YouTube was asked for this video's
+            // captions and served nothing back. Reading it as "not cached yet" is what had a thousand
+            // videos re-fetched on every run, each spending requests against a rate limit to be told
+            // the same nothing again.
             let transcript: [TranscriptMoment]? = {
                 guard
                     let data = try? Data(contentsOf: transcriptURL),
                     let loaded = try? decoder.decode([TranscriptMoment].self, from: data)
-                else { return nil}
-                return loaded.isEmpty ? nil : loaded
+                else { return nil }
+                return loaded.isEmpty && refetchEmpty ? nil : loaded
             }()
 
             // Process data with exponential backoff on failure
@@ -155,7 +176,10 @@ struct ActivityCommand: AsyncParsableCommand {
                         try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
                     }
                     finalInfo = cached
-                    finalTranscript = moments.isEmpty ? nil : moments
+                    // Kept even when empty so the answer reaches disk. Dropping it is what left this
+                    // branch asking for the same nothing on every run, since nothing was written and
+                    // the next run found the same gap.
+                    finalTranscript = moments
                     if !moments.isEmpty {
                         print("  recovered")
                     }
@@ -255,7 +279,9 @@ struct ActivityCommand: AsyncParsableCommand {
             }
             try stringsContent.write(to: stringsURL, atomically: true, encoding: .utf8)
 
-            try writeMarkdown(video: video, info: finalInfo, transcript: finalTranscript,
+            let renderedTranscript = ActivityCommand.renderedTranscript(fetched: finalTranscript, vttAt: vttURL)
+
+            try writeMarkdown(video: video, info: finalInfo, transcript: renderedTranscript,
                               downloadedAssets: downloadedAssets, to: videoURL.path)
 
             // Set folder dates
@@ -292,6 +318,33 @@ struct ActivityCommand: AsyncParsableCommand {
         return try await limiter.withBackoff(onBan: .waitItOut, operation)
     }
 
+    /// Picks what content.md shows for its transcript, and what it says about where that came from.
+    ///
+    /// content.md is rewritten from scratch every run, which is what lets it read transcript.vtt
+    /// here at render time and show the words yt-dlp pulled for videos whose captions the web
+    /// endpoint will not serve. Nothing derived from that file is written back: transcript.json
+    /// stays hunch's own fetch, transcript.vtt stays yt-dlp's, and the frontmatter names which of
+    /// them the reader is looking at rather than leaving the two indistinguishable.
+    ///
+    /// hunch's own fetch wins when it has words in it, since that is the file this tool is
+    /// responsible for. When neither file has anything the frontmatter still says so, and says which
+    /// kind of nothing it is: a video YouTube has already answered with silence reads differently
+    /// from one no run has managed to ask about, and it is the first of those that yt-dlp is worth
+    /// pointing at.
+    static func renderedTranscript(fetched: [TranscriptMoment]?, vttAt vttURL: URL) -> RenderedTranscript {
+        if let fetched = fetched, !fetched.isEmpty {
+            return RenderedTranscript(lines: fetched.map { TranscriptLine(start: $0.start, text: $0.text) },
+                                      source: .fetch)
+        }
+
+        if let lines = VTTTranscript.load(from: vttURL), !lines.isEmpty {
+            return RenderedTranscript(lines: lines, source: .ytDLP)
+        }
+
+        // An empty array on disk means YouTube answered; nil means no run ever got that far
+        return RenderedTranscript(lines: [], source: fetched == nil ? .unfetched : .knownEmpty)
+    }
+
     /// The one thumbnail a video's markdown renders, so the download and the render cannot disagree
     /// about which one that is. Downloading a thumbnail the renderer will not name buys nothing but
     /// another request to the asset host.
@@ -321,7 +374,7 @@ struct ActivityCommand: AsyncParsableCommand {
         return videos.sorted { $0.lastSeen > $1.lastSeen }
     }
 
-    private func writeMarkdown(video: VideoData, info: VideoInfo?, transcript: [TranscriptMoment]?,
+    private func writeMarkdown(video: VideoData, info: VideoInfo?, transcript: RenderedTranscript,
                                downloadedAssets: [String: FileDownloader.DownloadedAsset], to directory: String) throws {
         let dateFormatter = ISO8601DateFormatter()
         dateFormatter.timeZone = .utc
@@ -359,6 +412,7 @@ struct ActivityCommand: AsyncParsableCommand {
             } ?? "")
             \(info?.category.map { "category: \($0)" } ?? "")
             \(info?.isLive.map { "isLive: \($0)" } ?? "")
+            transcriptSource: \(transcript.source.rawValue)
             ---
 
             """
@@ -402,11 +456,11 @@ struct ActivityCommand: AsyncParsableCommand {
             markdown += "\n\n## Description\n\n\(description)\n"
         }
 
-        if let transcript = transcript {
+        if !transcript.lines.isEmpty {
             markdown += "\n## Transcript\n\n"
             let hasHours = (info?.duration ?? 0) > 3600
             var lastTimeBlock = -1
-            for moment in transcript {
+            for moment in transcript.lines {
                 let seconds = Int(moment.start)
                 let timeBlock = seconds / 1800  // 1800 seconds = 30 minutes
                 if timeBlock > lastTimeBlock && lastTimeBlock >= 0 {
