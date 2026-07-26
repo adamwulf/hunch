@@ -313,8 +313,19 @@ enum VTTTranscript {
     }
 
     /// Asked of the scalars rather than the characters, which is the same question at a fraction of
-    /// the cost: every newline this flattens is either a control scalar or one of the two separators
-    /// named here, and the `\r\n` cluster is caught by either half of itself.
+    /// the cost - and exactly the same question, not merely a safe approximation: the two predicates
+    /// were swept against each other across every scalar Unicode defines and answer alike on all of
+    /// them, 68 true and the rest false.
+    ///
+    /// What makes the newline half hold is that `Character.isNewline` keys off the cluster's first
+    /// scalar, and every scalar that can set it - U+000A through U+000D, U+0085, U+2028 and U+2029 -
+    /// is inside the set below. U+0085 only by way of the C1 block, so narrowing that range would
+    /// quietly break this too. A combining mark cannot hide behind one of them either, since
+    /// controls break clusters rather than joining them.
+    ///
+    /// The known imprecision runs the other way and is harmless: a no-break space followed by a
+    /// combining mark is one cluster, so the pass below leaves it alone after this returns true.
+    /// Nobody dictates that.
     private static func needsFlattening(_ text: String) -> Bool {
         return text.unicodeScalars.contains { scalar in
             isControl(scalar)
