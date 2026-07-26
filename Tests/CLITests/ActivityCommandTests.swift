@@ -23,6 +23,107 @@ final class ActivityCommandTests: XCTestCase {
         XCTAssertTrue(command.refetchEmptyTranscripts)
     }
 
+    // MARK: - What is on disk
+
+    func testAMissingTranscriptFileIsNil() {
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("transcript.json")
+
+        XCTAssertNil(ActivityCommand.cachedTranscript(at: missing, decoder: decoder))
+    }
+
+    func testAnUnreadableTranscriptFileIsNil() throws {
+        let url = try writeJSON("{ this is not a transcript")
+
+        XCTAssertNil(ActivityCommand.cachedTranscript(at: url, decoder: decoder))
+    }
+
+    /// The line the whole change turns on. An empty file has to survive the round trip as an empty
+    /// array, because collapsing it to nil is what reads as "not cached yet" and sends the video
+    /// back to YouTube for an answer it already has.
+    func testAnEmptyTranscriptFileSurvivesAsAnEmptyArray() throws {
+        let url = try writeJSON("[]")
+
+        let cached = ActivityCommand.cachedTranscript(at: url, decoder: decoder)
+
+        XCTAssertNotNil(cached)
+        XCTAssertEqual(cached?.count, 0)
+    }
+
+    func testAPopulatedTranscriptFileDecodes() throws {
+        let url = try writeJSON(momentJSON)
+
+        XCTAssertEqual(ActivityCommand.cachedTranscript(at: url, decoder: decoder)?.count, 1)
+    }
+
+    // MARK: - What the fetch builds on
+
+    /// Without the flag, an empty answer is left standing and the video costs nothing.
+    func testAnEmptyCacheIsLeftStandingByDefault() {
+        XCTAssertEqual(ActivityCommand.transcriptToBuildOn(cached: [], refetchEmpty: false)?.count, 0)
+    }
+
+    /// With it, the same file is deliberately forgotten so the video goes back down a fetch branch.
+    func testAnEmptyCacheIsForgottenWhenAskingAgain() {
+        XCTAssertNil(ActivityCommand.transcriptToBuildOn(cached: [], refetchEmpty: true))
+    }
+
+    /// The flag only reopens empty answers. A transcript with words in it is never re-fetched.
+    func testAPopulatedCacheIsKeptEvenWhenAskingAgain() throws {
+        let cached = try moments()
+
+        XCTAssertEqual(ActivityCommand.transcriptToBuildOn(cached: cached, refetchEmpty: true)?.count, 1)
+    }
+
+    func testAMissingCacheStaysMissing() {
+        XCTAssertNil(ActivityCommand.transcriptToBuildOn(cached: nil, refetchEmpty: false))
+    }
+
+    // MARK: - What a failed fetch leaves behind
+
+    /// A video with no caption tracks at all is answered, not unlucky. Recording that is what stops
+    /// it being asked again on every run for the rest of the corpus's life.
+    func testAVideoWithNoCaptionsRecordsTheRefusal() {
+        let recorded = ActivityCommand.transcriptAfterFailure(
+            YouTubeTranscriptKit.TranscriptError.noCaptionData, cached: nil)
+
+        XCTAssertEqual(recorded?.count, 0)
+    }
+
+    /// Same for a video whose caption tracks all came back with nothing in them - the kit rules out
+    /// a ban before it throws this, so it describes the video rather than the moment.
+    func testAVideoWhoseTracksAreAllEmptyRecordsTheRefusal() {
+        let recorded = ActivityCommand.transcriptAfterFailure(
+            YouTubeTranscriptKit.TranscriptError.noTranscriptData, cached: nil)
+
+        XCTAssertEqual(recorded?.count, 0)
+    }
+
+    /// The distinction that keeps this safe. A dropped connection says nothing about whether the
+    /// video has captions, so recording an empty answer for it would cache a lie permanently.
+    func testATransientFailureLeavesTheCacheAlone() {
+        let recorded = ActivityCommand.transcriptAfterFailure(
+            YouTubeTranscriptKit.TranscriptError.networkError(URLError(.timedOut)), cached: nil)
+
+        XCTAssertNil(recorded)
+    }
+
+    func testABanLeavesTheCacheAlone() {
+        let recorded = ActivityCommand.transcriptAfterFailure(
+            YouTubeTranscriptKit.TranscriptError.rateLimited(statusCode: 429, url: nil), cached: nil)
+
+        XCTAssertNil(recorded)
+    }
+
+    /// And a refusal never overwrites words already on disk.
+    func testARefusalNeverClobbersATranscriptAlreadyThere() throws {
+        let recorded = ActivityCommand.transcriptAfterFailure(
+            YouTubeTranscriptKit.TranscriptError.noCaptionData, cached: try moments())
+
+        XCTAssertEqual(recorded?.count, 1)
+    }
+
     // MARK: - Which transcript gets rendered
 
     func testHunchsOwnFetchIsRenderedWhenItHasWordsInIt() throws {
@@ -103,13 +204,39 @@ final class ActivityCommandTests: XCTestCase {
         XCTAssertEqual(TranscriptSource.unfetched.rawValue, "unfetched")
     }
 
+    /// With --refetch-empty-transcripts set, an empty transcript.json is read as nil on purpose so
+    /// the video is asked about again. If that attempt then fails, nothing is written and the empty
+    /// file is still sitting there - so the frontmatter has to describe the file, not the attempt.
+    /// Saying `unfetched` over a folder whose transcript.json holds `[]` would have a grep for
+    /// never-asked report a video that disk records as asked and answered.
+    func testTheFrontmatterDescribesTheFileRatherThanTheAttempt() {
+        // Exactly what the loop hands it: this run's fetch if there was one, otherwise what is
+        // still sitting on disk
+        let fetchThatFailed: [TranscriptMoment]? = nil
+        let stillOnDisk: [TranscriptMoment] = []
+
+        let rendered = ActivityCommand.renderedTranscript(fetched: fetchThatFailed ?? stillOnDisk, vttAt: missingVTT())
+
+        XCTAssertEqual(rendered.source, .knownEmpty)
+    }
+
     // MARK: - Helpers
+
+    private let decoder = JSONDecoder()
+
+    private let momentJSON = #"[{"start": 1.5, "duration": 2.0, "text": "from the fetch"}]"#
 
     /// Decoded rather than constructed, because the kit keeps the memberwise initialiser to itself -
     /// and decoding is how the command comes by these anyway.
     private func moments() throws -> [TranscriptMoment] {
-        let json = #"[{"start": 1.5, "duration": 2.0, "text": "from the fetch"}]"#
-        return try JSONDecoder().decode([TranscriptMoment].self, from: Data(json.utf8))
+        return try JSONDecoder().decode([TranscriptMoment].self, from: Data(momentJSON.utf8))
+    }
+
+    private func writeJSON(_ contents: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).json")
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return url
     }
 
     private func writeVTT(contents: String = "WEBVTT\n\n00:00:02.000 --> 00:00:04.000\nfrom the vtt\n") throws -> URL {

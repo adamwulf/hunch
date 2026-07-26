@@ -45,11 +45,14 @@ enum VTTTranscript {
     /// A file that parses to nothing comes back as an empty array rather than nil, so a caller can
     /// tell "no VTT here" from "a VTT with nothing in it".
     static func load(from url: URL) -> [TranscriptLine]? {
-        guard
-            let data = try? Data(contentsOf: url),
-            let contents = String(data: data, encoding: .utf8)
-        else { return nil }
-        return parse(contents)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+
+        // Repairing bad bytes rather than refusing the file, so that nil keeps meaning exactly one
+        // thing: there is no file here. A yt-dlp write interrupted mid-codepoint is an ordinary
+        // enough accident across tens of thousands of folders, and rejecting the whole file for it
+        // would throw away every cue that read fine and then report the video as one YouTube had
+        // answered with silence - the opposite of what happened.
+        return parse(String(decoding: data, as: UTF8.self))
     }
 
     static func parse(_ contents: String) -> [TranscriptLine] {
@@ -82,11 +85,14 @@ enum VTTTranscript {
                 continue
             }
 
-            // Only a line with nothing at all on it ends a cue. YouTube pads its cues with a line
-            // holding a single space, and reading that as the terminator would drop the spoken line
-            // that follows it - which in the first cue of every auto-generated file is the first
-            // thing said in the video.
-            if line.isEmpty {
+            // A cue ends on a line with nothing on it. YouTube pads its cues with a line holding a
+            // single space, and reading that alone as the terminator would drop the spoken line that
+            // follows it - which in the first cue of every auto-generated file is the first thing
+            // said in the video. That padding always arrives before the payload, so a blank-looking
+            // line that arrives after some closes the cue: a file whose separators carry a space
+            // would otherwise never close one, and every cue identifier in it would be rendered as
+            // words somebody said.
+            if line.isEmpty || (!payload.isEmpty && line.allSatisfy(\.isWhitespace)) {
                 flushCue()
                 continue
             }
@@ -130,21 +136,48 @@ enum VTTTranscript {
     }
 
     /// Reads `HH:MM:SS.mmm`, or `MM:SS.mmm` where WebVTT allows the hours to be left off.
+    ///
+    /// Every field is checked to be digits before it is read as a number, because `Double` and `Int`
+    /// accept a great deal that is not a timestamp: `Double("nan")`, `Double("inf")` and
+    /// `Double("0x1p10")` all succeed, `Int("-05")` succeeds and turns a malformed stamp into a
+    /// negative time, and twenty digits of seconds overflow into 1e20. The renderer turns whatever
+    /// comes back into an `Int`, which for a non-finite or oversized value is a trap rather than a
+    /// thrown error - so one bad file would take down an export midway through 36,000 folders
+    /// instead of costing a single cue. The range check is the backstop for the rest: a time no
+    /// video could reach is not a timestamp, whatever it parsed as.
     private static func seconds(from stamp: String) -> TimeInterval? {
         let parts = stamp.split(separator: ":")
         guard (2...3).contains(parts.count), let last = parts.last else { return nil }
 
         var total: TimeInterval = 0
         for part in parts.dropLast() {
-            guard let value = Int(part) else { return nil }
+            guard isDigits(part), let value = Int(part) else { return nil }
             total = total * 60 + TimeInterval(value)
         }
 
         // WebVTT puts milliseconds after a dot and SRT after a comma. Files that went through a
         // converter carry the comma through often enough to be worth one replacement here rather
         // than a second parser.
-        guard let secondsInMinute = Double(last.replacingOccurrences(of: ",", with: ".")) else { return nil }
-        return total * 60 + secondsInMinute
+        let secondsField = last.replacingOccurrences(of: ",", with: ".")
+        guard
+            secondsField.allSatisfy({ isDigit($0) || $0 == "." }),
+            let secondsInMinute = Double(secondsField)
+        else { return nil }
+
+        total = total * 60 + secondsInMinute
+
+        guard total.isFinite, (0..<(100 * 3600)).contains(total) else { return nil }
+        return total
+    }
+
+    /// ASCII digits only: `Character.isNumber` is also true of digits from other scripts, which are
+    /// not what a timestamp is written in.
+    private static func isDigit(_ character: Character) -> Bool {
+        return character.isASCII && character.isNumber
+    }
+
+    private static func isDigits(_ text: Substring) -> Bool {
+        return !text.isEmpty && text.allSatisfy(isDigit)
     }
 
     /// Strips a cue payload line down to the words it renders as.
@@ -161,9 +194,12 @@ enum VTTTranscript {
         for character in line {
             if character == "<" {
                 insideTag = true
-            } else if character == ">" {
+            } else if character == ">" && insideTag {
                 insideTag = false
             } else if !insideTag {
+                // A closing bracket that never opened one is a character somebody typed. Broadcast
+                // style captions open speaker turns with `>>`, and deleting those silently was worse
+                // than leaving them: a browser renders a stray bracket as text too.
                 text.append(character)
             }
         }
@@ -179,7 +215,6 @@ enum VTTTranscript {
         ("&lt;", "<"),
         ("&gt;", ">"),
         ("&quot;", "\""),
-        ("&#39;", "'"),
         ("&apos;", "'"),
         // Rendered as an ordinary space rather than U+00A0: this text is headed for markdown prose,
         // where the two look identical and only one of them can be searched for
@@ -191,8 +226,55 @@ enum VTTTranscript {
 
     private static func decodeEntities(_ text: String) -> String {
         guard text.contains("&") else { return text }
-        return entities.reduce(text) { decoded, entity in
+
+        // Numbered references first, so that the ampersand replacement below cannot turn a written
+        // out `&amp;#39;` into an apostrophe somebody never typed
+        return entities.reduce(decodeNumericReferences(text)) { decoded, entity in
             decoded.replacingOccurrences(of: entity.escape, with: entity.character)
         }
+    }
+
+    /// Decodes `&#8217;` and `&#x27;` style references.
+    ///
+    /// WebVTT does not define these, but caption files carry them anyway - a transcript that came
+    /// through a tool with an HTML step in it arrives full of numbered curly quotes - and left alone
+    /// they render as themselves in the middle of a sentence.
+    private static func decodeNumericReferences(_ text: String) -> String {
+        guard text.contains("&#") else { return text }
+
+        var decoded = ""
+        var rest = Substring(text)
+
+        while let marker = rest.range(of: "&#") {
+            let body = rest[marker.upperBound...]
+
+            // Bounded, because an unterminated reference must not send this scanning the whole line
+            // looking for a semicolon that belongs to something else entirely
+            guard
+                let end = body.prefix(12).firstIndex(of: ";"),
+                let scalar = numericScalar(body[..<end])
+            else {
+                // Not a reference after all, so it stays exactly as it was written
+                decoded += rest[..<marker.upperBound]
+                rest = body
+                continue
+            }
+
+            decoded += rest[..<marker.lowerBound]
+            decoded.append(Character(scalar))
+            rest = body[body.index(after: end)...]
+        }
+
+        return decoded + rest
+    }
+
+    private static func numericScalar(_ digits: Substring) -> Unicode.Scalar? {
+        let isHex = digits.first == "x" || digits.first == "X"
+        let value = isHex ? digits.dropFirst() : digits
+        guard !value.isEmpty, let code = UInt32(value, radix: isHex ? 16 : 10) else { return nil }
+
+        // Nil for a surrogate half or anything past the last code point, which leaves the reference
+        // written out rather than inventing a replacement character for it
+        return Unicode.Scalar(code)
     }
 }

@@ -231,6 +231,196 @@ final class VTTTranscriptTests: XCTestCase {
         ])
     }
 
+    // MARK: - Timestamps that are not timestamps
+
+    /// The one that could take a whole run down. The renderer turns every start time into an `Int`,
+    /// and `Int(Double.nan)` is a trap rather than a thrown error, so a single bad file part way
+    /// through 36,000 folders would kill the export outright rather than cost one cue. `Double`
+    /// reads all of these as numbers, which is exactly why the parser cannot.
+    func testATimestampThatIsNotANumberDropsOnlyItsOwnCue() {
+        for stamp in ["00:00:nan", "00:00:inf", "00:00:infinity", "00:00:0x1p10", "00:00:99999999999999999999.000"] {
+            let parsed = VTTTranscript.parse("""
+                WEBVTT
+
+                \(stamp) --> 00:00:30.000
+                dropped
+
+                00:00:40.000 --> 00:00:41.000
+                kept
+                """)
+
+            XCTAssertEqual(parsed, [TranscriptLine(start: 40, text: "kept")], "\(stamp) should not have parsed")
+        }
+    }
+
+    /// `Int("-05")` succeeds, so without a digit check a malformed stamp becomes a negative time and
+    /// renders as a `[-5:00]` link pointing at `&t=-300`.
+    func testANegativeTimestampIsRejectedRatherThanRendered() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            00:-05:00.000 --> 00:00:30.000
+            dropped
+
+            00:00:40.000 --> 00:00:41.000
+            kept
+            """)
+
+        XCTAssertEqual(parsed, [TranscriptLine(start: 40, text: "kept")])
+    }
+
+    /// A leading sign used to be swallowed rather than refused, which read a negative stamp as the
+    /// positive time it was not.
+    func testASignedTimestampIsRejectedRatherThanSilentlyMadePositive() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            -00:00:05.000 --> 00:00:30.000
+            dropped
+            """)
+
+        XCTAssertEqual(parsed, [])
+    }
+
+    func testAPlausibleTimestampStillParses() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            01:59:59.999 --> 02:00:01.000
+            near the end of a long one
+            """)
+
+        XCTAssertEqual(parsed.first?.start ?? 0, 7199.999, accuracy: 0.001)
+    }
+
+    // MARK: - Caption files nobody generated automatically
+
+    /// Broadcast style captions open each speaker turn with `>>`. Treating every closing bracket as
+    /// the end of a tag deleted those, and left a double space where the speaker used to be.
+    func testSpeakerMarkersAndStrayBracketsSurvive() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            00:00:01.000 --> 00:00:03.000
+            >> JOHN: 6 > 5 is true
+            """)
+
+        XCTAssertEqual(parsed.first?.text, ">> JOHN: 6 > 5 is true")
+    }
+
+    /// Pinned rather than endorsed. WebVTT requires a literal `<` be written as an escape, so a raw
+    /// one is malformed input, and this is what a browser does with it too. It is here so the
+    /// behaviour cannot change silently under a refactor.
+    func testARawOpeningBracketSwallowsTheRestOfTheLine() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            00:00:01.000 --> 00:00:03.000
+            5 < 6 and that is that
+            """)
+
+        XCTAssertEqual(parsed.first?.text, "5")
+    }
+
+    /// Also pinned rather than endorsed. Two identical consecutive cues collapse to one, because the
+    /// overlap rule cannot tell a scrolling window from someone saying the same thing twice in a
+    /// row. For the auto-generated files this exists to read, collapsing is right far more often.
+    func testTwoIdenticalConsecutiveCuesCollapseToOne() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            00:00:01.000 --> 00:00:02.000
+            Go!
+
+            00:00:02.000 --> 00:00:03.000
+            Go!
+            """)
+
+        XCTAssertEqual(parsed, [TranscriptLine(start: 1, text: "Go!")])
+    }
+
+    /// And the other end of the same limit: a window that re-wraps its text instead of repeating a
+    /// line verbatim has no line-level overlap to find, so the sentence renders twice. Fixing it
+    /// would mean matching partial lines, which risks dropping words somebody said - a worse trade
+    /// than the duplication. Pinned so the cost is visible if anyone revisits it.
+    func testARewrappedWindowRepeatsItself() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            00:00:01.000 --> 00:00:02.000
+            so I went to the store
+
+            00:00:02.000 --> 00:00:03.000
+            so I went to the store and then
+            """)
+
+        XCTAssertEqual(parsed.map(\.text), ["so I went to the store", "so I went to the store and then"])
+    }
+
+    /// A file whose separator lines carry a space would never close a cue on the empty-line rule
+    /// alone, so every cue identifier in it would arrive as words somebody said.
+    func testAWhitespaceSeparatorStillClosesACueThatHasPayload() {
+        // Written out rather than as a multiline literal, because the separators are single spaces
+        // and any editor that trims trailing whitespace would quietly delete the thing under test
+        let padded = "WEBVTT\n \n00:00:01.000 --> 00:00:02.000\nfirst\n \ncue-3\n"
+            + "00:00:03.000 --> 00:00:04.000\nsecond\n"
+
+        let parsed = VTTTranscript.parse(padded)
+
+        XCTAssertEqual(parsed.map(\.text), ["first", "second"])
+    }
+
+    // MARK: - More escapes
+
+    func testTheRemainingNamedEscapesDecode() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            00:00:01.000 --> 00:00:03.000
+            it&apos;s a&nbsp;test&lrm;&rlm;
+            """)
+
+        XCTAssertEqual(parsed.first?.text, "it's a test\u{200E}\u{200F}")
+    }
+
+    /// Not part of WebVTT, but caption files that came through a tool with an HTML step in it are
+    /// full of numbered curly quotes, and left alone they render as themselves mid-sentence.
+    func testNumberedEscapesDecodeInBothBases() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            00:00:01.000 --> 00:00:03.000
+            it&#8217;s a&#160;test &#x27;ok&#x27;
+            """)
+
+        XCTAssertEqual(parsed.first?.text, "it\u{2019}s a\u{00A0}test 'ok'")
+    }
+
+    /// The reason numbered references are decoded before the ampersand: someone writing about an
+    /// escape gets the escape back rather than the character it names.
+    func testAnEscapedNumberedEscapeIsDecodedOnlyOnce() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            00:00:01.000 --> 00:00:03.000
+            write &amp;#39; for an apostrophe
+            """)
+
+        XCTAssertEqual(parsed.first?.text, "write &#39; for an apostrophe")
+    }
+
+    /// Something that merely looks like a reference is left exactly as written rather than eaten.
+    func testTextThatIsNotAReferenceIsLeftAlone() {
+        let parsed = VTTTranscript.parse("""
+            WEBVTT
+
+            00:00:01.000 --> 00:00:03.000
+            issue &#42 and &#; and &#xZZ; stay
+            """)
+
+        XCTAssertEqual(parsed.first?.text, "issue &#42 and &#; and &#xZZ; stay")
+    }
+
     // MARK: - Reading from disk
 
     func testLoadingAFileThatIsNotThereIsNil() {
@@ -249,6 +439,33 @@ final class VTTTranscriptTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url) }
 
         XCTAssertEqual(VTTTranscript.load(from: url), [])
+    }
+
+    /// A yt-dlp write interrupted mid-codepoint used to lose every cue in the file, and then have
+    /// the folder describe itself as a video YouTube had answered with silence. The bad bytes are
+    /// repaired instead, so nil keeps meaning only "there is no file here".
+    func testAFileWithBadBytesKeepsTheCuesThatReadFine() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).vtt")
+        var bytes = Data("WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nan em dash ".utf8)
+        bytes.append(contentsOf: [0xE2, 0x80])  // the first two bytes of an em dash, and then nothing
+        try bytes.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let parsed = try XCTUnwrap(VTTTranscript.load(from: url))
+
+        XCTAssertEqual(parsed.count, 1)
+        XCTAssertEqual(parsed.first?.start, 1)
+        XCTAssertTrue(parsed.first?.text.hasPrefix("an em dash") == true, "got \(parsed.first?.text ?? "nothing")")
+    }
+
+    func testAByteOrderMarkDoesNotHideTheFirstCue() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).vtt")
+        var bytes = Data([0xEF, 0xBB, 0xBF])
+        bytes.append(contentsOf: Data("WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nwords\n".utf8))
+        try bytes.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        XCTAssertEqual(VTTTranscript.load(from: url), [TranscriptLine(start: 1, text: "words")])
     }
 
     // MARK: - Helpers
