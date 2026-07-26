@@ -4,13 +4,71 @@ import UniformTypeIdentifiers
 import CryptoKit
 
 public struct FileDownloader {
-    private static let session: URLSession = {
-        let config = URLSessionConfiguration.ephemeral
-        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        config.httpCookieStorage = nil
-        config.urlCache = nil
-        return URLSession(configuration: config)
-    }()
+    /// Headers attached to every download.
+    ///
+    /// Assets are fetched from whichever host published them, which for a YouTube export means
+    /// thumbnails from i.ytimg.com arriving moments after the watch page they were named in. A
+    /// consumer presenting a browser identity to one host and the URLSession default to the other
+    /// describes a client that does not exist, so the identity has to be settable here too rather
+    /// than only on whichever session fetches the page.
+    ///
+    /// Setting this rebuilds the session, so it takes effect on the next download whenever it is
+    /// called. Empty leaves URLSession's own defaults alone, which is what happens if nobody sets it.
+    public static var additionalHeaders: [String: String] {
+        get { return state.headers }
+        set { state.headers = newValue }
+    }
+
+    private static var session: URLSession {
+        return state.session
+    }
+
+    private static let state = State()
+
+    /// Guards the session against a reader racing a caller that is replacing the headers.
+    ///
+    /// In practice a consumer sets the headers once at startup and never again, but a shared mutable
+    /// static is not the place to rely on that holding forever.
+    private final class State: @unchecked Sendable {
+        private let lock = NSLock()
+        private var storedHeaders: [String: String] = [:]
+        private var storedSession: URLSession
+
+        init() {
+            storedSession = State.makeSession(headers: [:])
+        }
+
+        var headers: [String: String] {
+            get {
+                lock.lock()
+                defer { lock.unlock() }
+                return storedHeaders
+            }
+            set {
+                lock.lock()
+                defer { lock.unlock() }
+                storedHeaders = newValue
+                storedSession = State.makeSession(headers: newValue)
+            }
+        }
+
+        var session: URLSession {
+            lock.lock()
+            defer { lock.unlock() }
+            return storedSession
+        }
+
+        private static func makeSession(headers: [String: String]) -> URLSession {
+            let config = URLSessionConfiguration.ephemeral
+            config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            config.httpCookieStorage = nil
+            config.urlCache = nil
+            if !headers.isEmpty {
+                config.httpAdditionalHeaders = headers
+            }
+            return URLSession(configuration: config)
+        }
+    }
 
     public struct DownloadedAsset {
         let originalUrl: String
@@ -42,19 +100,35 @@ public struct FileDownloader {
         }
     }
 
-    public static func downloadFile(from url: URL, to directory: String, retryCount: Int = 0) async throws -> DownloadedAsset {
-        let urlString = url.absoluteString
-        let sha = SHA256.hash(data: Data(urlString.utf8))
+    /// The already downloaded copy of `url`, or nil when fetching it would reach the network.
+    ///
+    /// `downloadFile` consults this first, so calling it changes nothing on its own. It is public so
+    /// a caller that paces its network traffic can tell the two cases apart before committing to a
+    /// wait: an asset already on disk costs nothing and must not cost a delay either.
+    public static func cachedAsset(from url: URL, in directory: String) -> DownloadedAsset? {
+        let sha = shaName(for: url)
+
+        // Check if file exists with any extension
+        guard let existingFile = try? FileManager.default.contentsOfDirectory(atPath: directory)
+            .first(where: { $0.starts(with: sha) }) else { return nil }
+
+        return DownloadedAsset(originalUrl: url.absoluteString, localPath: existingFile)
+    }
+
+    private static func shaName(for url: URL) -> String {
+        return SHA256.hash(data: Data(url.absoluteString.utf8))
             .compactMap { String(format: "%02x", $0) }
             .joined()
+    }
+
+    public static func downloadFile(from url: URL, to directory: String, retryCount: Int = 0) async throws -> DownloadedAsset {
+        let sha = shaName(for: url)
 
         var fileName = url.pathExtension.isEmpty ? sha : "\(sha).\(url.pathExtension)"
         var localPath = (directory as NSString).appendingPathComponent(fileName)
 
-        // Check if file exists with any extension
-        if let existingFile = try? FileManager.default.contentsOfDirectory(atPath: directory)
-            .first(where: { $0.starts(with: sha) }) {
-            return DownloadedAsset(originalUrl: url.absoluteString, localPath: existingFile)
+        if let cached = cachedAsset(from: url, in: directory) {
+            return cached
         }
 
         do {

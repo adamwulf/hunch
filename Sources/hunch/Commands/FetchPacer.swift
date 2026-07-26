@@ -9,9 +9,9 @@ import Foundation
 ///
 /// Three ideas do the work.
 ///
-/// - Only fetches are paced, never loop iterations. A video already on disk costs YouTube nothing,
-///   so a resumed run scrolls past thirty thousand cached videos at full speed and spends its
-///   patience on the few thousand that actually need fetching.
+/// - Only requests are paced, never loop iterations. A video already on disk costs nothing, so a
+///   resumed run scrolls past thirty thousand cached videos at full speed and spends its patience on
+///   the few thousand that actually need fetching.
 /// - Every wait is jittered. Perfectly even spacing is its own bot signature: nobody requests a page
 ///   exactly every 300ms and rests on exactly every seventeenth one. Jitter is the smaller half of
 ///   that fix though, because jitter around a mean that is too fast still earns the ban.
@@ -21,7 +21,7 @@ import Foundation
 ///   run settles near whatever today's threshold turns out to be instead of trusting a guess.
 ///
 /// Not thread safe, for the same reason `YouTubeRateLimiter` is not: one command, one task, one
-/// fetch at a time. A reference type because the pacer is handed to helpers and mutated across
+/// request at a time. A reference type because the pacer is handed to helpers and mutated across
 /// suspension points, where passing it `inout` would only invite exclusivity trouble later.
 final class FetchPacer {
     /// An extra pause folded in on every `every`th fetch, on top of the per fetch baseline.
@@ -30,7 +30,7 @@ final class FetchPacer {
         let seconds: TimeInterval
 
         init(every: Int, seconds: TimeInterval) {
-            assert(every > 0, "a rest interval of \(every) would fire on every fetch or on none")
+            assert(every > 0, "an interval of \(every) would divide by zero on the next fetch")
             assert(seconds >= 0, "a negative rest would hand back time rather than spend it")
             self.every = every
             self.seconds = seconds
@@ -48,16 +48,20 @@ final class FetchPacer {
         Rest(every: 37 * 7, seconds: 37)
     ]
 
-    /// Roughly what one fetch costs in youtube.com requests: the watch page, then a second request
-    /// for the caption track. Thumbnails add more but go to i.ytimg.com, which is not the host doing
-    /// the banning. Only used to report the rate, never to compute a delay.
-    static let requestsPerFetch = 2
-
     /// The starting pause between fetches, and the floor the adaptive baseline creeps back toward.
     /// The baseline never drops below it, so adapting can only ever slow a run down.
     let baseDelay: TimeInterval
-    /// Ceiling on the adaptive baseline, so a bad afternoon cannot stall the crawl outright.
+    /// Ceiling on the baseline and on any single wait, so a bad afternoon cannot stall the crawl
+    /// outright. Rests stretch with the baseline and would otherwise sail past it: at a 60s baseline
+    /// an unclamped 37s rest becomes 18 minutes, which is the stall this is meant to prevent.
     let maxDelay: TimeInterval
+    /// The pause before a thumbnail download that actually reaches the network.
+    ///
+    /// Thumbnails go to i.ytimg.com rather than to youtube.com. Whether Google weighs traffic to the
+    /// two together is not something this code can know, so they are paced lightly rather than not
+    /// at all: enough that a resumed run cannot fire thousands of image requests back to back,
+    /// little enough that it does not dominate a run whose real work is elsewhere.
+    let assetDelay: TimeInterval
     /// What the baseline is multiplied by each time YouTube rate limits us.
     let slowdownFactor: Double
     /// What the baseline is multiplied by once a clean streak completes. Deliberately gentler than
@@ -74,16 +78,22 @@ final class FetchPacer {
 
     /// The current pause between fetches before jitter, somewhere in `baseDelay...maxDelay`.
     private(set) var currentDelay: TimeInterval
-    /// Fetches that actually reached the network, cached videos excluded.
+    /// Fetches that actually reached youtube.com, cached videos excluded.
     private(set) var fetchCount = 0
+    /// youtube.com requests those fetches cost, which is not the same number: asking for a watch
+    /// page with its transcript costs two, asking for the page alone costs one.
+    private(set) var requestCount = 0
+    /// Thumbnail downloads that actually reached i.ytimg.com.
+    private(set) var assetFetchCount = 0
     /// Rate limited responses seen so far, including the ones the limiter waited out for us.
     private(set) var rateLimitCount = 0
 
     private var cleanStreak = 0
-    private var firstFetchAt: Date?
+    private var startedAt: Date?
 
     init(baseDelay: TimeInterval = 2,
          maxDelay: TimeInterval = 60,
+         assetDelay: TimeInterval = 0.25,
          slowdownFactor: Double = 2,
          speedupFactor: Double = 0.9,
          cleanStreakForSpeedup: Int = 50,
@@ -93,6 +103,7 @@ final class FetchPacer {
          now: @escaping () -> Date = Date.init) {
         assert(baseDelay > 0, "a zero baseline is the pacing bug this type exists to fix")
         assert(maxDelay >= baseDelay, "the ceiling cannot sit below the floor")
+        assert(assetDelay >= 0, "a negative delay would hand back time rather than spend it")
         assert(slowdownFactor >= 1, "a rate limit has to slow the run down, not speed it up")
         assert(speedupFactor > 0 && speedupFactor <= 1, "a clean streak must not slow the run down")
         assert(cleanStreakForSpeedup > 0, "recovering takes at least one clean fetch")
@@ -100,6 +111,7 @@ final class FetchPacer {
 
         self.baseDelay = baseDelay
         self.maxDelay = maxDelay
+        self.assetDelay = assetDelay
         self.slowdownFactor = slowdownFactor
         self.speedupFactor = speedupFactor
         self.cleanStreakForSpeedup = cleanStreakForSpeedup
@@ -112,23 +124,37 @@ final class FetchPacer {
 
     /// How long to wait before the next YouTube fetch, counting that fetch as issued.
     ///
-    /// Call it immediately before a fetch and sleep for what it hands back. Counting here rather
+    /// `requests` is what the fetch costs on the wire, which the call site knows and the pacer does
+    /// not: a watch page asked for with its transcript is two requests, the page on its own is one.
+    /// Only the rate report reads it, so an approximation there is a cosmetic problem rather than a
+    /// pacing one, but there is no reason to approximate when the caller knows the answer.
+    ///
+    /// Call this immediately before a fetch and sleep for what it hands back. Counting here rather
     /// than on completion is what keeps the rest schedule tied to requests actually sent.
-    func delayBeforeNextFetch() -> TimeInterval {
+    func delayBeforeNextFetch(requests: Int) -> TimeInterval {
+        assert(requests > 0, "a fetch that costs nothing does not need pacing")
+        startClock()
         fetchCount += 1
-        if firstFetchAt == nil {
-            firstFetchAt = now()
-        }
+        requestCount += requests
 
         // Rests stretch along with the baseline, so a run that a ban has slowed down keeps the shape
         // of its pacing profile instead of resting on the old, now proportionally shorter, schedule
-        let stretch = currentDelay / baseDelay
         let rest = FetchPacer.rest(beforeFetch: fetchCount, in: rests)
-        return jittered(currentDelay + rest * stretch)
+        return wait(currentDelay + rest * stretch)
     }
 
-    /// Records how a fetch went, where `rateLimits` counts the rate limited responses YouTube gave
-    /// while it ran.
+    /// How long to wait before a thumbnail download that will actually reach the network.
+    ///
+    /// Only for downloads that miss the on disk cache. A thumbnail already downloaded costs no
+    /// request and must not cost a delay either, or a resumed run pays for every asset it already
+    /// has, which is the loop shaped mistake this type exists to avoid.
+    func delayBeforeNextAssetFetch() -> TimeInterval {
+        startClock()
+        assetFetchCount += 1
+        return wait(assetDelay * stretch)
+    }
+
+    /// Records how a fetch went, where `rateLimits` counts the rate limited responses it drew.
     ///
     /// The count has to come from the limiter rather than from a thrown error, because the limiter
     /// swallows the bans it successfully waits out. From the caller's side a fetch that was banned
@@ -148,21 +174,31 @@ final class FetchPacer {
         currentDelay = min(maxDelay, currentDelay * pow(slowdownFactor, Double(rateLimits)))
     }
 
-    /// One line describing how hard this run is leaning on YouTube, or nil before the first fetch.
+    /// One line describing how hard this run is leaning on YouTube, or nil before the first request.
     ///
     /// Printed periodically so a run drifting toward a ban is diagnosable while it is drifting,
     /// rather than from the wreckage afterward.
     func rateReport() -> String? {
-        guard let firstFetchAt = firstFetchAt else { return nil }
+        guard let startedAt = startedAt else { return nil }
 
         // Clamped so the first report of a run cannot divide by a rounding error and claim
         // thousands of requests a minute
-        let elapsed = max(now().timeIntervalSince(firstFetchAt), 1)
-        let requestsPerMinute = Double(fetchCount * FetchPacer.requestsPerFetch) / elapsed * 60
-        let limits = rateLimitCount == 1 ? "1 rate limit" : "\(rateLimitCount) rate limits"
+        let elapsed = max(now().timeIntervalSince(startedAt), 1)
+        let requestsPerMinute = Double(requestCount) / elapsed * 60
 
-        return String(format: "pacing: %d fetches in %@, ~%.1f req/min, baseline %.1fs, %@",
-                      fetchCount, RateLimitBackoff.describe(elapsed), requestsPerMinute, currentDelay, limits)
+        var report = String(format: "pacing: %@ (%@) in %@, ~%.1f req/min, baseline %.1fs, %@",
+                            FetchPacer.counted(fetchCount, "fetch", "fetches"),
+                            FetchPacer.counted(requestCount, "request", "requests"),
+                            RateLimitBackoff.describe(elapsed),
+                            requestsPerMinute,
+                            currentDelay,
+                            FetchPacer.counted(rateLimitCount, "rate limit", "rate limits"))
+
+        // Named only when there are any, since most runs download no thumbnails at all
+        if assetFetchCount > 0 {
+            report += ", " + FetchPacer.counted(assetFetchCount, "thumbnail", "thumbnails")
+        }
+        return report
     }
 
     /// The longest rest that lands on this fetch, or zero when none of them do.
@@ -172,8 +208,33 @@ final class FetchPacer {
         return rests.filter { count % $0.every == 0 }.map { $0.seconds }.max() ?? 0
     }
 
+    /// How far the baseline has been stretched from its floor, applied to every other wait so the
+    /// whole pacing profile slows together rather than only the gaps between fetches.
+    private var stretch: Double {
+        return currentDelay / baseDelay
+    }
+
+    /// Jitters a delay and holds it under the ceiling.
+    ///
+    /// Clamping last is what makes `maxDelay` mean what it says. Jitter multiplies by up to
+    /// `1 + jitter`, so a delay clamped before jittering would still come back over the ceiling.
+    private func wait(_ delay: TimeInterval) -> TimeInterval {
+        return min(jittered(delay), maxDelay)
+    }
+
     private func jittered(_ delay: TimeInterval) -> TimeInterval {
         guard jitter > 0 else { return delay }
         return delay * randomFactor((1 - jitter)...(1 + jitter))
+    }
+
+    /// Starts the clock the rate report measures against, on the first request of any kind.
+    private func startClock() {
+        if startedAt == nil {
+            startedAt = now()
+        }
+    }
+
+    private static func counted(_ value: Int, _ singular: String, _ plural: String) -> String {
+        return "\(value) \(value == 1 ? singular : plural)"
     }
 }

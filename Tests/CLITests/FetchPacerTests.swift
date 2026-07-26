@@ -3,9 +3,10 @@ import XCTest
 
 final class FetchPacerTests: XCTestCase {
     /// A pacer with the jitter dial pinned, so a test can assert on the delay itself rather than on
-    /// a band. Jitter gets its own test below.
+    /// a band. Jitter gets its own tests below.
     private func steadyPacer(baseDelay: TimeInterval = 2,
                              maxDelay: TimeInterval = 60,
+                             assetDelay: TimeInterval = 0.25,
                              slowdownFactor: Double = 2,
                              speedupFactor: Double = 0.9,
                              cleanStreakForSpeedup: Int = 50,
@@ -13,6 +14,7 @@ final class FetchPacerTests: XCTestCase {
                              now: @escaping () -> Date = Date.init) -> FetchPacer {
         return FetchPacer(baseDelay: baseDelay,
                           maxDelay: maxDelay,
+                          assetDelay: assetDelay,
                           slowdownFactor: slowdownFactor,
                           speedupFactor: speedupFactor,
                           cleanStreakForSpeedup: cleanStreakForSpeedup,
@@ -46,16 +48,16 @@ final class FetchPacerTests: XCTestCase {
         XCTAssertEqual(FetchPacer.rest(beforeFetch: 1, in: FetchPacer.defaultRests), 0)
 
         let pacer = steadyPacer()
-        XCTAssertEqual(pacer.delayBeforeNextFetch(), 2, accuracy: 0.0001)
+        XCTAssertEqual(pacer.delayBeforeNextFetch(requests: 2), 2, accuracy: 0.0001)
     }
 
     func testRestsAreAddedOnTopOfTheBaseline() {
         let pacer = steadyPacer(rests: [FetchPacer.Rest(every: 3, seconds: 5)])
 
-        XCTAssertEqual(pacer.delayBeforeNextFetch(), 2, accuracy: 0.0001)
-        XCTAssertEqual(pacer.delayBeforeNextFetch(), 2, accuracy: 0.0001)
-        XCTAssertEqual(pacer.delayBeforeNextFetch(), 7, accuracy: 0.0001, "the third fetch rests on top of the baseline")
-        XCTAssertEqual(pacer.delayBeforeNextFetch(), 2, accuracy: 0.0001)
+        XCTAssertEqual(pacer.delayBeforeNextFetch(requests: 2), 2, accuracy: 0.0001)
+        XCTAssertEqual(pacer.delayBeforeNextFetch(requests: 2), 2, accuracy: 0.0001)
+        XCTAssertEqual(pacer.delayBeforeNextFetch(requests: 2), 7, accuracy: 0.0001, "the third fetch rests on top of the baseline")
+        XCTAssertEqual(pacer.delayBeforeNextFetch(requests: 2), 2, accuracy: 0.0001)
     }
 
     /// Only fetches advance the schedule. Nothing else can: a cached video never asks the pacer for
@@ -64,12 +66,13 @@ final class FetchPacerTests: XCTestCase {
         let pacer = steadyPacer(rests: [FetchPacer.Rest(every: 2, seconds: 5)])
 
         XCTAssertEqual(pacer.fetchCount, 0)
-        _ = pacer.delayBeforeNextFetch()
+        _ = pacer.delayBeforeNextFetch(requests: 2)
         pacer.recordOutcome(rateLimits: 0)
         pacer.recordOutcome(rateLimits: 0)
+        _ = pacer.delayBeforeNextAssetFetch()
 
-        XCTAssertEqual(pacer.fetchCount, 1, "recording outcomes must not advance the fetch count")
-        XCTAssertEqual(pacer.delayBeforeNextFetch(), 7, accuracy: 0.0001, "the rest lands on the second fetch")
+        XCTAssertEqual(pacer.fetchCount, 1, "outcomes and asset downloads must not advance the fetch count")
+        XCTAssertEqual(pacer.delayBeforeNextFetch(requests: 2), 7, accuracy: 0.0001, "the rest lands on the second fetch")
     }
 
     // MARK: - Jitter
@@ -81,7 +84,7 @@ final class FetchPacerTests: XCTestCase {
             return band.lowerBound
         })
 
-        XCTAssertEqual(pacer.delayBeforeNextFetch(), 1, accuracy: 0.0001, "the bottom of the band is half the baseline")
+        XCTAssertEqual(pacer.delayBeforeNextFetch(requests: 2), 1, accuracy: 0.0001, "the bottom of the band is half the baseline")
         XCTAssertEqual(bands.count, 1)
         XCTAssertEqual(bands.first?.lowerBound ?? 0, 0.5, accuracy: 0.0001)
         XCTAssertEqual(bands.first?.upperBound ?? 0, 1.5, accuracy: 0.0001, "a 2s baseline should spread over 1s...3s")
@@ -93,7 +96,71 @@ final class FetchPacerTests: XCTestCase {
                                rests: [FetchPacer.Rest(every: 1, seconds: 2)],
                                randomFactor: { $0.upperBound })
 
-        XCTAssertEqual(pacer.delayBeforeNextFetch(), 6, accuracy: 0.0001, "a rest is a wait, and every wait is jittered")
+        XCTAssertEqual(pacer.delayBeforeNextFetch(requests: 2), 6, accuracy: 0.0001, "a rest is a wait, and every wait is jittered")
+    }
+
+    // MARK: - The ceiling
+
+    /// Rests stretch with the baseline, and unclamped that arithmetic ran away: at the 60s ceiling a
+    /// 37s rest stretches 30x into a 19 minute sleep, and jitter pushed it to 29. maxDelay has to
+    /// bound the wait actually slept, not just the baseline it is computed from.
+    func testTheCeilingBoundsTheDelayActuallySlept() {
+        let pacer = steadyPacer(rests: [FetchPacer.Rest(every: 1, seconds: 37)])
+
+        // 2 * 2^5 is 64, over the 60s ceiling, so the baseline pins at 60 and stretch reaches 30x
+        pacer.recordOutcome(rateLimits: 5)
+        XCTAssertEqual(pacer.currentDelay, 60, accuracy: 0.0001)
+        XCTAssertEqual(pacer.delayBeforeNextFetch(requests: 2), 60, accuracy: 0.0001,
+                       "an unclamped stretch would have returned 1170s here")
+    }
+
+    /// Clamping has to happen after jitter, since jitter multiplies by up to 1 + jitter and would
+    /// otherwise lift an already clamped delay back over the ceiling.
+    func testJitterCannotLiftADelayBackOverTheCeiling() {
+        let pacer = FetchPacer(baseDelay: 2,
+                               maxDelay: 60,
+                               jitter: 0.5,
+                               rests: [FetchPacer.Rest(every: 1, seconds: 37)],
+                               randomFactor: { $0.upperBound })
+
+        pacer.recordOutcome(rateLimits: 5)
+        XCTAssertEqual(pacer.delayBeforeNextFetch(requests: 2), 60, accuracy: 0.0001)
+        XCTAssertLessThanOrEqual(pacer.delayBeforeNextAssetFetch(), 60)
+    }
+
+    /// The ceiling must not bite during an ordinary run, or it would flatten the rest schedule the
+    /// rest of this type exists to shape. The longest scheduled wait is the 259th fetch at full
+    /// jitter: (2 + 37) * 1.5.
+    func testTheCeilingLeavesAHealthyRunAlone() {
+        let pacer = FetchPacer(baseDelay: 2,
+                               maxDelay: 60,
+                               jitter: 0.5,
+                               rests: [FetchPacer.Rest(every: 1, seconds: 37)],
+                               randomFactor: { $0.upperBound })
+
+        XCTAssertEqual(pacer.delayBeforeNextFetch(requests: 2), 58.5, accuracy: 0.0001, "the worst healthy case still fits under the cap")
+    }
+
+    // MARK: - Thumbnails
+
+    /// Thumbnails are a different host and a lighter touch, but they are not free: a resumed run
+    /// whose thumbnails failed once will ask for them again on every future run, and unpaced that is
+    /// thousands of image requests back to back.
+    func testAssetDownloadsArePacedLightlyAndCountedSeparately() {
+        let pacer = steadyPacer(assetDelay: 0.25)
+
+        XCTAssertEqual(pacer.delayBeforeNextAssetFetch(), 0.25, accuracy: 0.0001)
+        XCTAssertEqual(pacer.assetFetchCount, 1)
+        XCTAssertEqual(pacer.fetchCount, 0, "a thumbnail is not a YouTube fetch")
+        XCTAssertEqual(pacer.requestCount, 0, "and it is not a youtube.com request either")
+    }
+
+    func testAssetDownloadsStretchWithTheSlowedBaseline() {
+        let pacer = steadyPacer(assetDelay: 0.25)
+
+        pacer.recordOutcome(rateLimits: 2)
+        XCTAssertEqual(pacer.delayBeforeNextAssetFetch(), 1, accuracy: 0.0001,
+                       "a 4x slower baseline should slow the asset host too, 0.25 * 4")
     }
 
     // MARK: - Adapting to rate limits
@@ -101,12 +168,12 @@ final class FetchPacerTests: XCTestCase {
     func testARateLimitSlowsEveryLaterFetch() {
         let pacer = steadyPacer()
 
-        _ = pacer.delayBeforeNextFetch()
+        _ = pacer.delayBeforeNextFetch(requests: 2)
         pacer.recordOutcome(rateLimits: 1)
 
         XCTAssertEqual(pacer.currentDelay, 4, accuracy: 0.0001)
         XCTAssertEqual(pacer.rateLimitCount, 1)
-        XCTAssertEqual(pacer.delayBeforeNextFetch(), 4, accuracy: 0.0001, "the slowdown outlives the fetch that caused it")
+        XCTAssertEqual(pacer.delayBeforeNextFetch(requests: 2), 4, accuracy: 0.0001, "the slowdown outlives the fetch that caused it")
 
         // A handful of clean fetches is not a streak, so the run stays slow
         pacer.recordOutcome(rateLimits: 0)
@@ -130,7 +197,7 @@ final class FetchPacerTests: XCTestCase {
         let pacer = steadyPacer(rests: [FetchPacer.Rest(every: 1, seconds: 3)])
 
         pacer.recordOutcome(rateLimits: 1)
-        XCTAssertEqual(pacer.delayBeforeNextFetch(), 10, accuracy: 0.0001,
+        XCTAssertEqual(pacer.delayBeforeNextFetch(requests: 2), 10, accuracy: 0.0001,
                        "doubling the baseline should double the rest with it, 4 + 3 * 2")
     }
 
@@ -171,31 +238,48 @@ final class FetchPacerTests: XCTestCase {
 
     // MARK: - Rate reporting
 
-    func testThereIsNothingToReportBeforeTheFirstFetch() {
-        XCTAssertNil(steadyPacer().rateReport(), "a run that has not fetched anything has no rate yet")
+    func testThereIsNothingToReportBeforeTheFirstRequest() {
+        XCTAssertNil(steadyPacer().rateReport(), "a run that has not asked for anything has no rate yet")
     }
 
-    func testTheRateReportCountsBothRequestsPerFetch() {
+    /// Fetches and requests are different numbers, which is the whole reason the call site passes
+    /// its own cost: a watch page with its transcript is two requests, the page alone is one.
+    func testTheRateReportCountsRequestsRatherThanFetches() {
         var clock = Date(timeIntervalSince1970: 0)
         let pacer = steadyPacer(now: { clock })
 
-        for _ in 0..<3 {
-            _ = pacer.delayBeforeNextFetch()
-        }
+        _ = pacer.delayBeforeNextFetch(requests: 2)
+        _ = pacer.delayBeforeNextFetch(requests: 2)
+        _ = pacer.delayBeforeNextFetch(requests: 1)
         clock = clock.addingTimeInterval(60)
 
-        XCTAssertEqual(pacer.rateReport(), "pacing: 3 fetches in 1m, ~6.0 req/min, baseline 2.0s, 0 rate limits",
-                       "3 fetches is 6 youtube.com requests: a watch page and a caption track apiece")
+        XCTAssertEqual(pacer.rateReport(), "pacing: 3 fetches (5 requests) in 1m, ~5.0 req/min, baseline 2.0s, 0 rate limits")
     }
 
-    func testTheRateReportNamesASingleRateLimitInTheSingular() {
+    func testTheRateReportSaysEveryCountInTheSingularWhenItIsOne() {
         var clock = Date(timeIntervalSince1970: 0)
         let pacer = steadyPacer(now: { clock })
 
-        _ = pacer.delayBeforeNextFetch()
+        _ = pacer.delayBeforeNextFetch(requests: 1)
         pacer.recordOutcome(rateLimits: 1)
+        _ = pacer.delayBeforeNextAssetFetch()
         clock = clock.addingTimeInterval(120)
 
-        XCTAssertEqual(pacer.rateReport(), "pacing: 1 fetches in 2m, ~1.0 req/min, baseline 4.0s, 1 rate limit")
+        XCTAssertEqual(pacer.rateReport(),
+                       "pacing: 1 fetch (1 request) in 2m, ~0.5 req/min, baseline 4.0s, 1 rate limit, 1 thumbnail")
+    }
+
+    /// A resumed run can download thumbnails long before it needs to fetch anything, and that is
+    /// exactly the run worth watching, so the clock starts on whichever request comes first.
+    func testThumbnailsAloneStillProduceAReport() {
+        var clock = Date(timeIntervalSince1970: 0)
+        let pacer = steadyPacer(now: { clock })
+
+        _ = pacer.delayBeforeNextAssetFetch()
+        _ = pacer.delayBeforeNextAssetFetch()
+        clock = clock.addingTimeInterval(60)
+
+        XCTAssertEqual(pacer.rateReport(),
+                       "pacing: 0 fetches (0 requests) in 1m, ~0.0 req/min, baseline 2.0s, 0 rate limits, 2 thumbnails")
     }
 }

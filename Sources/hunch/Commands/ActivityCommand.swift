@@ -135,7 +135,7 @@ struct ActivityCommand: AsyncParsableCommand {
             do {
                 switch (info, transcript) {
                 case (nil, nil):
-                    let fetched = try await paced(pacer) {
+                    let fetched = try await paced(pacer, requests: 2) {
                         try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
                     }
                     finalInfo = fetched.withoutTranscript()
@@ -143,7 +143,7 @@ struct ActivityCommand: AsyncParsableCommand {
                     print("Fetched \(video.id)\(fetched.transcript == nil ? "" : " with transcript")")
                 case (nil, .some(let cached)):
                     print("Fetching info: \(video.id)")
-                    let fetched = try await paced(pacer) {
+                    let fetched = try await paced(pacer, requests: 1) {
                         try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
                     }
                     finalInfo = fetched.withoutTranscript()
@@ -151,7 +151,7 @@ struct ActivityCommand: AsyncParsableCommand {
                 case (.some(let cached), nil):
                     // Skip fetching transcript if we already have info
                     print("Fetching transcript: \(video.id)")
-                    let moments = try await paced(pacer) {
+                    let moments = try await paced(pacer, requests: 2) {
                         try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
                     }
                     finalInfo = cached
@@ -188,13 +188,31 @@ struct ActivityCommand: AsyncParsableCommand {
             if let thumbnails = finalInfo?.thumbnails {
                 // Create assets directory only if we have thumbnails
                 try fm.createDirectory(at: assetsDir, withIntermediateDirectories: true)
+                let assetsPath = assetsDir.path(percentEncoded: false)
 
                 for thumbnail in thumbnails {
                     if let url = URL(string: thumbnail.url) {
+                        // This loop runs for cached videos too, since the markdown needs the local
+                        // path of every thumbnail whether or not this run fetched the video. Asking
+                        // the cache first is what keeps that free: only a miss reaches the network,
+                        // and only a miss is worth waiting for.
+                        if let cached = FileDownloader.cachedAsset(from: url, in: assetsPath) {
+                            downloadedAssets[thumbnail.url] = cached
+                            continue
+                        }
+
                         do {
-                            let asset = try await FileDownloader.downloadFile(from: url, to: assetsDir.path(percentEncoded: false))
+                            try await Task.sleep(for: .seconds(pacer.delayBeforeNextAssetFetch()))
+                            let asset = try await FileDownloader.downloadFile(from: url, to: assetsPath)
                             downloadedAssets[thumbnail.url] = asset
                         } catch {
+                            // The asset host runs its own retries and never tells the limiter, so
+                            // without this the pacer would report a clean run while the same IP was
+                            // being throttled at i.ytimg.com
+                            if case FileDownloader.DownloadError.rateLimitExceeded(let retryAfter) = error {
+                                print("  thumbnail host is rate limiting, retry after \(Int(retryAfter))s")
+                                pacer.recordOutcome(rateLimits: 1)
+                            }
                             print("Failed to download thumbnail: \(url)")
                         }
                     }
@@ -250,9 +268,17 @@ struct ActivityCommand: AsyncParsableCommand {
     /// already has on disk. The ban count is read off the limiter on both the success and the
     /// failure path, because backoff swallows the bans it waits out and those are precisely the ones
     /// the rest of the run should slow down for.
-    private func paced<T>(_ pacer: FetchPacer, _ operation: () async throws -> T) async throws -> T {
+    private func paced<T>(_ pacer: FetchPacer, requests: Int, _ operation: () async throws -> T) async throws -> T {
         let limiter = YouTubeRateLimiter.shared
-        try await Task.sleep(for: .seconds(pacer.delayBeforeNextFetch()))
+
+        // A limiter that has already given up throws without touching the network. Sleeping for a
+        // fetch that will not happen wastes the wait, and scoring the refusal through the diff below
+        // would count a ban as a clean fetch and nudge the pacer toward speeding up.
+        guard !limiter.hasGivenUp else {
+            return try await limiter.withBackoff(onBan: .waitItOut, operation)
+        }
+
+        try await Task.sleep(for: .seconds(pacer.delayBeforeNextFetch(requests: requests)))
 
         let rateLimitsBefore = limiter.rateLimitCount
         defer { pacer.recordOutcome(rateLimits: limiter.rateLimitCount - rateLimitsBefore) }

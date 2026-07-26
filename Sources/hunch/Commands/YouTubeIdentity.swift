@@ -1,4 +1,5 @@
 import Foundation
+import HunchKit
 import YouTubeTranscriptKit
 
 /// The HTTP identity hunch presents to YouTube.
@@ -52,12 +53,18 @@ enum YouTubeIdentity {
         "Accept-Language": "en-US,en;q=0.9"
     ]
 
-    /// Installs the identity for the rest of the process.
+    /// Installs the identity on every session hunch fetches YouTube content through.
     ///
-    /// `configure(_:)` replaces the header set rather than merging into it, and rebuilds the session
-    /// on the spot, so this is safe to call once at startup and needs no ordering against the first
-    /// fetch.
+    /// Both of them, which is the point. A run pulls watch pages from youtube.com and the thumbnails
+    /// those pages name from i.ytimg.com, and the two go out through different sessions. One host
+    /// seeing Chrome while the other sees the URLSession default, from a single IP, within moments
+    /// of each other, describes a client that does not exist - the same internal inconsistency
+    /// argument that puts Accept-Language in the header set to begin with.
+    ///
+    /// Safe to call once at startup and needs no ordering against the first fetch: both sessions are
+    /// rebuilt on the spot rather than at next use, and neither merges into an existing header set.
     static func install() {
         YouTubeTranscriptKit.configure(.init(additionalHeaders: headers))
+        FileDownloader.additionalHeaders = headers
     }
 }

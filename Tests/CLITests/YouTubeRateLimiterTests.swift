@@ -164,4 +164,83 @@ final class YouTubeRateLimiterTests: XCTestCase {
         XCTAssertTrue(description.contains("rate limiting this IP"))
         XCTAssertFalse(description.contains("redirected to"), "no URL means no redirect clause")
     }
+
+    // MARK: - Counting bans for the pacer
+
+    /// The count is the only record that a waited out ban happened at all. The limiter swallows
+    /// those by design, so the caller sees an ordinary success, and FetchPacer's entire reason to
+    /// slow a run down hangs off this number surviving where the error did not.
+    func testBansTheCallerNeverSeesAreStillCounted() async throws {
+        let limiter = fastLimiter(rungs: 3)
+        let counter = CallCounter()
+
+        let result = try await limiter.withBackoff(onBan: .waitItOut) { () -> String in
+            counter.count += 1
+            if counter.count <= 2 {
+                throw self.banned
+            }
+            return "transcript"
+        }
+
+        XCTAssertEqual(result, "transcript", "the caller sees a plain success")
+        XCTAssertEqual(limiter.rateLimitCount, 2, "but both banned responses are on the record")
+    }
+
+    func testEveryRungOfAnExhaustedLadderIsCounted() async throws {
+        let limiter = fastLimiter(rungs: 2)
+
+        do {
+            _ = try await limiter.withBackoff(onBan: .waitItOut) { () -> String in
+                throw self.banned
+            }
+            XCTFail("expected the backoff ladder to run out")
+        } catch is YouTubeRateLimiter.RateLimitExhausted {
+            // expected
+        }
+
+        // One banned response per rung, plus the one that tripped the first rung
+        XCTAssertEqual(limiter.rateLimitCount, 3)
+    }
+
+    /// Counted before the policy split, so an export that refuses to wait still reports the ban it
+    /// walked into.
+    func testSkippingTheRestStillCountsTheBan() async throws {
+        let limiter = fastLimiter(rungs: 6)
+
+        do {
+            _ = try await limiter.withBackoff(onBan: .skipTheRest) { () -> String in
+                throw self.banned
+            }
+            XCTFail("expected the first ban to end it")
+        } catch is YouTubeRateLimiter.RateLimitExhausted {
+            // expected
+        }
+
+        XCTAssertEqual(limiter.rateLimitCount, 1)
+    }
+
+    /// A video with captions disabled is not a ban, and counting it as one would have the pacer
+    /// slow the whole run down over a video that was never going to work.
+    func testOtherErrorsAreNotCounted() async throws {
+        let limiter = fastLimiter()
+
+        do {
+            _ = try await limiter.withBackoff(onBan: .waitItOut) { () -> String in
+                throw YouTubeTranscriptKit.TranscriptError.noCaptionData
+            }
+            XCTFail("expected noCaptionData to propagate")
+        } catch YouTubeTranscriptKit.TranscriptError.noCaptionData {
+            // expected
+        }
+
+        XCTAssertEqual(limiter.rateLimitCount, 0)
+    }
+
+    func testASuccessfulRunCountsNothing() async throws {
+        let limiter = fastLimiter()
+
+        _ = try await limiter.withBackoff(onBan: .waitItOut) { "transcript" }
+
+        XCTAssertEqual(limiter.rateLimitCount, 0)
+    }
 }

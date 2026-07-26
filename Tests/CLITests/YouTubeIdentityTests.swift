@@ -1,11 +1,23 @@
 @testable import hunch
+import HunchKit
 import XCTest
 import YouTubeTranscriptKit
 
 final class YouTubeIdentityTests: XCTestCase {
+    private var originalConfiguration = YouTubeTranscriptKit.Configuration()
+    private var originalDownloadHeaders: [String: String] = [:]
+
+    // Both settings are process wide, so they are captured rather than assumed empty and handed
+    // back exactly as they were found
+    override func setUp() {
+        super.setUp()
+        originalConfiguration = YouTubeTranscriptKit.configuration
+        originalDownloadHeaders = FileDownloader.additionalHeaders
+    }
+
     override func tearDown() {
-        // The kit's configuration is process wide, so hand it back the way it was found
-        YouTubeTranscriptKit.configure(.init())
+        YouTubeTranscriptKit.configure(originalConfiguration)
+        FileDownloader.additionalHeaders = originalDownloadHeaders
         super.tearDown()
     }
 
@@ -15,6 +27,15 @@ final class YouTubeIdentityTests: XCTestCase {
         let headers = YouTubeTranscriptKit.configuration.additionalHeaders
         XCTAssertEqual(headers["User-Agent"], YouTubeIdentity.userAgent)
         XCTAssertEqual(headers["Accept-Language"], "en-US,en;q=0.9")
+    }
+
+    /// Watch pages and the thumbnails they name go out through different sessions. One host seeing
+    /// Chrome while the other sees the URLSession default, from one IP moments apart, describes a
+    /// client that does not exist.
+    func testInstallingTheIdentityAlsoReachesTheAssetDownloader() {
+        YouTubeIdentity.install()
+
+        XCTAssertEqual(FileDownloader.additionalHeaders, YouTubeIdentity.headers)
     }
 
     /// Each of these tokens looks like a mistake and is not. They were read out of a real browser,
