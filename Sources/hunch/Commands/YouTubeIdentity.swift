@@ -1,5 +1,4 @@
 import Foundation
-import HunchKit
 import YouTubeTranscriptKit
 
 /// The HTTP identity hunch presents to YouTube.
@@ -53,18 +52,18 @@ enum YouTubeIdentity {
         "Accept-Language": "en-US,en;q=0.9"
     ]
 
-    /// Installs the identity on every session hunch fetches YouTube content through.
+    /// Installs the identity on the session that fetches YouTube pages.
     ///
-    /// Both of them, which is the point. A run pulls watch pages from youtube.com and the thumbnails
-    /// those pages name from i.ytimg.com, and the two go out through different sessions. One host
-    /// seeing Chrome while the other sees the URLSession default, from a single IP, within moments
-    /// of each other, describes a client that does not exist - the same internal inconsistency
-    /// argument that puts Accept-Language in the header set to begin with.
+    /// Thumbnails need it too - a run pulls watch pages from youtube.com and the images those pages
+    /// name from i.ytimg.com, and one host seeing Chrome while the other sees the URLSession default
+    /// from the same IP moments later describes a client that does not exist. Those go out through
+    /// `FileDownloader`, which is shared with the Notion export path, so they carry `headers` per
+    /// request from the call site that knows it is talking to YouTube rather than being installed
+    /// globally here. An export has no business claiming to be a browser to Notion.
     ///
-    /// Safe to call once at startup and needs no ordering against the first fetch: both sessions are
-    /// rebuilt on the spot rather than at next use, and neither merges into an existing header set.
+    /// Safe to call once at startup and needs no ordering against the first fetch: `configure(_:)`
+    /// rebuilds the session on the spot rather than at next use.
     static func install() {
         YouTubeTranscriptKit.configure(.init(additionalHeaders: headers))
-        FileDownloader.additionalHeaders = headers
     }
 }

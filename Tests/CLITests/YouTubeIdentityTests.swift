@@ -1,23 +1,19 @@
 @testable import hunch
-import HunchKit
 import XCTest
 import YouTubeTranscriptKit
 
 final class YouTubeIdentityTests: XCTestCase {
     private var originalConfiguration = YouTubeTranscriptKit.Configuration()
-    private var originalDownloadHeaders: [String: String] = [:]
 
-    // Both settings are process wide, so they are captured rather than assumed empty and handed
-    // back exactly as they were found
+    // The kit's configuration is process wide, so it is captured rather than assumed empty and
+    // handed back exactly as it was found
     override func setUp() {
         super.setUp()
         originalConfiguration = YouTubeTranscriptKit.configuration
-        originalDownloadHeaders = FileDownloader.additionalHeaders
     }
 
     override func tearDown() {
         YouTubeTranscriptKit.configure(originalConfiguration)
-        FileDownloader.additionalHeaders = originalDownloadHeaders
         super.tearDown()
     }
 
@@ -29,13 +25,14 @@ final class YouTubeIdentityTests: XCTestCase {
         XCTAssertEqual(headers["Accept-Language"], "en-US,en;q=0.9")
     }
 
-    /// Watch pages and the thumbnails they name go out through different sessions. One host seeing
-    /// Chrome while the other sees the URLSession default, from one IP moments apart, describes a
-    /// client that does not exist.
-    func testInstallingTheIdentityAlsoReachesTheAssetDownloader() {
+    /// Thumbnails carry the same headers, but they are handed to the downloader per request rather
+    /// than installed on it, because that downloader also serves the Notion export path and an
+    /// export has no business claiming to be a browser to Notion.
+    func testTheIdentityIsNotInstalledGlobally() {
         YouTubeIdentity.install()
 
-        XCTAssertEqual(FileDownloader.additionalHeaders, YouTubeIdentity.headers)
+        XCTAssertNil(YouTubeIdentity.headers["Accept"], "only headers that do not vary per request belong in the set")
+        XCTAssertEqual(YouTubeIdentity.headers.count, 2, "a header added here reaches every request that passes the set along")
     }
 
     /// Each of these tokens looks like a mistake and is not. They were read out of a real browser,

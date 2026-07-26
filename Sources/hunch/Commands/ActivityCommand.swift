@@ -184,38 +184,38 @@ struct ActivityCommand: AsyncParsableCommand {
                 finalTranscript = transcript
             }
 
-            // Now download thumbnails after we have finalInfo
-            if let thumbnails = finalInfo?.thumbnails {
-                // Create assets directory only if we have thumbnails
+            // Now download the thumbnail after we have finalInfo. Only the largest is fetched,
+            // because only the largest is ever rendered: pulling all five wrote four files nothing
+            // reads, which was merely wasteful while the loop was unpaced and is hours of waiting
+            // now that every miss takes its turn.
+            if let thumbnail = ActivityCommand.largestThumbnail(of: finalInfo), let url = URL(string: thumbnail.url) {
+                // Create assets directory only if we have a thumbnail
                 try fm.createDirectory(at: assetsDir, withIntermediateDirectories: true)
                 let assetsPath = assetsDir.path(percentEncoded: false)
 
-                for thumbnail in thumbnails {
-                    if let url = URL(string: thumbnail.url) {
-                        // This loop runs for cached videos too, since the markdown needs the local
-                        // path of every thumbnail whether or not this run fetched the video. Asking
-                        // the cache first is what keeps that free: only a miss reaches the network,
-                        // and only a miss is worth waiting for.
-                        if let cached = FileDownloader.cachedAsset(from: url, in: assetsPath) {
-                            downloadedAssets[thumbnail.url] = cached
-                            continue
-                        }
+                // This runs for cached videos too, since the markdown needs the thumbnail's local
+                // path whether or not this run fetched the video. Asking the cache first is what
+                // keeps that free: only a miss reaches the network, and only a miss is worth waiting
+                // for.
+                if let cached = FileDownloader.cachedAsset(from: url, in: assetsPath) {
+                    downloadedAssets[thumbnail.url] = cached
+                } else {
+                    // Outside the catch below, so that a cancelled run reads as cancelled rather
+                    // than as a thumbnail that would not download
+                    try await Task.sleep(for: .seconds(pacer.delayBeforeNextAssetFetch()))
 
-                        do {
-                            try await Task.sleep(for: .seconds(pacer.delayBeforeNextAssetFetch()))
-                            let asset = try await FileDownloader.downloadFile(from: url, to: assetsPath)
-                            downloadedAssets[thumbnail.url] = asset
-                        } catch {
-                            // The asset host runs its own retries and never tells the limiter, so
-                            // without this the pacer would report a clean run while the same IP was
-                            // being throttled at i.ytimg.com
-                            if case FileDownloader.DownloadError.rateLimitExceeded(let retryAfter) = error {
-                                print("  thumbnail host is rate limiting, retry after \(Int(retryAfter))s")
-                                pacer.recordOutcome(rateLimits: 1)
-                            }
-                            print("Failed to download thumbnail: \(url)")
-                        }
+                    let throttlesBefore = FileDownloader.rateLimitCount
+                    do {
+                        downloadedAssets[thumbnail.url] = try await FileDownloader.downloadFile(
+                            from: url, to: assetsPath, headers: YouTubeIdentity.headers)
+                    } catch {
+                        print("Failed to download thumbnail: \(url)")
                     }
+
+                    // Asked of the downloader rather than of the error, because its own retry loop
+                    // absorbs the throttling that clears on a second attempt and would otherwise
+                    // report a clean run while the asset host was pushing back
+                    pacer.recordAssetOutcome(throttled: FileDownloader.rateLimitCount > throttlesBefore)
                 }
             }
 
@@ -286,6 +286,13 @@ struct ActivityCommand: AsyncParsableCommand {
         return try await limiter.withBackoff(onBan: .waitItOut, operation)
     }
 
+    /// The one thumbnail a video's markdown renders, so the download and the render cannot disagree
+    /// about which one that is. Downloading a thumbnail the renderer will not name buys nothing but
+    /// another request to the asset host.
+    private static func largestThumbnail(of info: VideoInfo?) -> VideoThumbnail? {
+        return info?.thumbnails?.sorted(by: { $0.width * $0.height > $1.width * $1.height }).first
+    }
+
     private func parseActivities(from url: URL) async throws -> [VideoData] {
         // Parse activity file
         let activities = try await YouTubeTranscriptKit.getActivity(fileURL: url)
@@ -354,7 +361,7 @@ struct ActivityCommand: AsyncParsableCommand {
         let renderer = MarkdownRenderer(level: 0, ignoreColor: false, ignoreUnderline: false, downloadedAssets: downloadedAssets)
 
         // Add largest thumbnail if available
-        if let thumbnails = info?.thumbnails?.sorted(by: { $0.width * $0.height > $1.width * $1.height }), let thumb = thumbnails.first {
+        if let thumb = ActivityCommand.largestThumbnail(of: info) {
             let imageBlock = Block(
                 object: "block",
                 id: video.id,

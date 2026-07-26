@@ -103,8 +103,8 @@ final class FetchPacerTests: XCTestCase {
 
     /// Rests stretch with the baseline, and unclamped that arithmetic ran away: at the 60s ceiling a
     /// 37s rest stretches 30x into a 19 minute sleep, and jitter pushed it to 29. maxDelay has to
-    /// bound the wait actually slept, not just the baseline it is computed from.
-    func testTheCeilingBoundsTheDelayActuallySlept() {
+    /// bound the target a wait is computed from, not just the baseline underneath it.
+    func testTheCeilingBoundsTheTargetAndNotJustTheBaseline() {
         let pacer = steadyPacer(rests: [FetchPacer.Rest(every: 1, seconds: 37)])
 
         // 2 * 2^5 is 64, over the 60s ceiling, so the baseline pins at 60 and stretch reaches 30x
@@ -114,18 +114,37 @@ final class FetchPacerTests: XCTestCase {
                        "an unclamped stretch would have returned 1170s here")
     }
 
-    /// Clamping has to happen after jitter, since jitter multiplies by up to 1 + jitter and would
-    /// otherwise lift an already clamped delay back over the ceiling.
-    func testJitterCannotLiftADelayBackOverTheCeiling() {
-        let pacer = FetchPacer(baseDelay: 2,
-                               maxDelay: 60,
-                               jitter: 0.5,
-                               rests: [FetchPacer.Rest(every: 1, seconds: 37)],
-                               randomFactor: { $0.upperBound })
+    /// The clamp lands on the target rather than on the result, and that ordering is the point.
+    /// Clamping last bounds every individual wait, which sounds stricter, but `min` does not
+    /// redistribute - it piles every over-ceiling delay onto exactly `maxDelay`. Once the clamp began
+    /// to bind, a large share of waits became the same number to the millisecond: the fixed interval
+    /// fingerprint jitter is here to remove, arriving exactly when a run is already in trouble.
+    func testTheClampedTargetStillJittersInBothDirections() {
+        func pacerAtTheCeiling(_ factor: @escaping (ClosedRange<Double>) -> Double) -> FetchPacer {
+            let pacer = FetchPacer(baseDelay: 2,
+                                   maxDelay: 60,
+                                   jitter: 0.5,
+                                   rests: [FetchPacer.Rest(every: 1, seconds: 37)],
+                                   randomFactor: factor)
+            pacer.recordOutcome(rateLimits: 5)
+            return pacer
+        }
+
+        XCTAssertEqual(pacerAtTheCeiling({ $0.lowerBound }).delayBeforeNextFetch(requests: 2), 30, accuracy: 0.0001,
+                       "a clamped target still jitters down")
+        XCTAssertEqual(pacerAtTheCeiling({ $0.upperBound }).delayBeforeNextFetch(requests: 2), 90, accuracy: 0.0001,
+                       "and up, which is a long pause rather than the stall the ceiling exists to prevent")
+    }
+
+    /// The earlier version of this asked only that a thumbnail wait stay under 60s, which it does by
+    /// a factor of five whether or not anything clamps it. An assertion that cannot fail is worse
+    /// than no assertion, because it advertises coverage that is not there.
+    func testTheCeilingBoundsThumbnailWaitsToo() {
+        let pacer = steadyPacer(assetDelay: 40)
 
         pacer.recordOutcome(rateLimits: 5)
-        XCTAssertEqual(pacer.delayBeforeNextFetch(requests: 2), 60, accuracy: 0.0001)
-        XCTAssertLessThanOrEqual(pacer.delayBeforeNextAssetFetch(), 60)
+        XCTAssertEqual(pacer.delayBeforeNextAssetFetch(), 60, accuracy: 0.0001,
+                       "40s stretched 30x is 20 minutes of waiting for one image")
     }
 
     /// The ceiling must not bite during an ordinary run, or it would flatten the rest schedule the
@@ -153,6 +172,32 @@ final class FetchPacerTests: XCTestCase {
         XCTAssertEqual(pacer.assetFetchCount, 1)
         XCTAssertEqual(pacer.fetchCount, 0, "a thumbnail is not a YouTube fetch")
         XCTAssertEqual(pacer.requestCount, 0, "and it is not a youtube.com request either")
+    }
+
+    /// However many 429s the downloader's own retry loop absorbed, one throttled download is one
+    /// signal. Slowing down once per absorbed response would let a single busy thumbnail cost a run
+    /// more than a real IP ban does.
+    func testAThrottledThumbnailSlowsTheRunOnce() {
+        let pacer = steadyPacer()
+
+        pacer.recordAssetOutcome(throttled: true)
+
+        XCTAssertEqual(pacer.currentDelay, 4, accuracy: 0.0001)
+        XCTAssertEqual(pacer.assetRateLimitCount, 1)
+        XCTAssertEqual(pacer.rateLimitCount, 0, "a busy image host is not the IP ban that ends a run")
+    }
+
+    /// A signal that can only ever slow a run down and never give anything back is a ratchet rather
+    /// than a control loop, so a clean thumbnail credits the streak like any other clean request.
+    func testACleanThumbnailCreditsTheStreak() {
+        let pacer = steadyPacer(speedupFactor: 0.5, cleanStreakForSpeedup: 2)
+
+        pacer.recordAssetOutcome(throttled: true)
+        XCTAssertEqual(pacer.currentDelay, 4, accuracy: 0.0001)
+
+        pacer.recordAssetOutcome(throttled: false)
+        pacer.recordAssetOutcome(throttled: false)
+        XCTAssertEqual(pacer.currentDelay, 2, accuracy: 0.0001)
     }
 
     func testAssetDownloadsStretchWithTheSlowedBaseline() {
@@ -267,6 +312,22 @@ final class FetchPacerTests: XCTestCase {
 
         XCTAssertEqual(pacer.rateReport(),
                        "pacing: 1 fetch (1 request) in 2m, ~0.5 req/min, baseline 4.0s, 1 rate limit, 1 thumbnail")
+    }
+
+    /// The two hosts are counted apart. One is the IP ban that ends a run, the other is a busy image
+    /// host, and a line that adds them together tells whoever reads it the wrong story.
+    func testTheReportKeepsThumbnailThrottlesApartFromYouTubeBans() {
+        var clock = Date(timeIntervalSince1970: 0)
+        let pacer = steadyPacer(now: { clock })
+
+        _ = pacer.delayBeforeNextFetch(requests: 2)
+        pacer.recordOutcome(rateLimits: 1)
+        _ = pacer.delayBeforeNextAssetFetch()
+        pacer.recordAssetOutcome(throttled: true)
+        clock = clock.addingTimeInterval(60)
+
+        XCTAssertEqual(pacer.rateReport(),
+                       "pacing: 1 fetch (2 requests) in 1m, ~2.0 req/min, baseline 8.0s, 1 rate limit, 1 thumbnail (1 throttled)")
     }
 
     /// A resumed run can download thumbnails long before it needs to fetch anything, and that is

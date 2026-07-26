@@ -51,9 +51,13 @@ final class FetchPacer {
     /// The starting pause between fetches, and the floor the adaptive baseline creeps back toward.
     /// The baseline never drops below it, so adapting can only ever slow a run down.
     let baseDelay: TimeInterval
-    /// Ceiling on the baseline and on any single wait, so a bad afternoon cannot stall the crawl
-    /// outright. Rests stretch with the baseline and would otherwise sail past it: at a 60s baseline
-    /// an unclamped 37s rest becomes 18 minutes, which is the stall this is meant to prevent.
+    /// Ceiling on the baseline and on the target every wait jitters around, so a bad afternoon
+    /// cannot stall the crawl outright. Rests stretch with the baseline and would otherwise sail
+    /// past it: at a 60s baseline an unclamped 37s rest becomes 18 minutes, which is the stall this
+    /// is meant to prevent.
+    ///
+    /// It bounds the target rather than the wait, so an individual wait can still land up to
+    /// `1 + jitter` above it. See `wait(_:)` for why that is the lesser evil.
     let maxDelay: TimeInterval
     /// The pause before a thumbnail download that actually reaches the network.
     ///
@@ -85,8 +89,12 @@ final class FetchPacer {
     private(set) var requestCount = 0
     /// Thumbnail downloads that actually reached i.ytimg.com.
     private(set) var assetFetchCount = 0
-    /// Rate limited responses seen so far, including the ones the limiter waited out for us.
+    /// Rate limited responses from youtube.com, including the ones the limiter waited out for us.
     private(set) var rateLimitCount = 0
+    /// Thumbnail downloads the asset host throttled. Counted apart from `rateLimitCount` because
+    /// they are not the same event: one is the IP ban that ends a run, the other is a busy image
+    /// host, and a report that adds them together tells whoever reads it the wrong story.
+    private(set) var assetRateLimitCount = 0
 
     private var cleanStreak = 0
     private var startedAt: Date?
@@ -124,10 +132,12 @@ final class FetchPacer {
 
     /// How long to wait before the next YouTube fetch, counting that fetch as issued.
     ///
-    /// `requests` is what the fetch costs on the wire, which the call site knows and the pacer does
-    /// not: a watch page asked for with its transcript is two requests, the page on its own is one.
-    /// Only the rate report reads it, so an approximation there is a cosmetic problem rather than a
-    /// pacing one, but there is no reason to approximate when the caller knows the answer.
+    /// `requests` is what the fetch is expected to cost on the wire, which the call site can
+    /// estimate and the pacer cannot: asking for a watch page with its transcript is two requests,
+    /// asking for the page alone is one. It is an estimate rather than a count - a video whose
+    /// captions turn out to be missing never makes the second request, and a video needing a
+    /// fallback caption track can make more - so it is close in the common case and not authoritative
+    /// in any of them. Only the rate report reads it, where being approximately right is the job.
     ///
     /// Call this immediately before a fetch and sleep for what it hands back. Counting here rather
     /// than on completion is what keeps the rest schedule tied to requests actually sent.
@@ -162,16 +172,42 @@ final class FetchPacer {
     /// those two the same way afterward is exactly how a run walks back into the ban it just left.
     func recordOutcome(rateLimits: Int) {
         guard rateLimits > 0 else {
-            cleanStreak += 1
-            guard cleanStreak >= cleanStreakForSpeedup else { return }
-            cleanStreak = 0
-            currentDelay = max(baseDelay, currentDelay * speedupFactor)
+            creditCleanRequest()
             return
         }
 
         rateLimitCount += rateLimits
+        slowDown(steps: rateLimits)
+    }
+
+    /// Records how a thumbnail download went.
+    ///
+    /// One signal per download rather than one per rate limited response, because the asset host
+    /// retries internally and can absorb several 429s in a couple of seconds. Slowing the run down
+    /// once per absorbed response would let a single busy thumbnail cost more than a real IP ban
+    /// does. A clean download credits the streak exactly as a clean fetch does, because a signal
+    /// that can only ever slow a run down and never give anything back is a ratchet rather than a
+    /// control loop.
+    func recordAssetOutcome(throttled: Bool) {
+        guard throttled else {
+            creditCleanRequest()
+            return
+        }
+
+        assetRateLimitCount += 1
+        slowDown(steps: 1)
+    }
+
+    private func creditCleanRequest() {
+        cleanStreak += 1
+        guard cleanStreak >= cleanStreakForSpeedup else { return }
         cleanStreak = 0
-        currentDelay = min(maxDelay, currentDelay * pow(slowdownFactor, Double(rateLimits)))
+        currentDelay = max(baseDelay, currentDelay * speedupFactor)
+    }
+
+    private func slowDown(steps: Int) {
+        cleanStreak = 0
+        currentDelay = min(maxDelay, currentDelay * pow(slowdownFactor, Double(steps)))
     }
 
     /// One line describing how hard this run is leaning on YouTube, or nil before the first request.
@@ -197,6 +233,9 @@ final class FetchPacer {
         // Named only when there are any, since most runs download no thumbnails at all
         if assetFetchCount > 0 {
             report += ", " + FetchPacer.counted(assetFetchCount, "thumbnail", "thumbnails")
+            if assetRateLimitCount > 0 {
+                report += " (\(assetRateLimitCount) throttled)"
+            }
         }
         return report
     }
@@ -214,12 +253,21 @@ final class FetchPacer {
         return currentDelay / baseDelay
     }
 
-    /// Jitters a delay and holds it under the ceiling.
+    /// Holds a delay under the ceiling, then jitters it.
     ///
-    /// Clamping last is what makes `maxDelay` mean what it says. Jitter multiplies by up to
-    /// `1 + jitter`, so a delay clamped before jittering would still come back over the ceiling.
+    /// This order matters more than it looks. Clamping last would bound every individual wait, which
+    /// reads like the stricter guarantee, but `min` does not redistribute - it piles every delay that
+    /// was over the ceiling onto exactly `maxDelay`. Once a run is slow enough for the clamp to bind,
+    /// which the 259 rest reaches after two bans, that turns a large share of waits into the same
+    /// number to the millisecond: a fixed interval fingerprint, which is the exact thing jitter is
+    /// here to avoid, arriving precisely when the run is already in trouble. It would also make the
+    /// reported baseline a lie, since the mean of a clamped band sits below the target it prints.
+    ///
+    /// Clamping the target first keeps the distribution continuous. The cost is that a single wait
+    /// can land up to `1 + jitter` above `maxDelay` - 90s at the defaults - which is a pause, not the
+    /// stall the ceiling exists to prevent.
     private func wait(_ delay: TimeInterval) -> TimeInterval {
-        return min(jittered(delay), maxDelay)
+        return jittered(min(delay, maxDelay))
     }
 
     private func jittered(_ delay: TimeInterval) -> TimeInterval {
