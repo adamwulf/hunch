@@ -197,7 +197,8 @@ final class FetchPacerTests: XCTestCase {
         pacer.recordAssetThrottle()
         XCTAssertEqual(pacer.currentDelay, 4, accuracy: 0.0001)
 
-        // However many thumbnails come back clean, the baseline holds where the throttle left it
+        // Nothing a thumbnail can do gives ground back, so only fetches appear below: the pacer has
+        // no clean-thumbnail call to make any more, which is the property this test names
         pacer.recordOutcome(rateLimits: 0)
         XCTAssertEqual(pacer.currentDelay, 4, accuracy: 0.0001, "one clean fetch is not a streak")
 

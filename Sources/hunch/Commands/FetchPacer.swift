@@ -81,6 +81,13 @@ final class FetchPacer {
     /// feels and is no reason to speed back up. Crediting it would let a resumed run whose
     /// thumbnails all miss the cache walk the baseline from the ceiling to the floor on the strength
     /// of a different host's opinion, without having asked youtube.com for anything at all.
+    ///
+    /// The mirror image is real and left alone deliberately: a run that only ever downloads
+    /// thumbnails has nothing that can credit the streak, so a baseline the asset host pushed up
+    /// stays up for the rest of that run even after the throttling stops. It takes five downloads
+    /// that each genuinely drew a 429 to reach the ceiling, where thumbnail waits settle around 7.5s
+    /// - slow, bounded, and in the conservative direction, which is the right way to be wrong about
+    /// a host that has just finished telling us to slow down.
     let cleanStreakForSpeedup: Int
     /// Half width of the jitter band as a fraction of the delay: 0.5 spreads 2s over 1s...3s.
     let jitter: Double
