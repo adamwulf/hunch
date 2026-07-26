@@ -139,21 +139,27 @@ struct ActivityCommand: AsyncParsableCommand {
                 switch (info, transcript) {
                 case (nil, nil):
                     try await Task.sleep(for: .milliseconds(300))
-                    let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
+                    let fetched = try await YouTubeRateLimiter.shared.withBackoff(onBan: .waitItOut) {
+                        try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
+                    }
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = fetched.transcript
                     print("Fetched \(video.id)\(fetched.transcript == nil ? "" : " with transcript")")
                 case (nil, .some(let cached)):
                     try await Task.sleep(for: .seconds(1))
                     print("Fetching info: \(video.id)")
-                    let fetched = try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
+                    let fetched = try await YouTubeRateLimiter.shared.withBackoff(onBan: .waitItOut) {
+                        try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
+                    }
                     finalInfo = fetched.withoutTranscript()
                     finalTranscript = cached
                 case (.some(let cached), nil):
                     try await Task.sleep(for: .seconds(1))
                     // Skip fetching transcript if we already have info
                     print("Fetching transcript: \(video.id)")
-                    let moments = try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
+                    let moments = try await YouTubeRateLimiter.shared.withBackoff(onBan: .waitItOut) {
+                        try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
+                    }
                     finalInfo = cached
                     finalTranscript = moments.isEmpty ? nil : moments
                     if !moments.isEmpty {
@@ -163,6 +169,10 @@ struct ActivityCommand: AsyncParsableCommand {
                     finalInfo = cached
                     finalTranscript = cachedTranscript
                 }
+            } catch let exhausted as YouTubeRateLimiter.RateLimitExhausted {
+                // Every rung of the ladder is spent and YouTube is still banning us, so stop the
+                // run rather than grind through the rest of the videos against a closed door.
+                throw exhausted
             } catch {
                 if case YouTubeTranscriptKit.TranscriptError.noCaptionData = error {
                     // noop
@@ -170,7 +180,7 @@ struct ActivityCommand: AsyncParsableCommand {
                     print("Error processing \(video.id): \(error)")
                 }
 
-                // Only sleep on network errors
+                // Only sleep on network errors, rate limits are backed off in minutes by YouTubeRateLimiter
                 if case YouTubeTranscriptKit.TranscriptError.networkError(let nwError) = error {
                     print("  backing off for 5s: \(nwError)")
                     try await Task.sleep(for: .seconds(5))
