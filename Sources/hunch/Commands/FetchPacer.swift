@@ -188,7 +188,7 @@ final class FetchPacer {
     /// those two the same way afterward is exactly how a run walks back into the ban it just left.
     func recordOutcome(rateLimits: Int) {
         guard rateLimits > 0 else {
-            creditCleanRequest()
+            creditCleanFetch()
             return
         }
 
@@ -204,15 +204,16 @@ final class FetchPacer {
     ///
     /// There is deliberately no clean counterpart. Being throttled anywhere is evidence this IP is
     /// asking for too much, so it is worth acting on wherever it comes from; a thumbnail arriving
-    /// cleanly is not evidence about youtube.com and must not buy a speedup there. See
-    /// `cleanStreakForSpeedup`. The ratchet that asymmetry usually implies does not bite here,
-    /// because the clean fetches that do credit the streak are the same ones the baseline governs.
+    /// cleanly is not evidence about youtube.com and must not buy a speedup there. In the normal
+    /// case that costs nothing, because the fetches that pay the baseline are the same ones that
+    /// credit the streak when they come back clean. In a stretch with no fetches in it at all there
+    /// is genuinely no way back down, which `cleanStreakForSpeedup` describes and accepts.
     func recordAssetThrottle() {
         assetRateLimitCount += 1
         slowDown(steps: 1)
     }
 
-    private func creditCleanRequest() {
+    private func creditCleanFetch() {
         cleanStreak += 1
         guard cleanStreak >= cleanStreakForSpeedup else { return }
         cleanStreak = 0
