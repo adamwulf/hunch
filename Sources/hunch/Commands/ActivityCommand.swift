@@ -61,9 +61,10 @@ struct ActivityCommand: AsyncParsableCommand {
     /// written down with no expiry and no way to clear it is not a cache, it is a verdict, and this
     /// is the appeal.
     ///
-    /// Orthogonal to --refetch-empty-transcripts, and each only reopens its own answer. A video that
-    /// comes back has its info fetched again by this flag, but the empty transcript recorded while it
-    /// was gone is still an answer YouTube gave; pass both to ask again for captions too.
+    /// Nothing is recorded in transcript.json for a video that is gone, so one reopened by this flag
+    /// is fetched from scratch with its captions. The exception is a folder that already holds a
+    /// transcript - written before the video went away, or by a run older than this change - where
+    /// only the info is fetched and --refetch-empty-transcripts is what reopens the rest.
     @Flag(name: .long, help: "Ask YouTube again for videos recorded as permanently unavailable")
     var recheckUnavailable = false
 
@@ -740,10 +741,10 @@ struct ActivityCommand: AsyncParsableCommand {
             /// the headline below says "recorded" and a run that wrote nothing at all must not read
             /// as one that wrote five.
             ///
-            /// Nor does it include `permanentlyUnavailable`, which also writes an empty transcript
-            /// but for an unrelated reason. Each count is a tripwire for a different break - a
-            /// caption parser that stopped working, an allowlist that started writing off live
-            /// videos - and folding either into the other would blind both.
+            /// Nor does it include the videos written off, which record nothing in transcript.json
+            /// at all. Each count is a tripwire for a different break - a caption parser that
+            /// stopped working, an allowlist that started writing off live videos - and folding
+            /// either into the other would blind both.
             var recorded: Int {
                 return noTracksListed + listedTracksWereEmpty + duringCombinedFetch
             }
