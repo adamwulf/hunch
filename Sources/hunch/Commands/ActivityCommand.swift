@@ -51,6 +51,21 @@ struct ActivityCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Ask YouTube again for videos whose cached transcript is empty")
     var refetchEmptyTranscripts = false
 
+    /// A video recorded as permanently unavailable is skipped without a request, which is right for
+    /// as long as YouTube keeps saying it is gone. This is the way back: set it when there is reason
+    /// to think that has changed - a private video made public again, a members-only video opened up
+    /// - and every video with a marker is asked about again.
+    ///
+    /// The marker needs this for the same reason an empty transcript.json does. A permanent answer
+    /// written down with no expiry and no way to clear it is not a cache, it is a verdict, and this
+    /// is the appeal.
+    ///
+    /// Orthogonal to --refetch-empty-transcripts, and each only reopens its own answer. A video that
+    /// comes back has its info fetched again by this flag, but the empty transcript recorded while it
+    /// was gone is still an answer YouTube gave; pass both to ask again for captions too.
+    @Flag(name: .long, help: "Ask YouTube again for videos recorded as permanently unavailable")
+    var recheckUnavailable = false
+
     mutating func run() async throws {
         let fm = FileManager.default
 
@@ -117,6 +132,7 @@ struct ActivityCommand: AsyncParsableCommand {
             let infoURL = videoURL.appendingPathComponent("info.json")
             let transcriptURL = videoURL.appendingPathComponent("transcript.json")
             let vttURL = videoURL.appendingPathComponent("transcript.vtt")
+            let unavailableURL = videoURL.appendingPathComponent("unavailable.json")
             let stringsURL = localizedURL.appendingPathComponent("Base.strings")
             let assetsDir = videoURL.appendingPathComponent("assets")
 
@@ -148,70 +164,113 @@ struct ActivityCommand: AsyncParsableCommand {
             let cached = ActivityCommand.cachedTranscript(at: transcriptURL, decoder: decoder)
             let transcript = ActivityCommand.transcriptToBuildOn(cached: cached, refetchEmpty: refetchEmptyTranscripts)
 
+            // Read ahead of the fetch branches rather than inside them, because its whole purpose is
+            // to keep a video YouTube has already said is gone from reaching them at all.
+            let recorded = ActivityCommand.recordedUnavailability(at: unavailableURL, decoder: decoder)
+            let knownGone = ActivityCommand.unavailabilityToTrust(recorded: recorded, recheck: recheckUnavailable)
+
             // Process data with exponential backoff on failure
             let finalInfo: VideoInfo?
             let finalTranscript: [TranscriptMoment]?
-            do {
-                switch (info, transcript) {
-                case (nil, nil):
-                    let fetched = try await paced(pacer, requests: 2) {
-                        try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
-                    }
-                    finalInfo = fetched.withoutTranscript()
-                    // The kit swallows both refusals inside this call and returns a nil transcript
-                    // for them, rethrowing anything transient - so a nil here is the same permanent
-                    // answer the catch below records, and leaving it unwritten only bought this video
-                    // one more two-request round trip before it settled
-                    if fetched.transcript == nil {
-                        refusals.recordCombinedFetch(cached: cached)
-                    }
-                    finalTranscript = fetched.transcript ?? ActivityCommand.transcriptAfterFailure(
-                        .listedTracksWereEmpty, cached: cached)
-                    print("Fetched \(video.id)\(fetched.transcript == nil ? "" : " with transcript")")
-                case (nil, .some(let cachedTranscript)):
-                    print("Fetching info: \(video.id)")
-                    let fetched = try await paced(pacer, requests: 1) {
-                        try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
-                    }
-                    finalInfo = fetched.withoutTranscript()
-                    finalTranscript = cachedTranscript
-                case (.some(let cachedInfo), nil):
-                    // Skip fetching transcript if we already have info
-                    print("Fetching transcript: \(video.id)")
-                    let moments = try await paced(pacer, requests: 2) {
-                        try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
-                    }
-                    // A returned transcript always has moments in it: the kit throws rather than
-                    // hand back an empty one, and that throw is what the catch below records
-                    finalInfo = cachedInfo
-                    finalTranscript = moments
-                    print("  recovered")
-                case (.some(let cachedInfo), .some(let cachedTranscript)):
-                    finalInfo = cachedInfo
-                    finalTranscript = cachedTranscript
-                }
-            } catch let exhausted as YouTubeRateLimiter.RateLimitExhausted {
-                // Every rung of the ladder is spent and YouTube is still banning us, so stop the
-                // run rather than grind through the rest of the videos against a closed door.
-                throw exhausted
-            } catch {
-                // The two refusals are answers rather than failures and the run writes them down
-                // below, so printing them here would put a line on screen for every video YouTube
-                // will not serve captions for. The tally is what keeps them visible in aggregate.
-                let failure = ActivityCommand.classifyFailure(error)
-                if case .unresolved = failure {
-                    print("Error processing \(video.id): \(error)")
-                }
 
-                // Only sleep on network errors, rate limits are backed off in minutes by YouTubeRateLimiter
-                if case YouTubeTranscriptKit.TranscriptError.networkError(let nwError) = error {
-                    print("  backing off for 5s: \(nwError)")
-                    try await Task.sleep(for: .seconds(5))
-                }
+            // What this iteration learned about whether the video can be fetched at all, and so what
+            // unavailable.json should say once the writes below have run. Starts at "nothing
+            // learned", which is the honest answer for every path that never asks.
+            var availability = UnavailabilityOutcome.unchanged
 
+            if let knownGone {
+                // Zero requests, which is the entire point. These videos used to spend two requests
+                // apiece on every run, fail identically, and write down nothing that would stop the
+                // next run repeating it.
+                //
+                // Deliberately ahead of --refetch-empty-transcripts. That flag reopens a video in
+                // case YouTube has started serving captions it used to refuse, which cannot help a
+                // video with no page left to serve them from; --recheck-unavailable is the flag that
+                // reopens this one.
+                refusals.recordSkippedAsUnavailable()
                 finalInfo = info
-                refusals.record(failure, cached: cached)
-                finalTranscript = ActivityCommand.transcriptAfterFailure(failure, cached: cached)
+                // Asked of the same rule the recording run used, from the status it recorded, so a
+                // skipped run leaves disk exactly as that run did rather than by a second rule that
+                // could drift from it.
+                finalTranscript = ActivityCommand.transcriptAfterFailure(knownGone.asFailure, cached: cached)
+            } else {
+                do {
+                    switch (info, transcript) {
+                    case (nil, nil):
+                        let fetched = try await paced(pacer, requests: 2) {
+                            try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: true)
+                        }
+                        finalInfo = fetched.withoutTranscript()
+                        // The kit swallows both refusals inside this call and returns a nil transcript
+                        // for them, rethrowing anything transient - so a nil here is the same permanent
+                        // answer the catch below records, and leaving it unwritten only bought this video
+                        // one more two-request round trip before it settled
+                        if fetched.transcript == nil {
+                            refusals.recordCombinedFetch(cached: cached)
+                        }
+                        finalTranscript = fetched.transcript ?? ActivityCommand.transcriptAfterFailure(
+                            .listedTracksWereEmpty, cached: cached)
+                        print("Fetched \(video.id)\(fetched.transcript == nil ? "" : " with transcript")")
+                        availability = .available
+                    case (nil, .some(let cachedTranscript)):
+                        print("Fetching info: \(video.id)")
+                        let fetched = try await paced(pacer, requests: 1) {
+                            try await YouTubeTranscriptKit.getVideoInfo(videoID: video.id, includeTranscript: false)
+                        }
+                        finalInfo = fetched.withoutTranscript()
+                        finalTranscript = cachedTranscript
+                        availability = .available
+                    case (.some(let cachedInfo), nil):
+                        // Skip fetching transcript if we already have info
+                        print("Fetching transcript: \(video.id)")
+                        let moments = try await paced(pacer, requests: 2) {
+                            try await YouTubeTranscriptKit.getTranscript(videoID: video.id)
+                        }
+                        // A returned transcript always has moments in it: the kit throws rather than
+                        // hand back an empty one, and that throw is what the catch below records
+                        finalInfo = cachedInfo
+                        finalTranscript = moments
+                        print("  recovered")
+                        availability = .available
+                    case (.some(let cachedInfo), .some(let cachedTranscript)):
+                        // Nothing was asked, so nothing was learned. Reachable with a marker on disk only
+                        // under --recheck-unavailable, and answering "available" for a video this run
+                        // never contacted would delete the marker on the strength of two cached files.
+                        finalInfo = cachedInfo
+                        finalTranscript = cachedTranscript
+                    }
+                } catch let exhausted as YouTubeRateLimiter.RateLimitExhausted {
+                    // Every rung of the ladder is spent and YouTube is still banning us, so stop the
+                    // run rather than grind through the rest of the videos against a closed door.
+                    throw exhausted
+                } catch {
+                    // The two refusals are answers rather than failures and the run writes them down
+                    // below, so printing them here would put a line on screen for every video YouTube
+                    // will not serve captions for. The tally is what keeps them visible in aggregate.
+                    let failure = ActivityCommand.classifyFailure(error)
+                    if case .unresolved = failure {
+                        print("Error processing \(video.id): \(error)")
+                    }
+
+                    // Said once per video, ever: the marker written below means no later run reaches here
+                    // for it. Naming YouTube's own status is what makes the allowlist auditable from a run
+                    // log afterwards, which matters for the one decision here that stops a video being
+                    // asked about at all.
+                    if case .permanentlyUnavailable(let status, _) = failure {
+                        print("Unavailable \(video.id): \(status)")
+                    }
+
+                    // Only sleep on network errors, rate limits are backed off in minutes by YouTubeRateLimiter
+                    if case YouTubeTranscriptKit.TranscriptError.networkError(let nwError) = error {
+                        print("  backing off for 5s: \(nwError)")
+                        try await Task.sleep(for: .seconds(5))
+                    }
+
+                    finalInfo = info
+                    refusals.record(failure, cached: cached)
+                    finalTranscript = ActivityCommand.transcriptAfterFailure(failure, cached: cached)
+                    availability = ActivityCommand.unavailabilityAfterFailure(failure, now: Date())
+                }
             }
 
             // Now download the thumbnail after we have finalInfo. Only the largest is fetched,
@@ -286,6 +345,23 @@ struct ActivityCommand: AsyncParsableCommand {
             }
             if let finalInfo = finalInfo {
                 try encoder.encode(finalInfo).write(to: infoURL, options: .atomic)
+            }
+
+            // Its own artifact, beside info.json rather than a stand-in for it, and written whatever
+            // transcript.json holds - because this is the file that actually settles the video. It is
+            // read before any fetch branch, so the next run costs zero requests even for a video
+            // whose unreadable transcript.json kept a refusal from being recorded.
+            switch availability {
+            case .unchanged:
+                break
+            case .gone(let marker):
+                try encoder.encode(marker).write(to: unavailableURL, options: .atomic)
+            case .available:
+                // The video answered, so anything recorded for it is out of date. Leaving a stale
+                // marker would go on skipping a video that is back.
+                if fm.fileExists(atPath: unavailableURL.path) {
+                    try fm.removeItem(at: unavailableURL)
+                }
             }
             try stringsContent.write(to: stringsURL, atomically: true, encoding: .utf8)
 
@@ -384,9 +460,40 @@ struct ActivityCommand: AsyncParsableCommand {
         case noTracksListed
         /// `noTranscriptData`: tracks were listed, and fetching them produced nothing.
         case listedTracksWereEmpty
+        /// `videoUnavailable` carrying a status this tool has established is permanent - not every
+        /// unavailable video, and `permanentlyUnavailableStatuses` is where that list is argued.
+        case permanentlyUnavailable(status: String, reason: String?)
         /// Anything else - a ban, a dropped connection, HTML that did not parse.
         case unresolved
     }
+
+    /// The playability statuses this tool is willing to write a video off for.
+    ///
+    /// An allowlist rather than a denylist, because the two mistakes do not cost the same. Retrying a
+    /// video that is permanently gone spends requests. Filing a video permanently that is merely
+    /// unreachable right now drops it from the corpus and leaves a marker saying not to ask again -
+    /// and nothing later notices, because the whole effect of the marker is that no run looks.
+    ///
+    /// `ERROR` is a deleted video and `UNPLAYABLE` is a members-only one. Both are captured in the
+    /// kit's fixtures and both are established there as permanent.
+    ///
+    /// `LOGIN_REQUIRED` is deliberately absent, and it is the reason this is a list at all rather
+    /// than "any videoUnavailable". YouTube sends it for a private video, which is permanent, and
+    /// also for its "Sign in to confirm you're not a bot" wall, which is a soft ban and about as
+    /// transient as anything gets. That wall arrives as a 200 on a page the kit's captcha check
+    /// cannot see, since it only matches the /sorry redirect, so nothing upstream catches it first.
+    /// Treating every `videoUnavailable` as permanent would write off every video fetched during a
+    /// ban - thousands of live videos, in one run, each with a file beside it saying do not ask
+    /// again. The reason prose that would tell the two apart has never been captured, so nothing
+    /// here guesses at it.
+    ///
+    /// Everything unrecognised falls through to `.unresolved` and is retried, which is exactly what
+    /// happens today and is the safe direction to be wrong in. `LIVE_STREAM_OFFLINE`, for one, is a
+    /// stream that has not started yet.
+    ///
+    /// Matched verbatim and case-sensitively against YouTube's own code, which the kit passes through
+    /// unmapped. A status differing even in case is one this tool has not seen before.
+    static let permanentlyUnavailableStatuses: Set<String> = ["ERROR", "UNPLAYABLE"]
 
     static func classifyFailure(_ error: Error) -> FetchFailure {
         switch error {
@@ -394,6 +501,9 @@ struct ActivityCommand: AsyncParsableCommand {
             return .noTracksListed
         case YouTubeTranscriptKit.TranscriptError.noTranscriptData:
             return .listedTracksWereEmpty
+        case YouTubeTranscriptKit.TranscriptError.videoUnavailable(let status, let reason)
+                where permanentlyUnavailableStatuses.contains(status):
+            return .permanentlyUnavailable(status: status, reason: reason)
         default:
             return .unresolved
         }
@@ -414,6 +524,13 @@ struct ActivityCommand: AsyncParsableCommand {
     /// describes a bad moment. The one that could start working again is `listedTracksWereEmpty`, and
     /// --refetch-empty-transcripts is what clears it when it does.
     ///
+    /// A permanently unavailable video reaches the same rule from a different door and passes it for
+    /// the same reason, not by accident. The test here has never been "are the captions gone" but
+    /// "does asking again change anything", and for a video YouTube answers with ERROR or UNPLAYABLE
+    /// the answer is no - there is no watchable page left to serve captions from. Only the statuses
+    /// established as permanent arrive as this failure at all: `LOGIN_REQUIRED` during a ban is
+    /// classified `.unresolved` and leaves the cache untouched, exactly like a dropped connection.
+    ///
     /// Every other failure leaves the cache exactly as it was: a refusal recorded from a dropped
     /// connection would be a lie with no expiry. So does a file that did not decode - overwriting
     /// that would destroy a transcript rather than record the absence of one.
@@ -426,6 +543,85 @@ struct ActivityCommand: AsyncParsableCommand {
         case (_, .transcript(let moments)):
             return moments
         }
+    }
+
+    /// What `unavailable.json` records: YouTube's own verdict on a video, and when it was taken.
+    ///
+    /// Its own artifact rather than a synthesized `info.json`, deliberately. A `VideoInfo` built out
+    /// of a failed fetch would be indistinguishable on disk from one that was really fetched, and the
+    /// render path would then present invented data - a title, a channel, a duration nobody ever
+    /// received - as though YouTube had served it. This file is written by the thing that learned the
+    /// fact and claims nothing past it.
+    ///
+    /// `status` is kept verbatim and unmapped because the allowlist that decided this file was worth
+    /// writing may turn out to be wrong. YouTube's own code on disk means a mistake can be found and
+    /// undone with a grep, rather than by re-fetching 37,000 videos to find out which ones were
+    /// written off for what.
+    struct UnavailableVideo: Codable, Equatable {
+        /// YouTube's playability status, verbatim - "ERROR" for a deleted video, "UNPLAYABLE" for a
+        /// members-only one.
+        let status: String
+        /// YouTube's prose, for whoever opens the folder. Absent for the statuses that ship without one.
+        let reason: String?
+        /// When this file was written. Runs that skip the video never touch it, and a
+        /// --recheck-unavailable run that finds the video still gone replaces it, so it reads as when
+        /// the fact was last confirmed. Recorded rather than derived because a future expiry policy
+        /// would need it and no later run can learn it after the fact.
+        let recordedAt: Date
+
+        /// The failure this marker stands for, so a run that skips the video reaches the same
+        /// decisions about it as the run that recorded it.
+        var asFailure: FetchFailure {
+            return .permanentlyUnavailable(status: status, reason: reason)
+        }
+    }
+
+    /// What a run learned about whether a video can be fetched at all.
+    ///
+    /// Three states rather than two, and the third is the one doing the work. "Nothing was learned"
+    /// is the answer for most failures and has to be told apart from "this video is fine": a ban, a
+    /// timeout or a 5xx says nothing about the video, so it must neither file one as gone nor clear
+    /// a marker already recorded for one.
+    enum UnavailabilityOutcome: Equatable {
+        /// Nothing was asked, or what came back says nothing about availability. Disk is left alone.
+        case unchanged
+        /// YouTube answered with a status this tool treats as permanent. The marker gets written.
+        case gone(UnavailableVideo)
+        /// The video answered. Anything recorded for it is stale and gets removed.
+        case available
+    }
+
+    /// What a failed fetch means for `unavailable.json`.
+    ///
+    /// Only an established-permanent status writes a marker; everything else returns `.unchanged`
+    /// rather than `.available`. That is the distinction the file turns on. Reading "this fetch did
+    /// not prove the video gone" as "this video is fine" would delete markers all through a ban and
+    /// hand the next run back the whole population this exists to drain.
+    static func unavailabilityAfterFailure(_ failure: FetchFailure, now: Date) -> UnavailabilityOutcome {
+        guard case .permanentlyUnavailable(let status, let reason) = failure else { return .unchanged }
+        return .gone(UnavailableVideo(status: status, reason: reason, recordedAt: now))
+    }
+
+    /// What `unavailable.json` currently holds, or nil where nothing readable is there.
+    ///
+    /// A file that does not decode reads the same as one that was never written, which is the
+    /// opposite of how `cachedTranscript` treats transcript.json - and the asymmetry is the point. A
+    /// half-written transcript.json may hold words no run will ever fetch again, so it is never
+    /// overwritten. This file holds nothing that cannot be learned again by asking, so the worst a
+    /// corrupt one costs is the fetch that rewrites it.
+    static func recordedUnavailability(at url: URL, decoder: JSONDecoder) -> UnavailableVideo? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? decoder.decode(UnavailableVideo.self, from: data)
+    }
+
+    /// What the fetch should treat as already settled.
+    ///
+    /// Normally whatever was recorded. Under --recheck-unavailable the marker is deliberately
+    /// forgotten so the video goes back down a fetch branch and YouTube is asked again - the way back
+    /// for a video that gets un-privated or restored, without anyone having to find and delete
+    /// markers by hand across 37,000 folders.
+    static func unavailabilityToTrust(recorded: UnavailableVideo?, recheck: Bool) -> UnavailableVideo? {
+        return recheck ? nil : recorded
     }
 
     /// Tallies the refusals a run writes down, so that a corpus-wide break is visible while it is
@@ -443,6 +639,14 @@ struct ActivityCommand: AsyncParsableCommand {
     /// without captions and a malformed blob both arrive as a missing key. So the trap re-arms on
     /// every YouTube schema change and this is the only thing watching for it, which makes it part
     /// of what keeps the corpus correct rather than decoration on the progress output.
+    ///
+    /// The same argument now covers a second population, with more force. A video recorded as
+    /// permanently unavailable is written off on this tool's own reading of which YouTube statuses
+    /// are permanent, and a misreading there does not fail loudly - it quietly stops asking, and
+    /// keeps stopping, because the marker's whole effect is that no later run looks. What that
+    /// mistake would look like is a run writing off thousands of videos where the last wrote off a
+    /// dozen: a soft ban misread as a corpus of dead videos. Counting it here is what surfaces that
+    /// while the markers are still cheap to delete.
     struct RefusalTally {
         /// Which kind of refusal was recorded, or why one was not.
         struct Counts {
@@ -450,23 +654,32 @@ struct ActivityCommand: AsyncParsableCommand {
             var listedTracksWereEmpty = 0
             var duringCombinedFetch = 0
             var blockedByUnreadableFile = 0
+            var permanentlyUnavailable = 0
+            var skippedAsUnavailable = 0
 
             /// Refusals that reached disk. Deliberately does not include the ones held back, since
             /// the headline below says "recorded" and a run that wrote nothing at all must not read
             /// as one that wrote five.
+            ///
+            /// Nor does it include `permanentlyUnavailable`, which also writes an empty transcript
+            /// but for an unrelated reason. Each count is a tripwire for a different break - a
+            /// caption parser that stopped working, an allowlist that started writing off live
+            /// videos - and folding either into the other would blind both.
             var recorded: Int {
                 return noTracksListed + listedTracksWereEmpty + duringCombinedFetch
             }
 
             var total: Int {
-                return recorded + blockedByUnreadableFile
+                return recorded + blockedByUnreadableFile + permanentlyUnavailable + skippedAsUnavailable
             }
 
             static func - (lhs: Counts, rhs: Counts) -> Counts {
                 return Counts(noTracksListed: lhs.noTracksListed - rhs.noTracksListed,
                               listedTracksWereEmpty: lhs.listedTracksWereEmpty - rhs.listedTracksWereEmpty,
                               duringCombinedFetch: lhs.duringCombinedFetch - rhs.duringCombinedFetch,
-                              blockedByUnreadableFile: lhs.blockedByUnreadableFile - rhs.blockedByUnreadableFile)
+                              blockedByUnreadableFile: lhs.blockedByUnreadableFile - rhs.blockedByUnreadableFile,
+                              permanentlyUnavailable: lhs.permanentlyUnavailable - rhs.permanentlyUnavailable,
+                              skippedAsUnavailable: lhs.skippedAsUnavailable - rhs.skippedAsUnavailable)
             }
 
             func summary(_ qualifier: String) -> String? {
@@ -476,10 +689,18 @@ struct ActivityCommand: AsyncParsableCommand {
                     ? "; \(blockedByUnreadableFile) more held back by a file that did not decode, and so asked again every run"
                     : ""
 
+                let writtenOff = permanentlyUnavailable > 0
+                    ? "; \(permanentlyUnavailable) videos newly recorded as permanently unavailable"
+                    : ""
+
+                let skipped = skippedAsUnavailable > 0
+                    ? "; \(skippedAsUnavailable) skipped as already recorded unavailable"
+                    : ""
+
                 return "recorded \(recorded) transcript refusals\(qualifier): \(noTracksListed) with no tracks listed, "
                     + "\(listedTracksWereEmpty) whose tracks came back empty, "
                     + "\(duringCombinedFetch) during a combined fetch"
-                    + heldBack
+                    + heldBack + writtenOff + skipped
             }
         }
 
@@ -493,6 +714,15 @@ struct ActivityCommand: AsyncParsableCommand {
         mutating func record(_ failure: FetchFailure, cached: CachedTranscript) {
             guard !isUnresolved(failure) else { return }
 
+            // Counted ahead of the unreadable check, and deliberately not subject to it. What settles
+            // a permanently unavailable video is unavailable.json, which gets written whatever
+            // transcript.json holds - so unlike a refusal, this one is not stranded by a file nobody
+            // could read, and filing it with the population that is would misreport both.
+            if case .permanentlyUnavailable = failure {
+                counts.permanentlyUnavailable += 1
+                return
+            }
+
             // A refusal that lands on a file which did not decode is deliberately not written, so
             // this video will be asked about again on every run from here on. Counted apart, because
             // that set is the only one here that does not settle by itself - and the silence around
@@ -505,6 +735,7 @@ struct ActivityCommand: AsyncParsableCommand {
             switch failure {
             case .noTracksListed: counts.noTracksListed += 1
             case .listedTracksWereEmpty: counts.listedTracksWereEmpty += 1
+            case .permanentlyUnavailable: break  // returned above, before the unreadable check
             case .unresolved: break
             }
         }
@@ -521,6 +752,18 @@ struct ActivityCommand: AsyncParsableCommand {
                 return
             }
             counts.duringCombinedFetch += 1
+        }
+
+        /// A video this run never asked about, because an earlier run recorded that YouTube will not
+        /// serve it.
+        ///
+        /// Counted apart from the videos recorded this run, and the separation is what makes the
+        /// other count usable. Newly-recorded is the tripwire; once a bad run has written thousands
+        /// of markers, every run after it skips those same thousands, and folding the two together
+        /// would bury each day's spike under a permanent baseline. Reported because it is also the
+        /// evidence the queue is draining rather than silently doing nothing.
+        mutating func recordSkippedAsUnavailable() {
+            counts.skippedAsUnavailable += 1
         }
 
         /// What has been recorded since this was last asked.
