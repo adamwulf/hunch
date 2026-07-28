@@ -617,7 +617,11 @@ struct ActivityCommand: AsyncParsableCommand {
         /// YouTube's playability status, verbatim - "ERROR" for a deleted video, "UNPLAYABLE" for a
         /// members-only one.
         let status: String
-        /// YouTube's prose, for whoever opens the folder. Absent for the statuses that ship without one.
+        /// YouTube's prose, for whoever opens the folder, and absent for the statuses that ship
+        /// without one. Frozen with the verdict the same way `recordedAt` below is: a recheck finding
+        /// the same status does not rewrite this file, so this stays the wording recorded at the time
+        /// even if YouTube has since reworded it. Nothing decides on it, which is what makes that
+        /// safe - see `saysTheSameAs`.
         let reason: String?
         /// When the verdict this file records was first written down. Runs that skip the video never
         /// touch it, and neither does a --recheck-unavailable run that finds the same status again -
