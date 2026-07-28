@@ -54,8 +54,9 @@ struct ActivityCommand: AsyncParsableCommand {
     /// A video recorded as permanently unavailable is skipped without a request, which is right for
     /// as long as YouTube keeps saying it is gone. This is the way back: set it when there is reason
     /// to think that has changed - a private video made public again, a members-only video opened up
-    /// - and every video with a marker is asked about again, at one request each. Videos without a
-    /// marker are untouched by it, so the flag costs nothing for the rest of the corpus.
+    /// - and every video with a marker is asked about again. Two requests each, or one where a
+    /// transcript is already cached. Videos without a marker are untouched by it, so the flag costs
+    /// nothing for the rest of the corpus.
     ///
     /// The marker needs this for the same reason an empty transcript.json does. A permanent answer
     /// written down with no expiry and no way to clear it is not a cache, it is a verdict, and this
@@ -339,11 +340,6 @@ struct ActivityCommand: AsyncParsableCommand {
                 .replacingOccurrences(of: "\t", with: "\\t")
             let stringsContent = "\"\(video.id)\" = \"\(escapedName)\";"
 
-            // Write all data to disk
-            // Written atomically because a run across 36,000 folders gets interrupted, and a half
-            // written file here is not merely lost: transcript.json that does not decode used to be
-            // indistinguishable from one that was never there, and info.json that does not decode
-            // buys the video another fetch
             // Its own artifact, beside info.json rather than a stand-in for it, and written whatever
             // transcript.json holds - because this is the file that actually settles the video. It is
             // read before any fetch branch, so the next run costs zero requests even for a video
@@ -375,11 +371,18 @@ struct ActivityCommand: AsyncParsableCommand {
                     }
                 } catch {
                     // Worth saying out loud, because the video keeps being skipped until the file
-                    // goes - but not worth abandoning the other 37,000 folders over.
+                    // goes - but not worth abandoning the other 37,000 folders over. Naming the
+                    // recovery here is the difference between a warning and an instruction.
                     print("Failed to clear unavailable.json for \(video.id): \(error)")
+                    print("  delete it by hand, or re-run with --recheck-unavailable")
                 }
             }
 
+            // Write all data to disk
+            // Written atomically because a run across 36,000 folders gets interrupted, and a half
+            // written file here is not merely lost: transcript.json that does not decode used to be
+            // indistinguishable from one that was never there, and info.json that does not decode
+            // buys the video another fetch
             try encoder.encode(video.activities).write(to: activitiesURL, options: .atomic)
             if let finalTranscript = finalTranscript {
                 try encoder.encode(finalTranscript).write(to: transcriptURL, options: .atomic)
@@ -616,10 +619,12 @@ struct ActivityCommand: AsyncParsableCommand {
         let status: String
         /// YouTube's prose, for whoever opens the folder. Absent for the statuses that ship without one.
         let reason: String?
-        /// When this file was written. Runs that skip the video never touch it, and a
-        /// --recheck-unavailable run that finds the video still gone replaces it, so it reads as when
-        /// the fact was last confirmed. Recorded rather than derived because a future expiry policy
-        /// would need it and no later run can learn it after the fact.
+        /// When the verdict this file records was first written down. Runs that skip the video never
+        /// touch it, and neither does a --recheck-unavailable run that finds the same status again -
+        /// that is what `saysTheSameAs` is for, so a batch of markers stays scoped to the run that
+        /// wrote them. Only a status that changed rewrites the file, and the date with it, because
+        /// then it is a different verdict. Recorded rather than derived because a future expiry
+        /// policy would need it and no later run can learn it after the fact.
         let recordedAt: Date
 
         /// The failure this marker stands for, so a run that skips the video reaches the same
@@ -628,14 +633,21 @@ struct ActivityCommand: AsyncParsableCommand {
             return .permanentlyUnavailable(status: status, reason: reason)
         }
 
-        /// Whether this says the same thing as one already on disk, ignoring when it was written.
+        /// Whether this records the same verdict as one already on disk.
         ///
-        /// The date is excluded on purpose: it is what tells a re-confirmation from something new,
-        /// so comparing it would make every marker look new and rewrite the field that answers the
-        /// question.
+        /// The status, and only the status. The date is excluded because it is what tells a
+        /// re-confirmation from something new, so comparing it would make every marker look new and
+        /// rewrite the one field that answers the question. The reason is excluded because it is
+        /// YouTube's prose: it gets reworded, localized, and renamed as membership tiers are renamed,
+        /// and none of that is a change in the verdict. Comparing it would let a copy edit on
+        /// YouTube's side restamp recordedAt across the whole corpus and report every marker as newly
+        /// written off - the one shape this tally reserves for a misclassified ban.
+        ///
+        /// Consistent with `classifyFailure`, which decides permanence from the status alone. What
+        /// counts as the same verdict has to be what the verdict was made from.
         func saysTheSameAs(_ other: UnavailableVideo?) -> Bool {
             guard let other = other else { return false }
-            return status == other.status && reason == other.reason
+            return status == other.status
         }
     }
 
@@ -665,6 +677,17 @@ struct ActivityCommand: AsyncParsableCommand {
         return .gone(UnavailableVideo(status: status, reason: reason, recordedAt: now))
     }
 
+    /// Whether this outcome only re-confirms what is already recorded.
+    ///
+    /// The same test the marker write uses, so the count and the file cannot disagree about whether
+    /// the run learned anything. A recheck that finds thousands of videos still gone must not report
+    /// thousands of write-offs: that is the shape a misclassified ban would take, and a flag whose
+    /// whole purpose is to look for videos that came back would raise it on every use.
+    static func isReconfirmation(_ outcome: UnavailabilityOutcome, recorded: UnavailableVideo?) -> Bool {
+        guard case .gone(let marker) = outcome else { return false }
+        return marker.saysTheSameAs(recorded)
+    }
+
     /// What `unavailable.json` currently holds, or nil where nothing readable is there.
     ///
     /// A file that does not decode reads the same as one that was never written, which is the
@@ -687,8 +710,9 @@ struct ActivityCommand: AsyncParsableCommand {
     /// could never be re-confirmed or cleared - a recorded verdict with no way to appeal it, which is
     /// exactly what the flag exists to prevent.
     ///
-    /// Scoped to videos that have a marker, so the flag spends one request on each of those and
-    /// nothing at all on the rest of the corpus.
+    /// Scoped to videos that have a marker. Since a written-off video normally has no transcript.json
+    /// either, forgetting the info puts it on the combined fetch at two requests; a folder that does
+    /// still hold a transcript costs one. Nothing at all is spent on the rest of the corpus.
     static func infoToBuildOn(cached: VideoInfo?, recorded: UnavailableVideo?, recheck: Bool) -> VideoInfo? {
         return recheck && recorded != nil ? nil : cached
     }
@@ -774,7 +798,7 @@ struct ActivityCommand: AsyncParsableCommand {
                 // Collapsed to a phrase when there were none. Once markers exist, nearly every block
                 // skips a video and so has something to report, and spelling out four zeroes each
                 // time buries the number this whole tally exists to make jump out.
-                let refusals = recorded + blockedByUnreadableFile > 0
+                let refusals = (recorded + blockedByUnreadableFile) > 0
                     ? "recorded \(recorded) transcript refusals\(qualifier): \(noTracksListed) with no tracks listed, "
                         + "\(listedTracksWereEmpty) whose tracks came back empty, "
                         + "\(duringCombinedFetch) during a combined fetch"
@@ -809,7 +833,10 @@ struct ActivityCommand: AsyncParsableCommand {
         /// permanently unavailable video is counted against unavailable.json instead - it is written
         /// whatever the transcript cache holds, so this method takes `reconfirming` from the same
         /// test the marker write uses rather than deriving it from `cached`.
-        mutating func record(_ failure: FetchFailure, cached: CachedTranscript, reconfirming: Bool = false) {
+        ///
+        /// Undefaulted on purpose. A defaulted flag is the one way a future call site could quietly
+        /// file a re-confirmation as news and inflate the count this tally exists to make alarming.
+        mutating func record(_ failure: FetchFailure, cached: CachedTranscript, reconfirming: Bool) {
             guard !isUnresolved(failure) else { return }
 
             // Counted ahead of the unreadable check, and deliberately not subject to it. What settles
@@ -925,22 +952,15 @@ struct ActivityCommand: AsyncParsableCommand {
         return RenderedTranscript(lines: [], source: fetched == nil ? .unfetched : .knownEmpty)
     }
 
-    /// Whether this outcome only re-confirms what is already recorded.
-    ///
-    /// The same test the marker write uses, so the count and the file cannot disagree about whether
-    /// the run learned anything. A recheck that finds thousands of videos still gone must not report
-    /// thousands of write-offs: that is the shape a misclassified ban would take, and a flag whose
-    /// whole purpose is to look for videos that came back would raise it on every use.
-    static func isReconfirmation(_ outcome: UnavailabilityOutcome, recorded: UnavailableVideo?) -> Bool {
-        guard case .gone(let marker) = outcome else { return false }
-        return marker.saysTheSameAs(recorded)
-    }
-
     /// Whether `unavailable.json` will be there once this iteration's writes have run.
     ///
     /// Described against the file rather than against the attempt, for the same reason the transcript
     /// beside it is: content.md is rewritten every run and has to describe the folder it sits in. A
     /// failure that learned nothing leaves whatever was already recorded standing.
+    ///
+    /// One path can still disagree with disk: a removal that failed leaves the marker there while
+    /// this reports the video is fine. That is the stale marker's problem rather than this one's, and
+    /// the loop prints it along with how to clear it.
     static func isUnavailableAfterRun(_ outcome: UnavailabilityOutcome, recorded: UnavailableVideo?) -> Bool {
         switch outcome {
         case .gone: return true

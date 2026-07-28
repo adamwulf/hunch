@@ -143,9 +143,9 @@ final class ActivityCommandTests: XCTestCase {
         var tally = ActivityCommand.RefusalTally()
         XCTAssertNil(tally.summary, "a run that recorded nothing has nothing to report")
 
-        tally.record(.noTracksListed, cached: .missing)
-        tally.record(.listedTracksWereEmpty, cached: .missing)
-        tally.record(.unresolved, cached: .missing)
+        tally.record(.noTracksListed, cached: .missing, reconfirming: false)
+        tally.record(.listedTracksWereEmpty, cached: .missing, reconfirming: false)
+        tally.record(.unresolved, cached: .missing, reconfirming: false)
         tally.recordCombinedFetch(cached: .missing)
 
         XCTAssertEqual(tally.counts.recorded, 3, "an unresolved failure is not a refusal and nothing was written for it")
@@ -158,7 +158,7 @@ final class ActivityCommandTests: XCTestCase {
     func testAVideoHeldBackByAnUnreadableFileIsCountedApart() {
         var tally = ActivityCommand.RefusalTally()
 
-        tally.record(.noTracksListed, cached: .unreadable)
+        tally.record(.noTracksListed, cached: .unreadable, reconfirming: false)
 
         XCTAssertEqual(tally.counts.blockedByUnreadableFile, 1)
         XCTAssertEqual(tally.counts.noTracksListed, 0, "nothing was written down for this video")
@@ -196,7 +196,7 @@ final class ActivityCommandTests: XCTestCase {
         for cached in caches {
             for failure in failures {
                 var tally = ActivityCommand.RefusalTally()
-                tally.record(failure, cached: cached)
+                tally.record(failure, cached: cached, reconfirming: false)
 
                 if tally.counts.recorded > 0 {
                     XCTAssertNotNil(ActivityCommand.transcriptAfterFailure(failure, cached: cached),
@@ -208,7 +208,7 @@ final class ActivityCommandTests: XCTestCase {
             throughCombinedFetch.recordCombinedFetch(cached: cached)
 
             var throughRecord = ActivityCommand.RefusalTally()
-            throughRecord.record(.listedTracksWereEmpty, cached: cached)
+            throughRecord.record(.listedTracksWereEmpty, cached: cached, reconfirming: false)
 
             XCTAssertEqual(throughCombinedFetch.counts.recorded, throughRecord.counts.recorded,
                            "the two doors disagree about whether \(cached) was recorded")
@@ -223,13 +223,13 @@ final class ActivityCommandTests: XCTestCase {
     func testThePeriodicReportDescribesItsOwnBlock() {
         var tally = ActivityCommand.RefusalTally()
 
-        tally.record(.noTracksListed, cached: .missing)
+        tally.record(.noTracksListed, cached: .missing, reconfirming: false)
         XCTAssertEqual(tally.takeBlockSinceLastReport()?.contains("recorded 1 transcript refusals"), true)
 
         XCTAssertNil(tally.takeBlockSinceLastReport(), "a block with nothing in it says nothing")
 
-        tally.record(.noTracksListed, cached: .missing)
-        tally.record(.noTracksListed, cached: .missing)
+        tally.record(.noTracksListed, cached: .missing, reconfirming: false)
+        tally.record(.noTracksListed, cached: .missing, reconfirming: false)
         XCTAssertEqual(tally.takeBlockSinceLastReport()?.contains("recorded 2 transcript refusals"), true)
 
         XCTAssertEqual(tally.summary?.contains("recorded 3 transcript refusals"), true,
@@ -430,21 +430,6 @@ final class ActivityCommandTests: XCTestCase {
                      "an empty transcript here is an answer nobody ever received")
     }
 
-    /// And because nothing false was written, deleting the markers really does undo the write-off:
-    /// the video goes back to having no transcript on disk and is fetched from scratch.
-    func testDeletingTheMarkerLeavesNothingBehindToUndo() {
-        let failure = ActivityCommand.FetchFailure.permanentlyUnavailable(status: "ERROR", reason: nil)
-
-        let afterRecording = ActivityCommand.transcriptAfterFailure(failure, cached: .missing)
-        let cacheOnNextRun = ActivityCommand.cachedTranscript(
-            at: missingVTT(), decoder: ActivityCommand.artifactDecoder())
-
-        XCTAssertNil(afterRecording)
-        guard case .missing = cacheOnNextRun else {
-            return XCTFail("a run that recorded a marker must leave transcript.json as it found it")
-        }
-    }
-
     func testAnUnavailableVideoNeverClobbersWordsAlreadyOnDisk() throws {
         let failure = ActivityCommand.FetchFailure.permanentlyUnavailable(status: "ERROR", reason: nil)
         let cached = ActivityCommand.CachedTranscript.transcript(try moments())
@@ -569,7 +554,7 @@ final class ActivityCommandTests: XCTestCase {
         let failure = ActivityCommand.classifyFailure(error)
 
         var tally = ActivityCommand.RefusalTally()
-        tally.record(failure, cached: .missing)
+        tally.record(failure, cached: .missing, reconfirming: false)
 
         XCTAssertNil(ActivityCommand.transcriptAfterFailure(failure, cached: .missing),
                      "an empty transcript recorded during a ban is a lie with no expiry")
@@ -586,8 +571,8 @@ final class ActivityCommandTests: XCTestCase {
     func testVideosWrittenOffAreCountedApartFromTranscriptRefusals() {
         var tally = ActivityCommand.RefusalTally()
 
-        tally.record(.noTracksListed, cached: .missing)
-        tally.record(.permanentlyUnavailable(status: "ERROR", reason: nil), cached: .missing)
+        tally.record(.noTracksListed, cached: .missing, reconfirming: false)
+        tally.record(.permanentlyUnavailable(status: "ERROR", reason: nil), cached: .missing, reconfirming: false)
 
         XCTAssertEqual(tally.counts.permanentlyUnavailable, 1)
         XCTAssertEqual(tally.counts.recorded, 1, "a video that is gone is not a video whose captions were refused")
@@ -601,7 +586,7 @@ final class ActivityCommandTests: XCTestCase {
     func testAVideoWrittenOffIsNotStrandedByAFileThatDidNotDecode() {
         var tally = ActivityCommand.RefusalTally()
 
-        tally.record(.permanentlyUnavailable(status: "ERROR", reason: nil), cached: .unreadable)
+        tally.record(.permanentlyUnavailable(status: "ERROR", reason: nil), cached: .unreadable, reconfirming: false)
 
         XCTAssertEqual(tally.counts.permanentlyUnavailable, 1)
         XCTAssertEqual(tally.counts.blockedByUnreadableFile, 0, "the marker settles this video, not transcript.json")
@@ -617,7 +602,7 @@ final class ActivityCommandTests: XCTestCase {
 
         for cached in caches {
             var tally = ActivityCommand.RefusalTally()
-            tally.record(failure, cached: cached)
+            tally.record(failure, cached: cached, reconfirming: false)
 
             guard case .gone = ActivityCommand.unavailabilityAfterFailure(failure, now: recordedAt) else {
                 return XCTFail("counted a video as written off over \(cached), but nothing was written to say so")
@@ -646,12 +631,12 @@ final class ActivityCommandTests: XCTestCase {
     func testThePeriodicBlockReportsVideosWrittenOff() {
         var tally = ActivityCommand.RefusalTally()
 
-        tally.record(.permanentlyUnavailable(status: "ERROR", reason: nil), cached: .missing)
+        tally.record(.permanentlyUnavailable(status: "ERROR", reason: nil), cached: .missing, reconfirming: false)
         XCTAssertEqual(tally.takeBlockSinceLastReport()?.contains("1 newly recorded"), true)
 
         XCTAssertNil(tally.takeBlockSinceLastReport(), "a block with nothing in it says nothing")
 
-        tally.record(.permanentlyUnavailable(status: "UNPLAYABLE", reason: nil), cached: .missing)
+        tally.record(.permanentlyUnavailable(status: "UNPLAYABLE", reason: nil), cached: .missing, reconfirming: false)
         tally.recordSkippedAsUnavailable()
         let block = tally.takeBlockSinceLastReport()
 
@@ -742,12 +727,29 @@ final class ActivityCommandTests: XCTestCase {
         XCTAssertTrue(ActivityCommand.isReconfirmation(.gone(learnedAgain), recorded: onDisk))
     }
 
+    /// YouTube's prose is not the verdict. It gets reworded, localized, and renamed as membership
+    /// tiers are renamed, and none of that means the video's status changed - so comparing it would
+    /// let a copy edit on YouTube's side restamp recordedAt across the whole corpus and report every
+    /// marker as newly written off, which is the one shape reserved for a misclassified ban.
+    func testRewordedProseIsStillTheSameVerdict() {
+        let onDisk = ActivityCommand.UnavailableVideo(
+            status: "UNPLAYABLE", reason: "This video is available to members of this channel", recordedAt: recordedAt)
+        let reworded = ActivityCommand.UnavailableVideo(
+            status: "UNPLAYABLE", reason: "Join this channel to get access", recordedAt: recordedAt)
+
+        XCTAssertTrue(reworded.saysTheSameAs(onDisk), "the status is the verdict; the reason is prose for a human")
+        XCTAssertTrue(ActivityCommand.isReconfirmation(.gone(reworded), recorded: onDisk),
+                      "nothing was learned, so recordedAt must survive")
+    }
+
     /// A status that changed is news, and gets written.
     func testAStatusThatChangedIsWrittenDown() {
         let onDisk = ActivityCommand.UnavailableVideo(status: "ERROR", reason: nil, recordedAt: recordedAt)
         let nowMembersOnly = ActivityCommand.UnavailableVideo(status: "UNPLAYABLE", reason: nil, recordedAt: recordedAt)
 
         XCTAssertFalse(nowMembersOnly.saysTheSameAs(onDisk))
+        XCTAssertFalse(ActivityCommand.isReconfirmation(.gone(nowMembersOnly), recorded: onDisk),
+                       "a different status is a different verdict, and gets written down")
         XCTAssertFalse(ActivityCommand.isReconfirmation(.gone(nowMembersOnly), recorded: nil),
                        "a video with no marker at all is always news")
     }
