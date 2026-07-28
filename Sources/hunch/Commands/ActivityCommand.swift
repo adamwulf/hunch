@@ -54,7 +54,8 @@ struct ActivityCommand: AsyncParsableCommand {
     /// A video recorded as permanently unavailable is skipped without a request, which is right for
     /// as long as YouTube keeps saying it is gone. This is the way back: set it when there is reason
     /// to think that has changed - a private video made public again, a members-only video opened up
-    /// - and every video with a marker is asked about again.
+    /// - and every video with a marker is asked about again, at one request each. Videos without a
+    /// marker are untouched by it, so the flag costs nothing for the rest of the corpus.
     ///
     /// The marker needs this for the same reason an empty transcript.json does. A permanent answer
     /// written down with no expiry and no way to clear it is not a cache, it is a verdict, and this
@@ -85,12 +86,8 @@ struct ActivityCommand: AsyncParsableCommand {
         print("Found \(sortedVideos.count) videos to process")
 
         // Configure encoder/decoder
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        let encoder = ActivityCommand.artifactEncoder()
+        let decoder = ActivityCommand.artifactDecoder()
 
         // Configure date formatter for progress
         let progressDateFormatter = DateFormatter()
@@ -153,7 +150,7 @@ struct ActivityCommand: AsyncParsableCommand {
             var downloadedAssets: [String: FileDownloader.DownloadedAsset] = [:]
 
             // Load cached data
-            let info: VideoInfo? = {
+            let infoOnDisk: VideoInfo? = {
                 guard let data = try? Data(contentsOf: infoURL) else { return nil }
                 return try? decoder.decode(VideoInfo.self, from: data)
             }()
@@ -168,6 +165,8 @@ struct ActivityCommand: AsyncParsableCommand {
             // to keep a video YouTube has already said is gone from reaching them at all.
             let recorded = ActivityCommand.recordedUnavailability(at: unavailableURL, decoder: decoder)
             let knownGone = ActivityCommand.unavailabilityToTrust(recorded: recorded, recheck: recheckUnavailable)
+            let info = ActivityCommand.infoToBuildOn(cached: infoOnDisk, recorded: recorded,
+                                                     recheck: recheckUnavailable)
 
             // Process data with exponential backoff on failure
             let finalInfo: VideoInfo?
@@ -178,7 +177,7 @@ struct ActivityCommand: AsyncParsableCommand {
             // learned", which is the honest answer for every path that never asks.
             var availability = UnavailabilityOutcome.unchanged
 
-            if let knownGone {
+            if let knownGone = knownGone {
                 // Zero requests, which is the entire point. These videos used to spend two requests
                 // apiece on every run, fail identically, and write down nothing that would stop the
                 // next run repeating it.
@@ -188,7 +187,7 @@ struct ActivityCommand: AsyncParsableCommand {
                 // video with no page left to serve them from; --recheck-unavailable is the flag that
                 // reopens this one.
                 refusals.recordSkippedAsUnavailable()
-                finalInfo = info
+                finalInfo = infoOnDisk
                 // Asked of the same rule the recording run used, from the status it recorded, so a
                 // skipped run leaves disk exactly as that run did rather than by a second rule that
                 // could drift from it.
@@ -233,9 +232,9 @@ struct ActivityCommand: AsyncParsableCommand {
                         print("  recovered")
                         availability = .available
                     case (.some(let cachedInfo), .some(let cachedTranscript)):
-                        // Nothing was asked, so nothing was learned. Reachable with a marker on disk only
-                        // under --recheck-unavailable, and answering "available" for a video this run
-                        // never contacted would delete the marker on the strength of two cached files.
+                        // Nothing was asked, so nothing was learned. A marker cannot be sitting here
+                        // unresolved: without --recheck-unavailable it short-circuits above, and with
+                        // it the cached info is forgotten and the video takes a fetch branch instead.
                         finalInfo = cachedInfo
                         finalTranscript = cachedTranscript
                     }
@@ -252,10 +251,10 @@ struct ActivityCommand: AsyncParsableCommand {
                         print("Error processing \(video.id): \(error)")
                     }
 
-                    // Said once per video, ever: the marker written below means no later run reaches here
-                    // for it. Naming YouTube's own status is what makes the allowlist auditable from a run
-                    // log afterwards, which matters for the one decision here that stops a video being
-                    // asked about at all.
+                    // Said once per video, unless --recheck-unavailable asks again: the marker written
+                    // below means no ordinary run reaches here for it. Naming YouTube's own status is
+                    // what makes the allowlist auditable from a run log afterwards, which matters for
+                    // the one decision here that stops a video being asked about at all.
                     if case .permanentlyUnavailable(let status, _) = failure {
                         print("Unavailable \(video.id): \(status)")
                     }
@@ -266,10 +265,15 @@ struct ActivityCommand: AsyncParsableCommand {
                         try await Task.sleep(for: .seconds(5))
                     }
 
-                    finalInfo = info
-                    refusals.record(failure, cached: cached)
+                    // What is on disk, not what the fetch was told to build on. Under
+                    // --recheck-unavailable those differ, and writing the forgotten value back would
+                    // rewrite content.md without the title and channel the folder already had.
+                    finalInfo = infoOnDisk
                     finalTranscript = ActivityCommand.transcriptAfterFailure(failure, cached: cached)
                     availability = ActivityCommand.unavailabilityAfterFailure(failure, now: Date())
+                    refusals.record(failure, cached: cached,
+                                    reconfirming: ActivityCommand.isReconfirmation(availability,
+                                                                                   recorded: recorded))
                 }
             }
 
@@ -339,29 +343,48 @@ struct ActivityCommand: AsyncParsableCommand {
             // written file here is not merely lost: transcript.json that does not decode used to be
             // indistinguishable from one that was never there, and info.json that does not decode
             // buys the video another fetch
+            // Its own artifact, beside info.json rather than a stand-in for it, and written whatever
+            // transcript.json holds - because this is the file that actually settles the video. It is
+            // read before any fetch branch, so the next run costs zero requests even for a video
+            // whose unreadable transcript.json kept a refusal from being recorded.
+            //
+            // Ahead of the artifacts below, because it is the only write in this loop whose
+            // interruption changes the answer rather than merely losing it. Clearing it last meant a
+            // run stopped between the fresh info.json and the removal left a live video holding
+            // complete data next to a marker saying never ask again - and the skip branch never
+            // revisits a marker, so that state was terminal. Written first, an interruption leaves
+            // the video to be fetched again, which is the direction to fail in.
+            switch availability {
+            case .unchanged:
+                break
+            case .gone(let marker):
+                // Only when it is news. A recheck that finds the video still gone learned nothing,
+                // and restamping recordedAt would destroy the one field that scopes a batch of
+                // markers to the run that wrote them - by way of the very command an operator would
+                // use to investigate a batch they suspect is wrong.
+                if !marker.saysTheSameAs(recorded) {
+                    try encoder.encode(marker).write(to: unavailableURL, options: .atomic)
+                }
+            case .available:
+                // The video answered, so anything recorded for it is out of date. Leaving a stale
+                // marker would go on skipping a video that is back.
+                do {
+                    if fm.fileExists(atPath: unavailableURL.path) {
+                        try fm.removeItem(at: unavailableURL)
+                    }
+                } catch {
+                    // Worth saying out loud, because the video keeps being skipped until the file
+                    // goes - but not worth abandoning the other 37,000 folders over.
+                    print("Failed to clear unavailable.json for \(video.id): \(error)")
+                }
+            }
+
             try encoder.encode(video.activities).write(to: activitiesURL, options: .atomic)
             if let finalTranscript = finalTranscript {
                 try encoder.encode(finalTranscript).write(to: transcriptURL, options: .atomic)
             }
             if let finalInfo = finalInfo {
                 try encoder.encode(finalInfo).write(to: infoURL, options: .atomic)
-            }
-
-            // Its own artifact, beside info.json rather than a stand-in for it, and written whatever
-            // transcript.json holds - because this is the file that actually settles the video. It is
-            // read before any fetch branch, so the next run costs zero requests even for a video
-            // whose unreadable transcript.json kept a refusal from being recorded.
-            switch availability {
-            case .unchanged:
-                break
-            case .gone(let marker):
-                try encoder.encode(marker).write(to: unavailableURL, options: .atomic)
-            case .available:
-                // The video answered, so anything recorded for it is out of date. Leaving a stale
-                // marker would go on skipping a video that is back.
-                if fm.fileExists(atPath: unavailableURL.path) {
-                    try fm.removeItem(at: unavailableURL)
-                }
             }
             try stringsContent.write(to: stringsURL, atomically: true, encoding: .utf8)
 
@@ -370,8 +393,10 @@ struct ActivityCommand: AsyncParsableCommand {
             // already recorded as empty is deliberately read as nil to force another attempt, and an
             // attempt that fails writes nothing - so the empty file is still there, and saying
             // otherwise would have the frontmatter contradict the folder it sits in.
-            let renderedTranscript = ActivityCommand.renderedTranscript(fetched: finalTranscript ?? cached.moments,
-                                                                        vttAt: vttURL)
+            let renderedTranscript = ActivityCommand.renderedTranscript(
+                fetched: finalTranscript ?? cached.moments,
+                vttAt: vttURL,
+                unavailable: ActivityCommand.isUnavailableAfterRun(availability, recorded: recorded))
 
             try writeMarkdown(video: video, info: finalInfo, transcript: renderedTranscript,
                               downloadedAssets: downloadedAssets, to: videoURL.path)
@@ -412,6 +437,25 @@ struct ActivityCommand: AsyncParsableCommand {
         defer { pacer.recordOutcome(rateLimits: limiter.rateLimitCount - rateLimitsBefore) }
 
         return try await limiter.withBackoff(onBan: .waitItOut, operation)
+    }
+
+    /// The pair every artifact in a video folder is written and read with.
+    ///
+    /// Hoisted out of `run()` so the tests can use it rather than build a matching one. A test with
+    /// its own copy passes under any self-consistent change to this configuration - and a change to
+    /// the date strategy is exactly that: self-consistent, silent, and enough to orphan every marker
+    /// already on disk.
+    static func artifactEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+
+    static func artifactDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
     }
 
     /// What transcript.json currently holds.
@@ -524,19 +568,27 @@ struct ActivityCommand: AsyncParsableCommand {
     /// describes a bad moment. The one that could start working again is `listedTracksWereEmpty`, and
     /// --refetch-empty-transcripts is what clears it when it does.
     ///
-    /// A permanently unavailable video reaches the same rule from a different door and passes it for
-    /// the same reason, not by accident. The test here has never been "are the captions gone" but
-    /// "does asking again change anything", and for a video YouTube answers with ERROR or UNPLAYABLE
-    /// the answer is no - there is no watchable page left to serve captions from. Only the statuses
-    /// established as permanent arrive as this failure at all: `LOGIN_REQUIRED` during a ban is
-    /// classified `.unresolved` and leaves the cache untouched, exactly like a dropped connection.
+    /// A permanently unavailable video is the one that looks like it belongs here and does not. It
+    /// passes the test above - there is no watchable page left, so asking again changes nothing - but
+    /// an empty transcript.json is not only a note that asking is pointless, it is a record of what
+    /// YouTube answered about captions. Nothing was ever asked: the kit throws `videoUnavailable`
+    /// from the info parse, before a single caption track is fetched. Writing `[]` there would put a
+    /// false answer in the corpus, and a specific one - content.md renders it as
+    /// `transcriptSource: none`, which is documented as the population worth pointing yt-dlp at, and
+    /// yt-dlp cannot fetch a deleted video either.
+    ///
+    /// So the cache is left exactly as it was and unavailable.json carries the fact instead. That is
+    /// also what makes the marker recoverable: deleting the markers really does undo the write-off,
+    /// rather than leaving behind an answer no later run will ever revisit. Only the statuses
+    /// established as permanent arrive as this failure at all - `LOGIN_REQUIRED` during a ban is
+    /// classified `.unresolved`, and leaves the cache untouched for a different reason.
     ///
     /// Every other failure leaves the cache exactly as it was: a refusal recorded from a dropped
     /// connection would be a lie with no expiry. So does a file that did not decode - overwriting
     /// that would destroy a transcript rather than record the absence of one.
     static func transcriptAfterFailure(_ failure: FetchFailure, cached: CachedTranscript) -> [TranscriptMoment]? {
         switch (failure, cached) {
-        case (.unresolved, _), (_, .unreadable):
+        case (.unresolved, _), (.permanentlyUnavailable, _), (_, .unreadable):
             return cached.moments
         case (_, .missing):
             return []
@@ -573,6 +625,16 @@ struct ActivityCommand: AsyncParsableCommand {
         /// decisions about it as the run that recorded it.
         var asFailure: FetchFailure {
             return .permanentlyUnavailable(status: status, reason: reason)
+        }
+
+        /// Whether this says the same thing as one already on disk, ignoring when it was written.
+        ///
+        /// The date is excluded on purpose: it is what tells a re-confirmation from something new,
+        /// so comparing it would make every marker look new and rewrite the field that answers the
+        /// question.
+        func saysTheSameAs(_ other: UnavailableVideo?) -> Bool {
+            guard let other = other else { return false }
+            return status == other.status && reason == other.reason
         }
     }
 
@@ -612,6 +674,22 @@ struct ActivityCommand: AsyncParsableCommand {
     static func recordedUnavailability(at url: URL, decoder: JSONDecoder) -> UnavailableVideo? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? decoder.decode(UnavailableVideo.self, from: data)
+    }
+
+    /// What the fetch should treat as already known about the video itself.
+    ///
+    /// Normally whatever info.json holds. Under --recheck-unavailable a video that has a marker
+    /// deliberately forgets it, which is the same move `transcriptToBuildOn` makes for a recorded
+    /// refusal and is made for the same reason: forgetting the marker alone only removes the
+    /// short-circuit, and the branches below still key off what is cached. Without this, a marked
+    /// video holding both info.json and transcript.json would never reach a fetch, so its marker
+    /// could never be re-confirmed or cleared - a recorded verdict with no way to appeal it, which is
+    /// exactly what the flag exists to prevent.
+    ///
+    /// Scoped to videos that have a marker, so the flag spends one request on each of those and
+    /// nothing at all on the rest of the corpus.
+    static func infoToBuildOn(cached: VideoInfo?, recorded: UnavailableVideo?, recheck: Bool) -> VideoInfo? {
+        return recheck && recorded != nil ? nil : cached
     }
 
     /// What the fetch should treat as already settled.
@@ -655,6 +733,7 @@ struct ActivityCommand: AsyncParsableCommand {
             var duringCombinedFetch = 0
             var blockedByUnreadableFile = 0
             var permanentlyUnavailable = 0
+            var reconfirmedUnavailable = 0
             var skippedAsUnavailable = 0
 
             /// Refusals that reached disk. Deliberately does not include the ones held back, since
@@ -670,7 +749,8 @@ struct ActivityCommand: AsyncParsableCommand {
             }
 
             var total: Int {
-                return recorded + blockedByUnreadableFile + permanentlyUnavailable + skippedAsUnavailable
+                return recorded + blockedByUnreadableFile + permanentlyUnavailable
+                    + reconfirmedUnavailable + skippedAsUnavailable
             }
 
             static func - (lhs: Counts, rhs: Counts) -> Counts {
@@ -679,6 +759,7 @@ struct ActivityCommand: AsyncParsableCommand {
                               duringCombinedFetch: lhs.duringCombinedFetch - rhs.duringCombinedFetch,
                               blockedByUnreadableFile: lhs.blockedByUnreadableFile - rhs.blockedByUnreadableFile,
                               permanentlyUnavailable: lhs.permanentlyUnavailable - rhs.permanentlyUnavailable,
+                              reconfirmedUnavailable: lhs.reconfirmedUnavailable - rhs.reconfirmedUnavailable,
                               skippedAsUnavailable: lhs.skippedAsUnavailable - rhs.skippedAsUnavailable)
             }
 
@@ -689,18 +770,29 @@ struct ActivityCommand: AsyncParsableCommand {
                     ? "; \(blockedByUnreadableFile) more held back by a file that did not decode, and so asked again every run"
                     : ""
 
+                // Collapsed to a phrase when there were none. Once markers exist, nearly every block
+                // skips a video and so has something to report, and spelling out four zeroes each
+                // time buries the number this whole tally exists to make jump out.
+                let refusals = recorded + blockedByUnreadableFile > 0
+                    ? "recorded \(recorded) transcript refusals\(qualifier): \(noTracksListed) with no tracks listed, "
+                        + "\(listedTracksWereEmpty) whose tracks came back empty, "
+                        + "\(duringCombinedFetch) during a combined fetch"
+                        + heldBack
+                    : "recorded no transcript refusals\(qualifier)"
+
                 let writtenOff = permanentlyUnavailable > 0
-                    ? "; \(permanentlyUnavailable) videos newly recorded as permanently unavailable"
+                    ? "; \(permanentlyUnavailable) newly recorded as permanently unavailable"
+                    : ""
+
+                let reconfirmed = reconfirmedUnavailable > 0
+                    ? "; \(reconfirmedUnavailable) confirmed still unavailable"
                     : ""
 
                 let skipped = skippedAsUnavailable > 0
                     ? "; \(skippedAsUnavailable) skipped as already recorded unavailable"
                     : ""
 
-                return "recorded \(recorded) transcript refusals\(qualifier): \(noTracksListed) with no tracks listed, "
-                    + "\(listedTracksWereEmpty) whose tracks came back empty, "
-                    + "\(duringCombinedFetch) during a combined fetch"
-                    + heldBack + writtenOff + skipped
+                return refusals + writtenOff + reconfirmed + skipped
             }
         }
 
@@ -711,7 +803,12 @@ struct ActivityCommand: AsyncParsableCommand {
 
         /// Derives the same decision `transcriptAfterFailure` makes, from the same two inputs, so
         /// that what is counted cannot drift from what is written.
-        mutating func record(_ failure: FetchFailure, cached: CachedTranscript) {
+        ///
+        /// That rule holds for the refusals, which are the only thing transcript.json records. A
+        /// permanently unavailable video is counted against unavailable.json instead - it is written
+        /// whatever the transcript cache holds, so this method takes `reconfirming` from the same
+        /// test the marker write uses rather than deriving it from `cached`.
+        mutating func record(_ failure: FetchFailure, cached: CachedTranscript, reconfirming: Bool = false) {
             guard !isUnresolved(failure) else { return }
 
             // Counted ahead of the unreadable check, and deliberately not subject to it. What settles
@@ -719,7 +816,11 @@ struct ActivityCommand: AsyncParsableCommand {
             // transcript.json holds - so unlike a refusal, this one is not stranded by a file nobody
             // could read, and filing it with the population that is would misreport both.
             if case .permanentlyUnavailable = failure {
-                counts.permanentlyUnavailable += 1
+                if reconfirming {
+                    counts.reconfirmedUnavailable += 1
+                } else {
+                    counts.permanentlyUnavailable += 1
+                }
                 return
             }
 
@@ -800,7 +901,12 @@ struct ActivityCommand: AsyncParsableCommand {
     /// kind of nothing it is: a video YouTube has already answered with silence reads differently
     /// from one no run has managed to ask about, and it is the first of those that yt-dlp is worth
     /// pointing at.
-    static func renderedTranscript(fetched: [TranscriptMoment]?, vttAt vttURL: URL) -> RenderedTranscript {
+    ///
+    /// A video that is gone is a third kind, and is checked after the VTT rather than before it: a
+    /// transcript yt-dlp pulled before the video was deleted is still the words this video had, and
+    /// is worth rendering. Only when there is nothing to show does the absence get named.
+    static func renderedTranscript(fetched: [TranscriptMoment]?, vttAt vttURL: URL,
+                                   unavailable: Bool) -> RenderedTranscript {
         if let fetched = fetched, !fetched.isEmpty {
             return RenderedTranscript(lines: fetched.map { TranscriptLine(start: $0.start, text: $0.text) },
                                       source: .fetch)
@@ -810,8 +916,36 @@ struct ActivityCommand: AsyncParsableCommand {
             return RenderedTranscript(lines: lines, source: .ytDLP)
         }
 
+        if unavailable {
+            return RenderedTranscript(lines: [], source: .videoUnavailable)
+        }
+
         // An empty array on disk means YouTube answered; nil means no run ever got that far
         return RenderedTranscript(lines: [], source: fetched == nil ? .unfetched : .knownEmpty)
+    }
+
+    /// Whether this outcome only re-confirms what is already recorded.
+    ///
+    /// The same test the marker write uses, so the count and the file cannot disagree about whether
+    /// the run learned anything. A recheck that finds thousands of videos still gone must not report
+    /// thousands of write-offs: that is the shape a misclassified ban would take, and a flag whose
+    /// whole purpose is to look for videos that came back would raise it on every use.
+    static func isReconfirmation(_ outcome: UnavailabilityOutcome, recorded: UnavailableVideo?) -> Bool {
+        guard case .gone(let marker) = outcome else { return false }
+        return marker.saysTheSameAs(recorded)
+    }
+
+    /// Whether `unavailable.json` will be there once this iteration's writes have run.
+    ///
+    /// Described against the file rather than against the attempt, for the same reason the transcript
+    /// beside it is: content.md is rewritten every run and has to describe the folder it sits in. A
+    /// failure that learned nothing leaves whatever was already recorded standing.
+    static func isUnavailableAfterRun(_ outcome: UnavailabilityOutcome, recorded: UnavailableVideo?) -> Bool {
+        switch outcome {
+        case .gone: return true
+        case .available: return false
+        case .unchanged: return recorded != nil
+        }
     }
 
     /// The one thumbnail a video's markdown renders, so the download and the render cannot disagree

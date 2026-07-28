@@ -239,7 +239,7 @@ final class ActivityCommandTests: XCTestCase {
     // MARK: - Which transcript gets rendered
 
     func testHunchsOwnFetchIsRenderedWhenItHasWordsInIt() throws {
-        let rendered = ActivityCommand.renderedTranscript(fetched: try moments(), vttAt: missingVTT())
+        let rendered = ActivityCommand.renderedTranscript(fetched: try moments(), vttAt: missingVTT(), unavailable: false)
 
         XCTAssertEqual(rendered.source, .fetch)
         XCTAssertEqual(rendered.lines, [TranscriptLine(start: 1.5, text: "from the fetch")])
@@ -250,7 +250,7 @@ final class ActivityCommandTests: XCTestCase {
     func testTheVTTIsRenderedWhenTheFetchCameBackEmpty() throws {
         let vtt = try writeVTT()
 
-        let rendered = ActivityCommand.renderedTranscript(fetched: [], vttAt: vtt)
+        let rendered = ActivityCommand.renderedTranscript(fetched: [], vttAt: vtt, unavailable: false)
 
         XCTAssertEqual(rendered.source, .ytDLP)
         XCTAssertEqual(rendered.lines, [TranscriptLine(start: 2, text: "from the vtt")])
@@ -259,7 +259,7 @@ final class ActivityCommandTests: XCTestCase {
     func testTheVTTIsRenderedWhenNothingHasBeenFetchedAtAll() throws {
         let vtt = try writeVTT()
 
-        let rendered = ActivityCommand.renderedTranscript(fetched: nil, vttAt: vtt)
+        let rendered = ActivityCommand.renderedTranscript(fetched: nil, vttAt: vtt, unavailable: false)
 
         XCTAssertEqual(rendered.source, .ytDLP)
         XCTAssertEqual(rendered.lines, [TranscriptLine(start: 2, text: "from the vtt")])
@@ -270,7 +270,7 @@ final class ActivityCommandTests: XCTestCase {
     func testHunchsOwnFetchWinsOverAVTTSittingBesideIt() throws {
         let vtt = try writeVTT()
 
-        let rendered = ActivityCommand.renderedTranscript(fetched: try moments(), vttAt: vtt)
+        let rendered = ActivityCommand.renderedTranscript(fetched: try moments(), vttAt: vtt, unavailable: false)
 
         XCTAssertEqual(rendered.source, .fetch)
         XCTAssertEqual(rendered.lines, [TranscriptLine(start: 1.5, text: "from the fetch")])
@@ -281,7 +281,7 @@ final class ActivityCommandTests: XCTestCase {
     /// The distinction the frontmatter exists to record. This video has been asked about and YouTube
     /// served nothing, so it is not waiting on another run - it is waiting on yt-dlp.
     func testAnEmptyFetchWithNoVTTReadsAsAKnownAnswer() {
-        let rendered = ActivityCommand.renderedTranscript(fetched: [], vttAt: missingVTT())
+        let rendered = ActivityCommand.renderedTranscript(fetched: [], vttAt: missingVTT(), unavailable: false)
 
         XCTAssertEqual(rendered.source, .knownEmpty)
         XCTAssertTrue(rendered.lines.isEmpty)
@@ -290,7 +290,7 @@ final class ActivityCommandTests: XCTestCase {
     /// The other kind: nothing on disk, nothing answered, and the next run will ask again. Telling
     /// this apart from the case above at a glance is what makes 36,000 folders searchable.
     func testNoFetchAndNoVTTReadsAsNotYetAsked() {
-        let rendered = ActivityCommand.renderedTranscript(fetched: nil, vttAt: missingVTT())
+        let rendered = ActivityCommand.renderedTranscript(fetched: nil, vttAt: missingVTT(), unavailable: false)
 
         XCTAssertEqual(rendered.source, .unfetched)
         XCTAssertTrue(rendered.lines.isEmpty)
@@ -301,7 +301,7 @@ final class ActivityCommandTests: XCTestCase {
     func testAVTTWithNoCuesDoesNotCountAsARenderedTranscript() throws {
         let vtt = try writeVTT(contents: "WEBVTT\nKind: captions\n")
 
-        let rendered = ActivityCommand.renderedTranscript(fetched: [], vttAt: vtt)
+        let rendered = ActivityCommand.renderedTranscript(fetched: [], vttAt: vtt, unavailable: false)
 
         XCTAssertEqual(rendered.source, .knownEmpty)
         XCTAssertTrue(rendered.lines.isEmpty)
@@ -314,6 +314,7 @@ final class ActivityCommandTests: XCTestCase {
         XCTAssertEqual(TranscriptSource.ytDLP.rawValue, "yt-dlp")
         XCTAssertEqual(TranscriptSource.knownEmpty.rawValue, "none")
         XCTAssertEqual(TranscriptSource.unfetched.rawValue, "unfetched")
+        XCTAssertEqual(TranscriptSource.videoUnavailable.rawValue, "unavailable")
     }
 
     /// With --refetch-empty-transcripts set, an empty transcript.json is read as nil on purpose so
@@ -327,7 +328,7 @@ final class ActivityCommandTests: XCTestCase {
         let fetchThatFailed: [TranscriptMoment]? = nil
         let stillOnDisk: [TranscriptMoment] = []
 
-        let rendered = ActivityCommand.renderedTranscript(fetched: fetchThatFailed ?? stillOnDisk, vttAt: missingVTT())
+        let rendered = ActivityCommand.renderedTranscript(fetched: fetchThatFailed ?? stillOnDisk, vttAt: missingVTT(), unavailable: false)
 
         XCTAssertEqual(rendered.source, .knownEmpty)
     }
@@ -417,12 +418,31 @@ final class ActivityCommandTests: XCTestCase {
 
     // MARK: - What an unavailable video leaves behind
 
-    /// Same rule as the two refusals, passed for the same reason: asking again changes nothing,
-    /// because there is no watchable page left to serve captions from.
-    func testAnUnavailableVideoRecordsAnEmptyTranscript() {
+    /// The refusals record an empty transcript; this one must not, and the difference is what the
+    /// empty file claims. It says YouTube was asked about captions and served nothing, which is the
+    /// value content.md renders as the population worth pointing yt-dlp at. Nothing was asked here -
+    /// the kit throws from the info parse, before any caption track is fetched - and yt-dlp cannot
+    /// fetch a deleted video either.
+    func testAnUnavailableVideoLeavesTheTranscriptSlotAlone() {
         let failure = ActivityCommand.FetchFailure.permanentlyUnavailable(status: "ERROR", reason: nil)
 
-        XCTAssertEqual(ActivityCommand.transcriptAfterFailure(failure, cached: .missing)?.count, 0)
+        XCTAssertNil(ActivityCommand.transcriptAfterFailure(failure, cached: .missing),
+                     "an empty transcript here is an answer nobody ever received")
+    }
+
+    /// And because nothing false was written, deleting the markers really does undo the write-off:
+    /// the video goes back to having no transcript on disk and is fetched from scratch.
+    func testDeletingTheMarkerLeavesNothingBehindToUndo() {
+        let failure = ActivityCommand.FetchFailure.permanentlyUnavailable(status: "ERROR", reason: nil)
+
+        let afterRecording = ActivityCommand.transcriptAfterFailure(failure, cached: .missing)
+        let cacheOnNextRun = ActivityCommand.cachedTranscript(
+            at: missingVTT(), decoder: ActivityCommand.artifactDecoder())
+
+        XCTAssertNil(afterRecording)
+        guard case .missing = cacheOnNextRun else {
+            return XCTFail("a run that recorded a marker must leave transcript.json as it found it")
+        }
     }
 
     func testAnUnavailableVideoNeverClobbersWordsAlreadyOnDisk() throws {
@@ -483,6 +503,17 @@ final class ActivityCommandTests: XCTestCase {
         XCTAssertEqual(recorded?.recordedAt, ISO8601DateFormatter().date(from: "2026-07-27T12:00:00Z"))
     }
 
+    /// The read direction alone proves nothing: a test with its own encoder passes under any
+    /// self-consistent change. This asserts the bytes the command actually emits, so a change to the
+    /// date strategy fails here rather than silently orphaning every marker already on disk.
+    func testTheMarkerHunchWritesIsPlainISO8601() throws {
+        let marker = ActivityCommand.UnavailableVideo(status: "ERROR", reason: nil, recordedAt: recordedAt)
+
+        let written = String(decoding: try markerEncoder.encode(marker), as: UTF8.self)
+
+        XCTAssertTrue(written.contains("\"recordedAt\" : \"2026-07-28T12:00:00Z\""), written)
+    }
+
     func testAMissingMarkerReadsAsNothingRecorded() {
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -521,7 +552,7 @@ final class ActivityCommandTests: XCTestCase {
         guard case .gone(let marker) = ActivityCommand.unavailabilityAfterFailure(failure, now: recordedAt) else {
             return XCTFail("the first pass has to write something down or the second repeats it")
         }
-        XCTAssertEqual(ActivityCommand.transcriptAfterFailure(failure, cached: .missing)?.count, 0)
+        XCTAssertNil(ActivityCommand.transcriptAfterFailure(failure, cached: .missing))
 
         let url = try writeMarker(marker)
         let recorded = ActivityCommand.recordedUnavailability(at: url, decoder: markerDecoder)
@@ -560,7 +591,7 @@ final class ActivityCommandTests: XCTestCase {
 
         XCTAssertEqual(tally.counts.permanentlyUnavailable, 1)
         XCTAssertEqual(tally.counts.recorded, 1, "a video that is gone is not a video whose captions were refused")
-        XCTAssertEqual(tally.summary?.contains("1 videos newly recorded as permanently unavailable"), true)
+        XCTAssertEqual(tally.summary?.contains("1 newly recorded as permanently unavailable"), true)
     }
 
     /// A transcript refusal over a file that did not decode is held back and the video strands. A
@@ -616,7 +647,7 @@ final class ActivityCommandTests: XCTestCase {
         var tally = ActivityCommand.RefusalTally()
 
         tally.record(.permanentlyUnavailable(status: "ERROR", reason: nil), cached: .missing)
-        XCTAssertEqual(tally.takeBlockSinceLastReport()?.contains("1 videos newly recorded"), true)
+        XCTAssertEqual(tally.takeBlockSinceLastReport()?.contains("1 newly recorded"), true)
 
         XCTAssertNil(tally.takeBlockSinceLastReport(), "a block with nothing in it says nothing")
 
@@ -624,10 +655,135 @@ final class ActivityCommandTests: XCTestCase {
         tally.recordSkippedAsUnavailable()
         let block = tally.takeBlockSinceLastReport()
 
-        XCTAssertEqual(block?.contains("1 videos newly recorded"), true)
+        XCTAssertEqual(block?.contains("1 newly recorded"), true)
         XCTAssertEqual(block?.contains("1 skipped as already recorded"), true)
-        XCTAssertEqual(tally.summary?.contains("2 videos newly recorded"), true,
+        XCTAssertEqual(tally.summary?.contains("2 newly recorded"), true,
                        "the run total still counts everything, however it was reported along the way")
+    }
+
+    // MARK: - The third kind of nothing
+
+    /// A written-off video must not land in either existing bucket. `none` names the videos yt-dlp is
+    /// worth pointing at, and yt-dlp cannot fetch a deleted one; `unfetched` promises the next run
+    /// will ask, and no run will.
+    func testAGoneVideoSaysSoRatherThanClaimingYouTubeAnsweredWithSilence() {
+        let rendered = ActivityCommand.renderedTranscript(fetched: nil, vttAt: missingVTT(), unavailable: true)
+
+        XCTAssertEqual(rendered.source, .videoUnavailable)
+        XCTAssertTrue(rendered.lines.isEmpty)
+    }
+
+    /// Checked after the VTT, not before it. Words yt-dlp pulled before the video was deleted are
+    /// still the words this video had, and are worth rendering.
+    func testAVTTPulledBeforeTheVideoWentAwayStillWins() throws {
+        let vtt = try writeVTT()
+
+        let rendered = ActivityCommand.renderedTranscript(fetched: nil, vttAt: vtt, unavailable: true)
+
+        XCTAssertEqual(rendered.source, .ytDLP)
+        XCTAssertEqual(rendered.lines, [TranscriptLine(start: 2, text: "from the vtt")])
+    }
+
+    /// content.md describes the folder it sits in, so what it says has to be derived from what the
+    /// writes are about to leave there - not from what this run happened to attempt.
+    func testTheFrontmatterDescribesTheMarkerThatWillBeOnDisk() {
+        let marker = ActivityCommand.UnavailableVideo(status: "ERROR", reason: nil, recordedAt: recordedAt)
+
+        XCTAssertTrue(ActivityCommand.isUnavailableAfterRun(.gone(marker), recorded: nil),
+                      "a marker written by this run is on disk by the time content.md is rendered")
+        XCTAssertFalse(ActivityCommand.isUnavailableAfterRun(.available, recorded: marker),
+                       "a marker this run deleted is not")
+        XCTAssertTrue(ActivityCommand.isUnavailableAfterRun(.unchanged, recorded: marker),
+                      "a run that learned nothing leaves what was already recorded standing")
+        XCTAssertFalse(ActivityCommand.isUnavailableAfterRun(.unchanged, recorded: nil))
+    }
+
+    // MARK: - Asking again actually asks
+
+    /// Forgetting the marker only removes the short-circuit; the branches below still key off what is
+    /// cached. Without forgetting the info too, a marked video holding both files would never reach a
+    /// fetch, so its marker could never be re-confirmed or cleared - a verdict with no appeal, which
+    /// is the trap the flag exists to prevent.
+    func testRecheckingForgetsTheCachedInfoSoTheVideoReachesAFetch() throws {
+        let info = try cachedInfo()
+        let marker = ActivityCommand.UnavailableVideo(status: "ERROR", reason: nil, recordedAt: recordedAt)
+
+        XCTAssertNil(ActivityCommand.infoToBuildOn(cached: info, recorded: marker, recheck: true),
+                     "a marked video has to reach a fetch branch or the flag asks nothing")
+    }
+
+    /// And it is scoped to marked videos, so the flag costs nothing for the rest of the corpus.
+    func testRecheckingLeavesUnmarkedVideosAlone() throws {
+        let info = try cachedInfo()
+
+        XCTAssertNotNil(ActivityCommand.infoToBuildOn(cached: info, recorded: nil, recheck: true))
+        XCTAssertNotNil(ActivityCommand.infoToBuildOn(cached: info, recorded: nil, recheck: false))
+    }
+
+    func testWithoutTheFlagACachedInfoIsAlwaysBuiltOn() throws {
+        let info = try cachedInfo()
+        let marker = ActivityCommand.UnavailableVideo(status: "ERROR", reason: nil, recordedAt: recordedAt)
+
+        XCTAssertNotNil(ActivityCommand.infoToBuildOn(cached: info, recorded: marker, recheck: false))
+    }
+
+    // MARK: - Re-confirming is not learning
+
+    /// recordedAt is the only key that scopes a batch of markers to the run that wrote them, and it
+    /// is the field no later run can recover. A recheck that finds the video still gone must not
+    /// restamp it - otherwise the command an operator runs to investigate a suspect batch is the
+    /// command that destroys the evidence.
+    func testARecheckThatChangesNothingDoesNotRewriteTheMarker() {
+        let onDisk = ActivityCommand.UnavailableVideo(status: "ERROR", reason: "Video unavailable", recordedAt: recordedAt)
+        let learnedAgain = ActivityCommand.UnavailableVideo(
+            status: "ERROR", reason: "Video unavailable", recordedAt: recordedAt.addingTimeInterval(86_400))
+
+        XCTAssertTrue(learnedAgain.saysTheSameAs(onDisk), "nothing was learned, so nothing should be rewritten")
+        XCTAssertTrue(ActivityCommand.isReconfirmation(.gone(learnedAgain), recorded: onDisk))
+    }
+
+    /// A status that changed is news, and gets written.
+    func testAStatusThatChangedIsWrittenDown() {
+        let onDisk = ActivityCommand.UnavailableVideo(status: "ERROR", reason: nil, recordedAt: recordedAt)
+        let nowMembersOnly = ActivityCommand.UnavailableVideo(status: "UNPLAYABLE", reason: nil, recordedAt: recordedAt)
+
+        XCTAssertFalse(nowMembersOnly.saysTheSameAs(onDisk))
+        XCTAssertFalse(ActivityCommand.isReconfirmation(.gone(nowMembersOnly), recorded: nil),
+                       "a video with no marker at all is always news")
+    }
+
+    func testOnlyAMarkerCanBeAReconfirmation() {
+        let marker = ActivityCommand.UnavailableVideo(status: "ERROR", reason: nil, recordedAt: recordedAt)
+
+        XCTAssertFalse(ActivityCommand.isReconfirmation(.unchanged, recorded: marker))
+        XCTAssertFalse(ActivityCommand.isReconfirmation(.available, recorded: marker))
+    }
+
+    /// The count has to follow the write. A recheck run over the whole corpus re-confirms thousands
+    /// of videos, and reporting those as newly written off would raise the exact alarm the tally
+    /// exists to raise - every single time the flag is used.
+    func testAReconfirmationIsNotCountedAsANewWriteOff() {
+        var tally = ActivityCommand.RefusalTally()
+
+        tally.record(.permanentlyUnavailable(status: "ERROR", reason: nil), cached: .missing, reconfirming: true)
+
+        XCTAssertEqual(tally.counts.reconfirmedUnavailable, 1)
+        XCTAssertEqual(tally.counts.permanentlyUnavailable, 0, "nothing new was learned and nothing was rewritten")
+        XCTAssertEqual(tally.summary?.contains("1 confirmed still unavailable"), true)
+        XCTAssertEqual(tally.summary?.contains("newly recorded"), false)
+    }
+
+    /// Once markers exist nearly every block skips something, so the refusal sentence would print
+    /// four zeroes on every report for the rest of the corpus's life - burying the number it exists
+    /// to make jump out.
+    func testABlockWithNoRefusalsDoesNotSpellOutFourZeroes() {
+        var tally = ActivityCommand.RefusalTally()
+
+        tally.recordSkippedAsUnavailable()
+
+        XCTAssertEqual(tally.summary?.contains("recorded no transcript refusals"), true)
+        XCTAssertEqual(tally.summary?.contains("0 with no tracks listed"), false)
+        XCTAssertEqual(tally.summary?.contains("1 skipped as already recorded unavailable"), true)
     }
 
     // MARK: - The half that needed no change
@@ -669,26 +825,20 @@ final class ActivityCommandTests: XCTestCase {
     /// and a Date() with fractional seconds does not survive that round trip.
     private let recordedAt = Date(timeIntervalSince1970: 1_785_240_000)
 
-    /// Mirrors what `run()` configures, since that is the pair the marker is actually written and
-    /// read with.
-    private var markerEncoder: JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        return encoder
-    }
+    /// The command's own pair, not a copy of it. A test that built a matching encoder would pass
+    /// under any self-consistent change to the real one - which is precisely the change that would
+    /// leave every marker already on disk undecodable.
+    private let markerEncoder = ActivityCommand.artifactEncoder()
+    private let markerDecoder = ActivityCommand.artifactDecoder()
 
-    private var markerDecoder: JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
+    /// Decoded rather than constructed, for the same reason `moments()` is: the kit keeps the
+    /// memberwise initialiser to itself, and decoding is how the command comes by these anyway.
+    private func cachedInfo() throws -> VideoInfo {
+        return try decoder.decode(VideoInfo.self, from: Data(#"{"videoId": "abc", "title": "A video"}"#.utf8))
     }
 
     private func writeMarker(_ marker: ActivityCommand.UnavailableVideo) throws -> URL {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).json")
-        try markerEncoder.encode(marker).write(to: url, options: .atomic)
-        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
-        return url
+        return try writeJSON(String(decoding: markerEncoder.encode(marker), as: UTF8.self))
     }
 
     private let momentJSON = #"[{"start": 1.5, "duration": 2.0, "text": "from the fetch"}]"#

@@ -32,6 +32,11 @@ enum TranscriptSource: String {
     /// Nothing to render and nothing has been established: no run has come back with an answer for
     /// this video, so the next one will ask again.
     case unfetched = "unfetched"
+    /// Nothing to render because there is no video: YouTube says it is deleted or otherwise blocked,
+    /// and `unavailable.json` beside this file records which status. Kept apart from `none`, which
+    /// names the videos yt-dlp is worth pointing at - yt-dlp cannot fetch this one either - and apart
+    /// from `unfetched`, because no later run will ask about it again.
+    case videoUnavailable = "unavailable"
 }
 
 /// Reads WebVTT subtitle files into renderable lines.
