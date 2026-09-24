@@ -19,6 +19,7 @@ struct Hunch: AsyncParsableCommand {
         case json
         case id
         case markdown
+        case outline
     }
 
     enum SortDirection: String, ExpressibleByArgument, CaseIterable {
@@ -30,7 +31,22 @@ struct Hunch: AsyncParsableCommand {
         commandName: "hunch",
         abstract: "A CLI tool for interacting with the Notion API",
         version: "Hunch",
-        subcommands: [DatabaseCommand.self, PageCommand.self, BlocksCommand.self, ExportCommand.self, ExportPageCommand.self, ActivityCommand.self, UpdatePageCommand.self, CreatePageCommand.self, CommentsCommand.self, SearchCommand.self, AppendBlocksCommand.self, DeleteBlockCommand.self, UsersCommand.self]
+        subcommands: [
+            DatabaseCommand.self,
+            PageCommand.self,
+            BlocksCommand.self,
+            ExportCommand.self,
+            ExportPageCommand.self,
+            ActivityCommand.self,
+            UpdatePageCommand.self,
+            CreatePageCommand.self,
+            CommentsCommand.self,
+            SearchCommand.self,
+            AppendBlocksCommand.self,
+            UpdateBlockCommand.self,
+            DeleteBlockCommand.self,
+            UsersCommand.self
+        ]
     )
 
     static func main() async {
@@ -56,7 +72,13 @@ struct Hunch: AsyncParsableCommand {
     }
 
     static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) throws {
-        let flattenedList = flatten(items: list)
+        print(try render(list: list, format: format, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline))
+    }
+
+    static func render(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) throws -> String {
+        // The outline shows nesting by indent, so it walks the block tree itself. Every other format gets
+        // each block followed by its children in one flat list.
+        let items = format == .outline ? list : flatten(items: list)
 
         let renderer: Renderer = {
             switch format {
@@ -70,11 +92,12 @@ struct Hunch: AsyncParsableCommand {
                 return JSONRenderer()
             case .markdown:
                 return MarkdownRenderer(level: 0, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline)
+            case .outline:
+                return OutlineRenderer()
             }
         }()
 
-        let output = try renderer.render(flattenedList)
-        print(output)
+        return try renderer.render(items)
     }
 
     // Helper function to flatten the list of NotionItems

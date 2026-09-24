@@ -18,7 +18,7 @@ public struct Comment: NotionItem {
     public internal(set) var richText: [RichText]
 
     public var description: String {
-        return richText.map({ $0.plainText }).joined()
+        return richText.plainText
     }
 
     enum CodingKeys: String, CodingKey {

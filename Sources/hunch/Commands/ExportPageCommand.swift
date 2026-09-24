@@ -29,8 +29,7 @@ struct ExportPageCommand: AsyncParsableCommand {
         // Create output directory if it doesn't exist
         try fm.createDirectory(atPath: normalizedPath, withIntermediateDirectories: true)
 
-        let localizedName = page.title.map({ $0.plainText })
-            .joined()
+        let localizedName = page.title.plainText
             .replacingOccurrences(of: "\n", with: " ")
             .replacingOccurrences(of: "\r", with: "")
         let pageDir = (normalizedPath as NSString).appendingPathComponent(page.id + ".localized")

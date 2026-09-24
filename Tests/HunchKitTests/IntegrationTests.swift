@@ -1396,7 +1396,7 @@ final class IntegrationTests: XCTestCase {
         } catch {
             if let hunchError = error as? HunchAPIError,
                case .apiError(let serviceError) = hunchError,
-               case .invalidResponseStatus(let status) = serviceError, status == 403 {
+               case .invalidResponseStatus(let status, _) = serviceError, status == 403 {
                 throw XCTSkip("Token lacks 'Read user information including email addresses' capability (HTTP 403). "
                               + "Enable this permission in your Notion integration settings at https://www.notion.so/my-integrations")
             }
@@ -1427,7 +1427,7 @@ final class IntegrationTests: XCTestCase {
         } catch {
             if let hunchError = error as? HunchAPIError,
                case .apiError(let serviceError) = hunchError,
-               case .invalidResponseStatus(let status) = serviceError, status == 403 {
+               case .invalidResponseStatus(let status, _) = serviceError, status == 403 {
                 throw XCTSkip("Token lacks 'Read user information including email addresses' capability (HTTP 403). "
                               + "Enable this permission in your Notion integration settings at https://www.notion.so/my-integrations")
             }
@@ -1561,6 +1561,74 @@ final class IntegrationTests: XCTestCase {
         let decoded = try JSONDecoder().decode([Block].self, from: blockData)
         XCTAssertEqual(decoded.count, blocks.count)
         print("  Block roundtrip verified")
+
+        // Cleanup
+        let archived = try await HunchAPI.shared.updatePage(pageId: page.id, archived: true)
+        XCTAssertTrue(archived.archived)
+        print("  Test page archived")
+    }
+
+    /// Test inserting blocks after a sibling, and that the response holds only the new blocks
+    func testAppendBlockChildrenAfterSibling() async throws {
+        print("\n=== testAppendBlockChildrenAfterSibling ===")
+        let databaseId = "991fa39f-779b-4424-a7c5-d00479a94fe8"
+
+        func paragraph(_ text: String) -> JSONValue {
+            return .object([
+                "object": .string("block"),
+                "type": .string("paragraph"),
+                "paragraph": .object([
+                    "rich_text": .array([
+                        .object(["type": .string("text"), "text": .object(["content": .string(text)])])
+                    ])
+                ])
+            ])
+        }
+
+        let page = try await HunchAPI.shared.createPage(
+            parentDatabaseId: databaseId,
+            properties: JSONValue.object([
+                "Name": .object([
+                    "title": .array([
+                        .object(["text": .object(["content": .string("Append After Test \(Int(Date().timeIntervalSince1970))")])])
+                    ])
+                ])
+            ]),
+            children: [paragraph("First"), paragraph("Third"), paragraph("Fourth")]
+        )
+        print("  Created page with 3 blocks: \(page.id)")
+
+        let blocks = try await HunchAPI.shared.fetchBlocks(in: page.id)
+        XCTAssertEqual(blocks.count, 3)
+        let firstId = blocks[0].id
+
+        // Notion-Version 2022-06-28 names the sibling with `after`
+        let appendBody: [String: Any] = [
+            "children": [
+                ["type": "paragraph", "paragraph": ["rich_text": [["type": "text", "text": ["content": "Second"]]]]]
+            ],
+            "after": firstId
+        ]
+        let appended = try await HunchAPI.shared.appendBlockChildren(
+            blockId: page.id,
+            children: JSONSerialization.data(withJSONObject: appendBody)
+        )
+        print("  Append response holds: \(appended.map(\.plainText))")
+        XCTAssertEqual(appended.map(\.plainText), ["Second"], "The response should hold only the new block, not the siblings after it")
+
+        let reordered = try await HunchAPI.shared.fetchBlocks(in: page.id)
+        XCTAssertEqual(reordered.map(\.plainText), ["First", "Second", "Third", "Fourth"])
+
+        // A refused update keeps Notion's reason, which is what tells an agent what to fix
+        let wrongTypeBody = try JSONSerialization.data(withJSONObject: ["heading_1": ["rich_text": []]])
+        do {
+            _ = try await HunchAPI.shared.updateBlock(blockId: firstId, body: wrongTypeBody)
+            XCTFail("Updating a paragraph with a heading_1 body should be refused")
+        } catch HunchAPIError.apiError(.invalidResponseStatus(let status, let message)) {
+            print("  Refused with \(status): \(message ?? "no message")")
+            XCTAssertEqual(status, 400)
+            XCTAssertNotNil(message, "The error should carry the message Notion sent")
+        }
 
         // Cleanup
         let archived = try await HunchAPI.shared.updatePage(pageId: page.id, archived: true)
