@@ -18,7 +18,8 @@ struct AppendBlocksCommand: AsyncParsableCommand {
             [{"type":"paragraph","paragraph":{"rich_text":[{"text":{"content":"Hi"}}]}}], or an object \
             with a children array. To find ids, use hunch blocks <page-id> --format outline. The parent of \
             an indented block is the nearest line above it with less indent, and the parent of a block \
-            with no indent is the id given to hunch blocks.
+            with no indent is the id given to hunch blocks. Under a line that shows "synced from <id>", \
+            the parent is that <id>.
             """
     )
 
@@ -49,7 +50,7 @@ struct AppendBlocksCommand: AsyncParsableCommand {
     /// `position` object, so this changes when hunch moves to that version.
     static func requestBody(from childrenData: Data, after siblingId: String?) throws -> Data {
         let wrappedData = JSONChildrenWrapper.wrapIfNeeded(childrenData)
-        // A single block object, or empty stdin, would otherwise reach Notion as a body with no children
+        // A single block object would otherwise reach Notion as a body with no children
         guard var body = try parseJSON(wrappedData) as? [String: Any], body["children"] is [Any] else {
             throw ValidationError("The blocks must be a JSON array of blocks or an object with a children array")
         }
@@ -70,9 +71,10 @@ struct UpdateBlockCommand: AsyncParsableCommand {
         abstract: "Update a block in place",
         discussion: """
             The JSON is sent as is to PATCH /v1/blocks/{id}. Its key must be the block's current type, \
-            for example {"to_do":{"checked":true}}. A block's type cannot be changed. A new rich_text \
-            replaces all of the block's text. To find the id and type of a block, use \
-            hunch blocks <page-id> --format outline.
+            for example {"paragraph":{"rich_text":[{"text":{"content":"Fixed text"}}]}} or \
+            {"to_do":{"checked":true}}. A block's type cannot be changed. A new rich_text replaces all of \
+            the block's text, with its links, mentions and formatting. To find the id and type of a block, \
+            use hunch blocks <page-id> --format outline. To see its links and formatting, use --format json.
             """
     )
 
@@ -120,16 +122,24 @@ struct DeleteBlockCommand: AsyncParsableCommand {
 
 /// The JSON given on the command line, or all of stdin when none was given. Stdin is read as is, so a
 /// raw line break inside a JSON string is reported as invalid instead of being silently removed.
-private func readJSONInput(_ json: String?, option: String) throws -> Data {
-    if let json = json, let data = json.data(using: .utf8) {
-        return data
+func readJSONInput(
+    _ json: String?,
+    option: String,
+    stdinIsTerminal: Bool = isatty(STDIN_FILENO) != 0,
+    readStdin: () -> Data = { FileHandle.standardInput.readDataToEndOfFile() }
+) throws -> Data {
+    let missingInput = ValidationError("Give the JSON with \(option) or on stdin")
+    if let json = json {
+        guard !json.isEmpty else {
+            throw missingInput
+        }
+        return Data(json.utf8)
     }
     // A terminal has no JSON to send, so reading it would wait for input that never comes
-    let missingInput = ValidationError("Give the JSON with \(option) or on stdin")
-    guard isatty(STDIN_FILENO) == 0 else {
+    guard !stdinIsTerminal else {
         throw missingInput
     }
-    let data = FileHandle.standardInput.readDataToEndOfFile()
+    let data = readStdin()
     guard !data.isEmpty else {
         throw missingInput
     }
