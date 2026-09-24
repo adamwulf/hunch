@@ -29,7 +29,8 @@ public class OutlineRenderer: Renderer {
 
         var text = block.plainText
         if case .toDo(let toDo) = block.blockTypeObject {
-            text = (toDo.checked ? "[x] " : "[ ] ") + text
+            let checkbox = toDo.checked ? "[x]" : "[ ]"
+            text = text.isEmpty ? checkbox : checkbox + " " + text
         }
         lines.append(indent + Self.line(id: block.id, kind: block.type.rawValue, text: text))
 
@@ -38,9 +39,11 @@ public class OutlineRenderer: Renderer {
         }
     }
 
-    /// Line breaks inside the text are written as `\n` so every item stays on one line
+    /// Every kind of line break inside the text is written as `\n` so each item stays on one line
     private static func line(id: String, kind: String, text: String) -> String {
-        let oneLineText = text.replacingOccurrences(of: "\r\n", with: "\\n").replacingOccurrences(of: "\n", with: "\\n")
+        let oneLineText = text.replacingOccurrences(of: "\r\n", with: "\n")
+            .components(separatedBy: .newlines)
+            .joined(separator: "\\n")
         return [id, kind, oneLineText].filter({ !$0.isEmpty }).joined(separator: " ")
     }
 }

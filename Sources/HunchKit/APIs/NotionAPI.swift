@@ -55,7 +55,7 @@ public class NotionAPI {
         case apiError(_ error: Error)
         case invalidEndpoint
         case invalidResponse
-        case invalidResponseStatus(_ status: Int)
+        case invalidResponseStatus(_ status: Int, message: String? = nil)
         case noData
         case decodeError(_ error: Error, context: String? = nil)
         case encodeError(_ error: Error)
@@ -71,8 +71,8 @@ public class NotionAPI {
                 return "invalid endpoint"
             case .invalidResponse:
                 return "invalid response"
-            case .invalidResponseStatus(let statusCode):
-                return "invalid response status: \(statusCode)"
+            case .invalidResponseStatus(let statusCode, let message):
+                return "invalid response status: \(statusCode)" + (message.map({ " (\($0))" }) ?? "")
             case .noData:
                 return "no data"
             case .decodeError(let error, let context):
@@ -87,6 +87,19 @@ public class NotionAPI {
             case .rateLimitExceeded(let retryAfter):
                 return "Rate limit exceeded. Retry after \(retryAfter) seconds"
             }
+        }
+
+        /// Notion puts the reason for a refused request in the response body, like which field of a
+        /// block failed validation. It is the only way to learn what to fix, so it goes in the error.
+        static func refusalMessage(from data: Data) -> String? {
+            struct RefusalBody: Decodable {
+                let code: String
+                let message: String
+            }
+            guard let body = try? JSONDecoder().decode(RefusalBody.self, from: data) else {
+                return nil
+            }
+            return "\(body.code): \(body.message)"
         }
 
         /// Extracts the coding path and underlying reason from a `DecodingError`
@@ -150,6 +163,7 @@ public class NotionAPI {
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // 2026-03-11 renames the append `after` field to `position`, which AppendBlocksCommand.requestBody builds
         request.setValue("2022-06-28", forHTTPHeaderField: "Notion-Version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpMethod = method
@@ -196,11 +210,13 @@ public class NotionAPI {
                 }
 
                 guard 200..<299 ~= httpResponse.statusCode else {
+                    let message = NotionAPIServiceError.refusalMessage(from: data)
                     Self.logHandler?(.error, "Notion API error", [
                         "status": httpResponse.statusCode,
-                        "path": url.path(percentEncoded: false)
+                        "path": url.path(percentEncoded: false),
+                        "message": message ?? ""
                     ])
-                    completion(.failure(.invalidResponseStatus(httpResponse.statusCode)))
+                    completion(.failure(.invalidResponseStatus(httpResponse.statusCode, message: message)))
                     return
                 }
 

@@ -17,7 +17,7 @@ enum ExportHelpers {
         </plist>
         """
 
-        var filename = title.map({ $0.plainText }).joined()
+        var filename = title.plainText
         if filename.isEmpty {
             filename = "Link"
         }

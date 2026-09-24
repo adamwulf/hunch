@@ -13,7 +13,12 @@ import HunchKit
 struct BlocksCommand: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
         commandName: "blocks",
-        abstract: "Fetch block content from Notion"
+        abstract: "Fetch block content from Notion",
+        discussion: """
+            To find a block to edit, use --format outline. It prints one line per block as \
+            <id> <type> <text>, with two spaces of indent for each level of nesting. Give these ids to \
+            update-block, delete-block, and append-blocks --after.
+            """
     )
 
     @Argument(help: "The Notion page or block ID to fetch blocks from") var pageId: String

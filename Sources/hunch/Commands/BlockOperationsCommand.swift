@@ -21,7 +21,10 @@ struct AppendBlocksCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "JSON string of children blocks to append (reads from stdin if omitted)")
     var blocks: String?
 
-    @Option(name: .long, help: "Insert the blocks after this child block instead of at the end")
+    @Option(name: .long, help: ArgumentHelp(
+        "Insert the blocks after this block instead of at the end. It must be a direct child of <block-id>.",
+        valueName: "sibling-id"
+    ))
     var after: String?
 
     @Option(name: .shortAndLong, help: "The format of the output")
@@ -36,14 +39,16 @@ struct AppendBlocksCommand: AsyncParsableCommand {
 
     /// The request body for the append, with the sibling to insert after when there is one. hunch sends
     /// Notion-Version 2022-06-28, where that field is `after`. Version 2026-03-11 replaces it with a
-    /// `position` object, so this is the one place to change when hunch moves to that version.
+    /// `position` object, so this changes when hunch moves to that version.
     static func requestBody(from childrenData: Data, after siblingId: String?) throws -> Data {
         let wrappedData = JSONChildrenWrapper.wrapIfNeeded(childrenData)
+        // A single block object, or empty stdin, would otherwise reach Notion as a body with no children
+        guard var body = (try? JSONSerialization.jsonObject(with: wrappedData)) as? [String: Any],
+              body["children"] is [Any] else {
+            throw ValidationError("The blocks must be a JSON array of blocks or an object with a children array")
+        }
         guard let siblingId = siblingId else {
             return wrappedData
-        }
-        guard var body = (try? JSONSerialization.jsonObject(with: wrappedData)) as? [String: Any] else {
-            throw ValidationError("--after needs the blocks to be a JSON array or an object with a children array")
         }
         guard body["after"] == nil, body["position"] == nil else {
             throw ValidationError("Give the position with --after or in the JSON, not both")
@@ -79,7 +84,7 @@ struct UpdateBlockCommand: AsyncParsableCommand {
         try Hunch.output(list: [updatedBlock], format: format)
     }
 
-    /// Notion answers malformed JSON with a bare 400, so this says what is wrong before sending it
+    /// JSON that is not an object cannot be a block update, so this stops it before it is sent
     static func requestBody(from blockData: Data) throws -> Data {
         guard (try? JSONSerialization.jsonObject(with: blockData)) is [String: Any] else {
             throw ValidationError("The block must be a JSON object, like {\"to_do\":{\"checked\":true}}")

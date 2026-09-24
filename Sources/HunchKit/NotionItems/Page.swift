@@ -28,7 +28,7 @@ public struct Page: NotionItem {
 
     public var description: String {
         let emoji = icon?.emoji.map({ $0 + " " }) ?? ""
-        return emoji + title.reduce("", { $0 + $1.plainText })
+        return emoji + title.plainText
     }
 
     enum CodingKeys: String, CodingKey {

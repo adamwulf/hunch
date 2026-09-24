@@ -57,7 +57,7 @@ public struct Block: NotionItem {
         case .toggle(let value): return value.text.plainText
         case .childDatabase(let value): return value.title
         case .childPage(let value): return value.title
-        case .bookmark(let value): return value.url
+        case .bookmark(let value): return value.caption.plainText.isEmpty ? value.url : value.caption.plainText
         case .embed(let value): return value.url
         case .linkPreview(let value): return value.url
         case .linkToPage(let value): return value.pageId
@@ -71,11 +71,18 @@ public struct Block: NotionItem {
         }
     }
 
-    /// A caption is what a reader sees under a file, and the URL is the only other thing that tells
-    /// two files apart
+    /// A caption is what a reader sees under a file. Without one, a file Notion hosts goes by its file
+    /// name, because its URL is signed and changes on every fetch.
     private static func fileText(_ file: FileBlock) -> String {
-        let caption = file.caption?.plainText ?? ""
-        return caption.isEmpty ? file.type.url : caption
+        if let caption = file.caption?.plainText, !caption.isEmpty {
+            return caption
+        }
+        switch file.type {
+        case .external(let external):
+            return external.url
+        case .file(let hosted):
+            return URL(string: hosted.url)?.lastPathComponent ?? hosted.url
+        }
     }
 
     public init(object: String,

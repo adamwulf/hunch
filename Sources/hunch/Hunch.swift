@@ -31,7 +31,22 @@ struct Hunch: AsyncParsableCommand {
         commandName: "hunch",
         abstract: "A CLI tool for interacting with the Notion API",
         version: "Hunch",
-        subcommands: [DatabaseCommand.self, PageCommand.self, BlocksCommand.self, ExportCommand.self, ExportPageCommand.self, ActivityCommand.self, UpdatePageCommand.self, CreatePageCommand.self, CommentsCommand.self, SearchCommand.self, AppendBlocksCommand.self, UpdateBlockCommand.self, DeleteBlockCommand.self, UsersCommand.self]
+        subcommands: [
+            DatabaseCommand.self,
+            PageCommand.self,
+            BlocksCommand.self,
+            ExportCommand.self,
+            ExportPageCommand.self,
+            ActivityCommand.self,
+            UpdatePageCommand.self,
+            CreatePageCommand.self,
+            CommentsCommand.self,
+            SearchCommand.self,
+            AppendBlocksCommand.self,
+            UpdateBlockCommand.self,
+            DeleteBlockCommand.self,
+            UsersCommand.self
+        ]
     )
 
     static func main() async {

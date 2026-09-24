@@ -148,10 +148,19 @@ public class HunchAPI {
         let result = await notion.appendBlockChildren(blockId: blockId, children: children)
         switch result {
         case .success(let blockList):
-            return blockList.results
+            // With `after`, Notion answers with the new blocks followed by every sibling after them, so
+            // only as many blocks as were sent are new
+            let sentCount = Self.childCount(in: children) ?? blockList.results.count
+            return Array(blockList.results.prefix(sentCount))
         case .failure(let error):
             throw HunchAPIError.apiError(error)
         }
+    }
+
+    /// The number of blocks in an append request body, or nil when the body has no children array
+    static func childCount(in body: Data) -> Int? {
+        let object = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+        return (object?["children"] as? [Any])?.count
     }
 
     public func updateBlock(blockId: String, body: Data) async throws -> Block {

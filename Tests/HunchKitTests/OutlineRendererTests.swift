@@ -2,7 +2,14 @@ import XCTest
 @testable import HunchKit
 
 final class OutlineRendererTests: XCTestCase {
-    let decoder = JSONDecoder()
+    let decoder: JSONDecoder = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .formatted(formatter)
+        return d
+    }()
     let renderer = OutlineRenderer()
 
     // MARK: - Helpers
@@ -88,12 +95,91 @@ final class OutlineRendererTests: XCTestCase {
         XCTAssertEqual(try renderer.render(blocks), "d1 to_do [x] Done\nd2 to_do [ ] Not done")
     }
 
+    func testEmptyToDoHasNoTrailingSpace() throws {
+        let blocks = try decodeBlocks([
+            blockJSON(id: "d1", type: "to_do", content: ["rich_text": [], "checked": false, "color": "default"])
+        ])
+
+        XCTAssertEqual(try renderer.render(blocks), "d1 to_do [ ]")
+    }
+
+    func testTableRowsAreIndentedUnderTheirTable() throws {
+        let blocks = try decodeBlocks([
+            blockJSON(id: "t1", type: "table", content: ["table_width": 2, "has_column_header": true, "has_row_header": false], children: [
+                blockJSON(id: "r1", type: "table_row", content: ["cells": [richText("Name"), richText("Status")]]),
+                blockJSON(id: "r2", type: "table_row", content: ["cells": [richText("Crash"), richText("Open")]])
+            ])
+        ])
+
+        XCTAssertEqual(try renderer.render(blocks), "t1 table\n  r1 table_row Name | Status\n  r2 table_row Crash | Open")
+    }
+
     func testLineBreaksInTextStayOnOneLine() throws {
         let blocks = try decodeBlocks([
             textBlockJSON(id: "p1", type: "paragraph", text: "first\nsecond\r\nthird")
         ])
 
         XCTAssertEqual(try renderer.render(blocks), #"p1 paragraph first\nsecond\nthird"#)
+    }
+
+    func testEveryKindOfLineBreakStaysOnOneLine() throws {
+        let blocks = try decodeBlocks([
+            textBlockJSON(id: "p1", type: "paragraph", text: "a\rb\u{2028}c\u{2029}d")
+        ])
+
+        XCTAssertEqual(try renderer.render(blocks), #"p1 paragraph a\nb\nc\nd"#)
+    }
+
+    func testEmptyListRendersNothing() throws {
+        XCTAssertEqual(try renderer.render([]), "")
+    }
+
+    func testItemsThatAreNotBlocksUseTheirObjectAndDescription() throws {
+        let pageJSON: [String: Any] = [
+            "object": "page",
+            "id": "page-1",
+            "created_time": "2025-01-01T00:00:00.000Z",
+            "last_edited_time": "2025-01-01T00:00:00.000Z",
+            "properties": ["Name": ["id": "title", "type": "title", "title": richText("My Page")]],
+            "archived": false,
+            "in_trash": false
+        ]
+        let databaseJSON: [String: Any] = [
+            "object": "database",
+            "id": "db-1",
+            "created_time": "2025-01-01T00:00:00.000Z",
+            "last_edited_time": "2025-01-01T00:00:00.000Z",
+            "title": richText("My Database"),
+            "properties": [:],
+            "archived": false,
+            "in_trash": false
+        ]
+        let userJSON: [String: Any] = ["object": "user", "id": "user-1", "type": "person", "name": "Ada"]
+        let commentJSON: [String: Any] = [
+            "object": "comment",
+            "id": "comment-1",
+            "parent": ["type": "page_id", "page_id": "page-1"],
+            "discussion_id": "discussion-1",
+            "created_time": "2025-01-01T00:00:00.000Z",
+            "last_edited_time": "2025-01-01T00:00:00.000Z",
+            "created_by": ["object": "user", "id": "user-1"],
+            "rich_text": richText("Looks good")
+        ]
+
+        let items: [NotionItem] = [
+            try decoder.decode(Page.self, from: JSONSerialization.data(withJSONObject: pageJSON)),
+            try decoder.decode(Database.self, from: JSONSerialization.data(withJSONObject: databaseJSON)),
+            try decoder.decode(User.self, from: JSONSerialization.data(withJSONObject: userJSON)),
+            try decoder.decode(Comment.self, from: JSONSerialization.data(withJSONObject: commentJSON))
+        ]
+
+        let expected = """
+            page-1 page My Page
+            db-1 database My Database
+            user-1 user Ada
+            comment-1 comment Looks good
+            """
+        XCTAssertEqual(try renderer.render(items), expected)
     }
 
     func testBlockWithoutTextHasNoTrailingSpace() throws {
@@ -141,5 +227,56 @@ final class OutlineRendererTests: XCTestCase {
         ])
 
         XCTAssertEqual(blocks.map(\.plainText), ["Build logs", "https://example.com/b.zip"])
+    }
+
+    func testHostedFileWithoutCaptionUsesItsFileName() throws {
+        // A hosted file URL is signed and changes on every fetch, so only its file name is stable
+        let url = "https://prod-files-secure.s3.us-west-2.amazonaws.com/ws/file/Build%20Logs.zip?X-Amz-Signature=abc"
+        let blocks = try decodeBlocks([
+            blockJSON(id: "f1", type: "file", content: [
+                "type": "file", "file": ["url": url, "expiry_time": "2025-01-01T01:00:00.000Z"], "caption": []
+            ])
+        ])
+
+        XCTAssertEqual(blocks.first?.plainText, "Build Logs.zip")
+    }
+
+    func testAudioUsesItsURL() throws {
+        let blocks = try decodeBlocks([
+            blockJSON(id: "a1", type: "audio", content: ["type": "external", "external": ["url": "https://example.com/a.mp3"]])
+        ])
+
+        XCTAssertEqual(blocks.first?.plainText, "https://example.com/a.mp3")
+    }
+
+    func testBookmarkUsesCaptionThenURL() throws {
+        let blocks = try decodeBlocks([
+            blockJSON(id: "b1", type: "bookmark", content: ["url": "https://example.com/a", "caption": richText("The spec")]),
+            blockJSON(id: "b2", type: "bookmark", content: ["url": "https://example.com/b", "caption": []])
+        ])
+
+        XCTAssertEqual(blocks.map(\.plainText), ["The spec", "https://example.com/b"])
+    }
+
+    func testEquationUsesItsExpression() throws {
+        let blocks = try decodeBlocks([
+            blockJSON(id: "e1", type: "equation", content: ["expression": "e = mc^2"])
+        ])
+
+        XCTAssertEqual(blocks.first?.plainText, "e = mc^2")
+    }
+
+    func testImageAndPdfUseCaptionThenURL() throws {
+        // Image and PDF blocks decode their file from the whole block, not from a keyed container
+        let blocks = try decodeBlocks([
+            blockJSON(id: "i1", type: "image", content: [
+                "type": "external", "external": ["url": "https://example.com/a.png"], "caption": richText("Screenshot")
+            ]),
+            blockJSON(id: "d1", type: "pdf", content: [
+                "type": "external", "external": ["url": "https://example.com/b.pdf"], "caption": []
+            ])
+        ])
+
+        XCTAssertEqual(blocks.map(\.plainText), ["Screenshot", "https://example.com/b.pdf"])
     }
 }

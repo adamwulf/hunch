@@ -78,4 +78,25 @@ final class DecodeErrorTests: XCTestCase {
         let detail = NotionAPI.NotionAPIServiceError.decodingDetail(Boom())
         XCTAssertEqual(detail, "kaboom")
     }
+
+    // MARK: - Refused Requests
+
+    func testRefusalMessageReadsNotionErrorBody() {
+        let body = Data(#"{"object":"error","status":400,"code":"validation_error","message":"body.children should be defined"}"#.utf8)
+        let message = NotionAPI.NotionAPIServiceError.refusalMessage(from: body)
+        XCTAssertEqual(message, "validation_error: body.children should be defined")
+    }
+
+    func testRefusalMessageIsNilForOtherBodies() {
+        XCTAssertNil(NotionAPI.NotionAPIServiceError.refusalMessage(from: Data("<html>Bad Gateway</html>".utf8)))
+        XCTAssertNil(NotionAPI.NotionAPIServiceError.refusalMessage(from: Data()))
+    }
+
+    func testInvalidResponseStatusDescriptionIncludesMessage() {
+        let withMessage = NotionAPI.NotionAPIServiceError.invalidResponseStatus(400, message: "validation_error: bad type")
+        XCTAssertEqual(withMessage.localizedDescription, "invalid response status: 400 (validation_error: bad type)")
+
+        let withoutMessage = NotionAPI.NotionAPIServiceError.invalidResponseStatus(502)
+        XCTAssertEqual(withoutMessage.localizedDescription, "invalid response status: 502")
+    }
 }

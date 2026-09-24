@@ -32,7 +32,7 @@ swift run hunch export <databaseId> --output-dir <path>
 
 ### Two-Layer API Design
 
-- **`NotionAPI`** (singleton) — Low-level HTTP client. Handles auth headers, rate limiting with exponential backoff (max 3 retries), and JSON encoding/decoding. Uses `withCheckedContinuation` to bridge callback-based URLSession to async/await. Targets Notion API version `2021-05-13`.
+- **`NotionAPI`** (singleton) — Low-level HTTP client. Handles auth headers, rate limiting with exponential backoff (max 3 retries), and JSON encoding/decoding. Uses `withCheckedContinuation` to bridge callback-based URLSession to async/await. Targets Notion API version `2022-06-28`.
 - **`HunchAPI`** (singleton, wraps `NotionAPI`) — High-level facade. Handles cursor-based pagination automatically and recursive block tree fetching (populates `Block.children` when `hasChildren` is true).
 
 ### Discriminated Union Pattern
