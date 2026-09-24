@@ -57,6 +57,13 @@ public struct RichText: Codable {
     }
 }
 
+extension Array where Element == RichText {
+    /// Every run's text joined together without its formatting
+    public var plainText: String {
+        return map(\.plainText).joined()
+    }
+}
+
 public struct Reference: Codable {
     public internal(set) var id: String
 }

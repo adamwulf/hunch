@@ -21,7 +21,10 @@ The CLI requires `NOTION_KEY` environment variable set to a Notion API token:
 ```bash
 swift run hunch databases [--limit N] [--format jsonl]
 swift run hunch pages [<pageId>]
-swift run hunch blocks <pageId> [--format markdown]
+swift run hunch blocks <pageId> [--format markdown|outline]
+swift run hunch append-blocks <parentId> [--after <siblingId>] --blocks '[...]'
+swift run hunch update-block <blockId> --block '{"to_do":{"checked":true}}'
+swift run hunch delete-block <blockId>
 swift run hunch export <databaseId> --output-dir <path>
 ```
 
@@ -54,7 +57,7 @@ Six changes in `Block.swift` plus a test:
 
 ### Renderer Strategy
 
-The `Renderer` protocol has a single `render(_ items: [NotionItem]) -> String` method. Four implementations: `IDRenderer`, `SmallJSONRenderer`, `FullJSONRenderer`, `MarkdownRenderer`. The CLI's `--format` option selects which renderer to use.
+The `Renderer` protocol has a single `render(_ items: [NotionItem]) -> String` method. Implementations: `IDRenderer`, `SmallJSONRenderer`, `FullJSONRenderer`, `JSONRenderer`, `MarkdownRenderer`, `OutlineRenderer`. The CLI's `--format` option selects which renderer to use. `Hunch.output()` flattens block children into the list for every renderer except `OutlineRenderer`, which walks the block tree itself to indent by depth.
 
 `MarkdownRenderer` is the most complex — it recursively renders block trees, tracks nesting depth for indentation, manages list state transitions, and maps downloaded asset URLs to local paths.
 

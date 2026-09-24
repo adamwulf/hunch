@@ -36,6 +36,48 @@ public struct Block: NotionItem {
         return type.rawValue
     }
 
+    /// The text a reader sees in this block, without formatting, so a block can be found by what it
+    /// says. Blocks that show no text of their own, like dividers and columns, give an empty string.
+    public var plainText: String {
+        switch blockTypeObject {
+        case .bulletedListItem(let value): return value.text.plainText
+        case .callout(let value): return value.text.plainText
+        case .code(let value): return value.text.plainText
+        case .heading1(let value): return value.text.plainText
+        case .heading2(let value): return value.text.plainText
+        case .heading3(let value): return value.text.plainText
+        case .heading4(let value): return value.text.plainText
+        case .heading5(let value): return value.text.plainText
+        case .heading6(let value): return value.text.plainText
+        case .numberedListItem(let value): return value.text.plainText
+        case .paragraph(let value): return value.text.plainText
+        case .quote(let value): return value.text.plainText
+        case .template(let value): return value.text.plainText
+        case .toDo(let value): return value.text.plainText
+        case .toggle(let value): return value.text.plainText
+        case .childDatabase(let value): return value.title
+        case .childPage(let value): return value.title
+        case .bookmark(let value): return value.url
+        case .embed(let value): return value.url
+        case .linkPreview(let value): return value.url
+        case .linkToPage(let value): return value.pageId
+        case .equation(let value): return value.expression
+        case .tableRow(let value): return value.cells.map(\.plainText).joined(separator: " | ")
+        case .audio(let value), .file(let value), .video(let value): return Self.fileText(value)
+        case .image(let value): return Self.fileText(value.image)
+        case .pdf(let value): return Self.fileText(value.pdf)
+        case .breadcrumb, .column, .columnList, .divider, .syncedBlock, .table, .tableOfContents, .unsupported:
+            return ""
+        }
+    }
+
+    /// A caption is what a reader sees under a file, and the URL is the only other thing that tells
+    /// two files apart
+    private static func fileText(_ file: FileBlock) -> String {
+        let caption = file.caption?.plainText ?? ""
+        return caption.isEmpty ? file.type.url : caption
+    }
+
     public init(object: String,
                 id: String,
                 parent: Parent?,
