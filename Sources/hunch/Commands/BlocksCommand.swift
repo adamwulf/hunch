@@ -17,7 +17,9 @@ struct BlocksCommand: AsyncParsableCommand {
         discussion: """
             To find a block to edit, use --format outline. It prints one line per block as \
             <id> <type> <text>, with two spaces of indent for each level of nesting. Give these ids to \
-            update-block, delete-block, and append-blocks --after.
+            update-block, delete-block, and append-blocks --after. These marks are not part of a block's \
+            text: [ ] or [x] before a to_do, \\n for a line break, \\\\ for a backslash, and \
+            "synced from <id>" on a copy of a synced block, whose children belong to that original.
             """
     )
 

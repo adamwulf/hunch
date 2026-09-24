@@ -56,12 +56,18 @@ final class AppendBlocksCommandTests: XCTestCase {
 
     func testRequestBodyRejectsAfterGivenTwice() {
         let input = Data(#"{"children":[],"after":"otherId"}"#.utf8)
-        XCTAssertThrowsError(try AppendBlocksCommand.requestBody(from: input, after: "siblingId"))
+        XCTAssertThrowsError(try AppendBlocksCommand.requestBody(from: input, after: "siblingId")) { error in
+            let message = (error as? ValidationError)?.message ?? ""
+            XCTAssertTrue(message.hasPrefix("Give the position with --after or in the JSON"), message)
+        }
     }
 
     func testRequestBodyRejectsAfterWithPosition() {
         let input = Data(#"{"children":[],"position":{"type":"start"}}"#.utf8)
-        XCTAssertThrowsError(try AppendBlocksCommand.requestBody(from: input, after: "siblingId"))
+        XCTAssertThrowsError(try AppendBlocksCommand.requestBody(from: input, after: "siblingId")) { error in
+            let message = (error as? ValidationError)?.message ?? ""
+            XCTAssertTrue(message.hasPrefix("Give the position with --after or in the JSON"), message)
+        }
     }
 
     func testRequestBodyRejectsSingleBlockObject() {

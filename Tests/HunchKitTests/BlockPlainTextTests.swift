@@ -89,4 +89,32 @@ final class BlockPlainTextTests: XCTestCase, BlockJSONBuilding {
 
         XCTAssertEqual(blocks.map(\.plainText), ["Screenshot", "https://example.com/b.pdf"])
     }
+
+    func testLinkBlocksUseWhatTheyPointTo() throws {
+        let blocks = try decodeBlocks([
+            blockJSON(id: "e1", type: "embed", content: ["url": "https://example.com/embed"]),
+            blockJSON(id: "l1", type: "link_preview", content: ["url": "https://example.com/preview"]),
+            blockJSON(id: "l2", type: "link_to_page", content: ["type": "page_id", "page_id": "page-1"])
+        ])
+
+        XCTAssertEqual(blocks.map(\.plainText), ["https://example.com/embed", "https://example.com/preview", "page-1"])
+    }
+
+    func testChildDatabaseUsesItsTitle() throws {
+        let blocks = try decodeBlocks([
+            blockJSON(id: "d1", type: "child_database", content: ["title": "Issues"])
+        ])
+
+        XCTAssertEqual(blocks.first?.plainText, "Issues")
+    }
+
+    func testVideoUsesCaptionThenURL() throws {
+        let blocks = try decodeBlocks([
+            blockJSON(id: "v1", type: "video", content: [
+                "type": "external", "external": ["url": "https://example.com/v.mp4"], "caption": richText("Repro video")
+            ])
+        ])
+
+        XCTAssertEqual(blocks.first?.plainText, "Repro video")
+    }
 }

@@ -33,6 +33,9 @@ public class OutlineRenderer: Renderer {
         if case .toDo(let toDo) = block.blockTypeObject {
             let checkbox = toDo.checked ? "[x]" : "[ ]"
             text = text.isEmpty ? checkbox : checkbox + " " + text
+        } else if case .syncedBlock(let synced) = block.blockTypeObject, let original = synced.syncedFrom {
+            // A copy mirrors the children of the original, so the original is their real parent
+            text = "synced from \(original.blockId)"
         }
         lines.append(indent + Self.line(id: block.id, kind: block.type.rawValue, text: text))
 

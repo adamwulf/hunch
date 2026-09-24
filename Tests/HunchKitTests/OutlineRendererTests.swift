@@ -64,6 +64,26 @@ final class OutlineRendererTests: XCTestCase, BlockJSONBuilding {
         XCTAssertEqual(try renderer.render(blocks), "d1 to_do [ ]")
     }
 
+    func testChildPageContentIsIndentedUnderIt() throws {
+        // Child page content is left out of the flattened list other formats get
+        let blocks = try decodeBlocks([
+            blockJSON(id: "c1", type: "child_page", content: ["title": "Notes"], children: [
+                textBlockJSON(id: "p1", type: "paragraph", text: "Inside the sub page")
+            ])
+        ])
+
+        XCTAssertEqual(try renderer.render(blocks), "c1 child_page Notes\n  p1 paragraph Inside the sub page")
+    }
+
+    func testSyncedCopyNamesItsOriginal() throws {
+        let blocks = try decodeBlocks([
+            blockJSON(id: "s1", type: "synced_block", content: ["synced_from": NSNull()]),
+            blockJSON(id: "s2", type: "synced_block", content: ["synced_from": ["type": "block_id", "block_id": "s1"]])
+        ])
+
+        XCTAssertEqual(try renderer.render(blocks), "s1 synced_block\ns2 synced_block synced from s1")
+    }
+
     func testTableRowsAreIndentedUnderTheirTable() throws {
         let blocks = try decodeBlocks([
             blockJSON(id: "t1", type: "table", content: ["table_width": 2, "has_column_header": true, "has_row_header": false], children: [

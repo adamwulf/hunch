@@ -55,8 +55,7 @@ struct ExportCommand: AsyncParsableCommand {
 
         // Process each page
         for page in pages {
-            let localizedName = page.title.map({ $0.plainText })
-                .joined()
+            let localizedName = page.title.plainText
                 .replacingOccurrences(of: "\n", with: " ")
                 .replacingOccurrences(of: "\r", with: "")
             let pageDir = (normalizedPath as NSString).appendingPathComponent(page.id + ".localized")

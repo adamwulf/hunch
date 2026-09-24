@@ -163,7 +163,7 @@ public class NotionAPI {
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        // AppendBlocksCommand.requestBody builds the append `after` field, which 2026-03-11 replaces with a `position` object
+        // Appending after a sibling uses the `after` field of this version. 2026-03-11 replaces it with a `position` object.
         request.setValue("2022-06-28", forHTTPHeaderField: "Notion-Version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpMethod = method

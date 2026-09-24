@@ -18,7 +18,7 @@ struct AppendBlocksCommand: AsyncParsableCommand {
             [{"type":"paragraph","paragraph":{"rich_text":[{"text":{"content":"Hi"}}]}}], or an object \
             with a children array. To find ids, use hunch blocks <page-id> --format outline. The parent of \
             an indented block is the nearest line above it with less indent, and the parent of a block \
-            with no indent is the page.
+            with no indent is the id given to hunch blocks.
             """
     )
 
@@ -125,10 +125,15 @@ private func readJSONInput(_ json: String?, option: String) throws -> Data {
         return data
     }
     // A terminal has no JSON to send, so reading it would wait for input that never comes
+    let missingInput = ValidationError("Give the JSON with \(option) or on stdin")
     guard isatty(STDIN_FILENO) == 0 else {
-        throw ValidationError("Give the JSON with \(option) or on stdin")
+        throw missingInput
     }
-    return FileHandle.standardInput.readDataToEndOfFile()
+    let data = FileHandle.standardInput.readDataToEndOfFile()
+    guard !data.isEmpty else {
+        throw missingInput
+    }
+    return data
 }
 
 /// The parsed JSON, or an error that says where its syntax is wrong
