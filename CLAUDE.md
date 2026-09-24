@@ -45,7 +45,7 @@ The codebase models Notion's polymorphic types using Swift enums with associated
 
 ### Adding a New Block Type
 
-Six changes in `Block.swift` plus a test:
+Seven changes in `Block.swift` plus tests:
 
 1. Add case to `BlockType` enum (e.g., `case myType = "my_type"`)
 2. Create the block struct (e.g., `public struct MyTypeBlock: Codable { ... }`)
@@ -53,11 +53,12 @@ Six changes in `Block.swift` plus a test:
 4. Add `CodingKey` (e.g., `case myType = "my_type"`)
 5. Add decode branch in `init(from:)` switch
 6. Add encode branch in `encode(to:)` switch
-7. Add encode/decode test in `Tests/HunchKitTests/BlockTests.swift`
+7. Add a branch to the `plainText` switch (the text the outline shows, or `""` for a block with no text)
+8. Add encode/decode test in `Tests/HunchKitTests/BlockTests.swift`, and a `plainText` test in `Tests/HunchKitTests/BlockPlainTextTests.swift` if the block has text
 
 ### Renderer Strategy
 
-The `Renderer` protocol has a single `render(_ items: [NotionItem]) -> String` method. Implementations: `IDRenderer`, `SmallJSONRenderer`, `FullJSONRenderer`, `JSONRenderer`, `MarkdownRenderer`, `OutlineRenderer`. The CLI's `--format` option selects which renderer to use. `Hunch.output()` flattens block children into the list for every renderer except `OutlineRenderer`, which walks the block tree itself to indent by depth.
+The `Renderer` protocol has a single `render(_ items: [NotionItem]) -> String` method. Implementations: `IDRenderer`, `SmallJSONRenderer`, `FullJSONRenderer`, `JSONRenderer`, `MarkdownRenderer`, `OutlineRenderer`. The CLI's `--format` option selects which renderer to use. `Hunch.render()` flattens block children into the list for every renderer except `OutlineRenderer`, which walks the block tree itself to indent by depth.
 
 `MarkdownRenderer` is the most complex — it recursively renders block trees, tracks nesting depth for indentation, manages list state transitions, and maps downloaded asset URLs to local paths.
 

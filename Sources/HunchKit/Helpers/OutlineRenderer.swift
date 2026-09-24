@@ -23,7 +23,9 @@ public class OutlineRenderer: Renderer {
     private func appendLines(for item: NotionItem, depth: Int, to lines: inout [String]) {
         let indent = String(repeating: "  ", count: depth)
         guard let block = item as? Block else {
-            lines.append(indent + Self.line(id: item.id, kind: item.object, text: item.description))
+            // A user with no name describes itself by its id, which the line already starts with
+            let text = item.description == item.id ? "" : item.description
+            lines.append(indent + Self.line(id: item.id, kind: item.object, text: text))
             return
         }
 
@@ -39,9 +41,11 @@ public class OutlineRenderer: Renderer {
         }
     }
 
-    /// Every kind of line break inside the text is written as `\n` so each item stays on one line
+    /// Every kind of line break inside the text is written as `\n` so each item stays on one line.
+    /// Backslashes are doubled first, so a `\n` that was in the text still reads differently.
     private static func line(id: String, kind: String, text: String) -> String {
-        let oneLineText = text.replacingOccurrences(of: "\r\n", with: "\n")
+        let oneLineText = text.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\r\n", with: "\n")
             .components(separatedBy: .newlines)
             .joined(separator: "\\n")
         return [id, kind, oneLineText].filter({ !$0.isEmpty }).joined(separator: " ")

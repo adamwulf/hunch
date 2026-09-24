@@ -1,3 +1,4 @@
+import ArgumentParser
 @testable import hunch
 import XCTest
 
@@ -70,7 +71,10 @@ final class AppendBlocksCommandTests: XCTestCase {
     }
 
     func testRequestBodyRejectsEmptyInput() {
-        XCTAssertThrowsError(try AppendBlocksCommand.requestBody(from: Data(), after: nil))
+        XCTAssertThrowsError(try AppendBlocksCommand.requestBody(from: Data(), after: nil)) { error in
+            let message = (error as? ValidationError)?.message ?? ""
+            XCTAssertTrue(message.hasPrefix("The input is not valid JSON"), message)
+        }
     }
 
     func testRequestBodyRejectsObjectWithoutChildrenWithAfter() {

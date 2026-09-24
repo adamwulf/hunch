@@ -72,7 +72,12 @@ struct Hunch: AsyncParsableCommand {
     }
 
     static func output(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) throws {
-        // The outline shows nesting by indent, so it walks the block tree itself
+        print(try render(list: list, format: format, ignoreColor: ignoreColor, ignoreUnderline: ignoreUnderline))
+    }
+
+    static func render(list: [NotionItem], format: Format, ignoreColor: Bool = false, ignoreUnderline: Bool = false) throws -> String {
+        // The outline shows nesting by indent, so it walks the block tree itself. Every other format gets
+        // each block followed by its children in one flat list.
         let items = format == .outline ? list : flatten(items: list)
 
         let renderer: Renderer = {
@@ -92,8 +97,7 @@ struct Hunch: AsyncParsableCommand {
             }
         }()
 
-        let output = try renderer.render(items)
-        print(output)
+        return try renderer.render(items)
     }
 
     // Helper function to flatten the list of NotionItems

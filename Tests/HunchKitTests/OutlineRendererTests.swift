@@ -1,7 +1,7 @@
 import XCTest
 @testable import HunchKit
 
-final class OutlineRendererTests: XCTestCase {
+final class OutlineRendererTests: XCTestCase, BlockJSONBuilding {
     let decoder: JSONDecoder = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
@@ -11,45 +11,6 @@ final class OutlineRendererTests: XCTestCase {
         return d
     }()
     let renderer = OutlineRenderer()
-
-    // MARK: - Helpers
-
-    private func richText(_ text: String) -> [[String: Any]] {
-        let annotations: [String: Any] = [
-            "bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default"
-        ]
-        return [["type": "text", "text": ["content": text], "plain_text": text, "annotations": annotations]]
-    }
-
-    private func blockJSON(id: String, type: String, content: [String: Any], children: [[String: Any]] = []) -> [String: Any] {
-        var json: [String: Any] = [
-            "object": "block",
-            "id": id,
-            "parent": ["type": "page_id", "page_id": "parent-page-id"],
-            "type": type,
-            "created_time": "2025-01-01T00:00:00.000Z",
-            "created_by": ["object": "user", "id": "user-abc"],
-            "last_edited_time": "2025-01-01T00:00:00.000Z",
-            "last_edited_by": ["object": "user", "id": "user-abc"],
-            "archived": false,
-            "in_trash": false,
-            "has_children": !children.isEmpty,
-            type: content
-        ]
-        if !children.isEmpty {
-            json["children"] = children
-        }
-        return json
-    }
-
-    private func textBlockJSON(id: String, type: String, text: String, children: [[String: Any]] = []) -> [String: Any] {
-        return blockJSON(id: id, type: type, content: ["rich_text": richText(text), "color": "default"], children: children)
-    }
-
-    private func decodeBlocks(_ json: [[String: Any]]) throws -> [Block] {
-        let data = try JSONSerialization.data(withJSONObject: json)
-        return try decoder.decode([Block].self, from: data)
-    }
 
     // MARK: - Outline Rendering
 
@@ -190,93 +151,18 @@ final class OutlineRendererTests: XCTestCase {
         XCTAssertEqual(try renderer.render(blocks), "d1 divider")
     }
 
-    // MARK: - Block Plain Text
-
-    func testTableRowJoinsCells() throws {
+    func testBackslashesAreDoubledSoTheyDifferFromLineBreaks() throws {
         let blocks = try decodeBlocks([
-            blockJSON(id: "r1", type: "table_row", content: ["cells": [richText("Name"), richText("Status")]])
+            textBlockJSON(id: "p1", type: "paragraph", text: #"C:\new"#),
+            textBlockJSON(id: "p2", type: "paragraph", text: "C:\new")
         ])
 
-        XCTAssertEqual(blocks.first?.plainText, "Name | Status")
+        XCTAssertEqual(try renderer.render(blocks), #"p1 paragraph C:\\new"# + "\n" + #"p2 paragraph C:\new"#)
     }
 
-    func testCodeBlockUsesItsCode() throws {
-        let blocks = try decodeBlocks([
-            blockJSON(id: "c1", type: "code", content: ["rich_text": richText("let x = 1"), "caption": [], "language": "swift"])
-        ])
+    func testUserWithoutNameDoesNotRepeatItsId() throws {
+        let user = try decoder.decode(User.self, from: Data(#"{"object":"user","id":"user-1","type":"bot"}"#.utf8))
 
-        XCTAssertEqual(blocks.first?.plainText, "let x = 1")
-    }
-
-    func testChildPageUsesItsTitle() throws {
-        let blocks = try decodeBlocks([
-            blockJSON(id: "c1", type: "child_page", content: ["title": "Sub page"])
-        ])
-
-        XCTAssertEqual(blocks.first?.plainText, "Sub page")
-    }
-
-    func testFileUsesCaptionThenURL() throws {
-        let blocks = try decodeBlocks([
-            blockJSON(id: "f1", type: "file", content: [
-                "type": "external", "external": ["url": "https://example.com/a.zip"], "caption": richText("Build logs")
-            ]),
-            blockJSON(id: "f2", type: "file", content: [
-                "type": "external", "external": ["url": "https://example.com/b.zip"], "caption": []
-            ])
-        ])
-
-        XCTAssertEqual(blocks.map(\.plainText), ["Build logs", "https://example.com/b.zip"])
-    }
-
-    func testHostedFileWithoutCaptionUsesItsFileName() throws {
-        // A hosted file URL is signed and changes on every fetch, so only its file name is stable
-        let url = "https://prod-files-secure.s3.us-west-2.amazonaws.com/ws/file/Build%20Logs.zip?X-Amz-Signature=abc"
-        let blocks = try decodeBlocks([
-            blockJSON(id: "f1", type: "file", content: [
-                "type": "file", "file": ["url": url, "expiry_time": "2025-01-01T01:00:00.000Z"], "caption": []
-            ])
-        ])
-
-        XCTAssertEqual(blocks.first?.plainText, "Build Logs.zip")
-    }
-
-    func testAudioUsesItsURL() throws {
-        let blocks = try decodeBlocks([
-            blockJSON(id: "a1", type: "audio", content: ["type": "external", "external": ["url": "https://example.com/a.mp3"]])
-        ])
-
-        XCTAssertEqual(blocks.first?.plainText, "https://example.com/a.mp3")
-    }
-
-    func testBookmarkUsesCaptionThenURL() throws {
-        let blocks = try decodeBlocks([
-            blockJSON(id: "b1", type: "bookmark", content: ["url": "https://example.com/a", "caption": richText("The spec")]),
-            blockJSON(id: "b2", type: "bookmark", content: ["url": "https://example.com/b", "caption": []])
-        ])
-
-        XCTAssertEqual(blocks.map(\.plainText), ["The spec", "https://example.com/b"])
-    }
-
-    func testEquationUsesItsExpression() throws {
-        let blocks = try decodeBlocks([
-            blockJSON(id: "e1", type: "equation", content: ["expression": "e = mc^2"])
-        ])
-
-        XCTAssertEqual(blocks.first?.plainText, "e = mc^2")
-    }
-
-    func testImageAndPdfUseCaptionThenURL() throws {
-        // Image and PDF blocks decode their file from the whole block, not from a keyed container
-        let blocks = try decodeBlocks([
-            blockJSON(id: "i1", type: "image", content: [
-                "type": "external", "external": ["url": "https://example.com/a.png"], "caption": richText("Screenshot")
-            ]),
-            blockJSON(id: "d1", type: "pdf", content: [
-                "type": "external", "external": ["url": "https://example.com/b.pdf"], "caption": []
-            ])
-        ])
-
-        XCTAssertEqual(blocks.map(\.plainText), ["Screenshot", "https://example.com/b.pdf"])
+        XCTAssertEqual(try renderer.render([user]), "user-1 user")
     }
 }
