@@ -28,6 +28,12 @@ final class IconArgumentTests: XCTestCase {
         XCTAssertEqual(icon.native?.color, "blue")
     }
 
+    func testJSONBecomesAnEmojiOrExternalIcon() throws {
+        XCTAssertEqual(try IconArgument.icon(from: #"{"type":"emoji","emoji":"🐞"}"#).emoji, "🐞")
+        let external = try IconArgument.icon(from: #"{"type":"external","external":{"url":"https://example.com/icon.png"}}"#)
+        XCTAssertEqual(external.external?.url, "https://example.com/icon.png")
+    }
+
     func testJSONBecomesACustomEmojiIcon() throws {
         let icon = try IconArgument.icon(from: #"{"type":"custom_emoji","custom_emoji":{"id":"45ce454c"}}"#)
         XCTAssertEqual(icon.type, "custom_emoji")
