@@ -27,6 +27,12 @@ struct UpdatePageCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Unarchive (restore) the page")
     var unarchive: Bool = false
 
+    @Option(name: .long, help: IconArgument.help)
+    var icon: String?
+
+    @Flag(name: .long, help: "Remove the page icon")
+    var removeIcon: Bool = false
+
     @Option(name: .shortAndLong, help: "The format of the output")
     var format: Hunch.Format = .id
 
@@ -38,12 +44,24 @@ struct UpdatePageCommand: AsyncParsableCommand {
         }
 
         let archived: Bool? = archive ? true : (unarchive ? false : nil)
+        let iconUpdate = try Self.iconUpdate(icon: icon, removeIcon: removeIcon)
 
-        guard props != nil || archived != nil else {
-            throw ValidationError("Provide --properties and/or --archive/--unarchive")
+        guard props != nil || archived != nil || iconUpdate != nil else {
+            throw ValidationError("Provide --properties, --icon/--remove-icon, and/or --archive/--unarchive")
         }
 
-        let page = try await HunchAPI.shared.updatePage(pageId: pageId, properties: props, archived: archived)
+        let page = try await HunchAPI.shared.updatePage(pageId: pageId, properties: props, archived: archived, icon: iconUpdate)
         try Hunch.output(list: [page], format: format)
+    }
+
+    /// The change to the page icon, or nil to leave the icon as it is
+    static func iconUpdate(icon: String?, removeIcon: Bool) throws -> Icon.Update? {
+        if removeIcon {
+            guard icon == nil else {
+                throw ValidationError("Give --icon or --remove-icon, not both")
+            }
+            return .remove
+        }
+        return try icon.map { .set(try IconArgument.icon(from: $0)) }
     }
 }

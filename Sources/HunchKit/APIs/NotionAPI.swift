@@ -339,16 +339,43 @@ public class NotionAPI {
 
     // MARK: - Update Page (PATCH /v1/pages/{id})
 
-    private struct UpdatePageBody: Encodable {
+    struct UpdatePageBody: Encodable {
         let properties: JSONValue?
         let archived: Bool?
+        let icon: Icon.Update?
+
+        enum CodingKeys: String, CodingKey {
+            case properties
+            case archived
+            case icon
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encodeIfPresent(properties, forKey: .properties)
+            try container.encodeIfPresent(archived, forKey: .archived)
+            switch icon {
+            case .set(let icon):
+                try container.encode(icon, forKey: .icon)
+            case .remove:
+                // Notion removes the icon when the field is null, and keeps it when the field is missing
+                try container.encodeNil(forKey: .icon)
+            case nil:
+                break
+            }
+        }
     }
 
-    internal func updatePage(pageId: String, properties: JSONValue? = nil, archived: Bool? = nil) async -> Result<Page, NotionAPIServiceError> {
+    internal func updatePage(
+        pageId: String,
+        properties: JSONValue? = nil,
+        archived: Bool? = nil,
+        icon: Icon.Update? = nil
+    ) async -> Result<Page, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             let url = baseURL.appendingPathComponent("pages").appendingPathComponent(pageId)
             do {
-                let bodyData = try jsonEncoder.encode(UpdatePageBody(properties: properties, archived: archived))
+                let bodyData = try jsonEncoder.encode(UpdatePageBody(properties: properties, archived: archived, icon: icon))
                 fetchResources(method: "PATCH",
                                url: url,
                                query: [:],
@@ -366,6 +393,7 @@ public class NotionAPI {
     private struct CreatePageBody: Encodable {
         let parent: ParentRef
         let properties: JSONValue
+        let icon: Icon?
         let children: [JSONValue]?
 
         struct ParentRef: Encodable {
@@ -373,13 +401,19 @@ public class NotionAPI {
         }
     }
 
-    internal func createPage(parentDatabaseId: String, properties: JSONValue, children: [JSONValue]? = nil) async -> Result<Page, NotionAPIServiceError> {
+    internal func createPage(
+        parentDatabaseId: String,
+        properties: JSONValue,
+        children: [JSONValue]? = nil,
+        icon: Icon? = nil
+    ) async -> Result<Page, NotionAPIServiceError> {
         return await withCheckedContinuation { continuation in
             let url = baseURL.appendingPathComponent("pages")
             do {
                 let body = CreatePageBody(
                     parent: CreatePageBody.ParentRef(database_id: parentDatabaseId),
                     properties: properties,
+                    icon: icon,
                     children: children
                 )
                 let bodyData = try jsonEncoder.encode(body)
