@@ -24,10 +24,14 @@ struct CreatePageCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Properties as a JSON string")
     var properties: String?
 
+    @Option(name: .long, help: IconArgument.help)
+    var icon: String?
+
     @Option(name: .shortAndLong, help: "The format of the output")
     var format: Hunch.Format = .id
 
     func run() async throws {
+        let pageIcon = try icon.map { try IconArgument.icon(from: $0) }
         var propsDict: [String: JSONValue] = [:]
 
         if let propertiesJSON = properties,
@@ -48,7 +52,8 @@ struct CreatePageCommand: AsyncParsableCommand {
 
         let page = try await HunchAPI.shared.createPage(
             parentDatabaseId: database,
-            properties: .object(propsDict)
+            properties: .object(propsDict),
+            icon: pageIcon
         )
         try Hunch.output(list: [page], format: format)
     }

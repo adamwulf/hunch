@@ -1253,6 +1253,45 @@ final class IntegrationTests: XCTestCase {
         print("  ✓ Archived page no longer appears in database queries")
     }
 
+    /// Test creating a page with an icon, changing the icon to each writable kind, then removing it
+    func testPageIcon() async throws {
+        print("\n=== testPageIcon ===")
+        let databaseId = "991fa39f-779b-4424-a7c5-d00479a94fe8"
+
+        let page = try await HunchAPI.shared.createPage(
+            parentDatabaseId: databaseId,
+            properties: JSONValue.object([
+                "Name": .object([
+                    "title": .array([
+                        .object(["text": .object(["content": .string("Icon Test \(Int(Date().timeIntervalSince1970))")])])
+                    ])
+                ])
+            ]),
+            icon: .emoji("🐞")
+        )
+        print("  Created page with an emoji icon: \(page.id)")
+        XCTAssertEqual(page.icon?.type, "emoji")
+        XCTAssertEqual(page.icon?.emoji, "🐞")
+
+        let external = try await HunchAPI.shared.updatePage(pageId: page.id, icon: .set(.external(url: "https://example.com/icon.png")))
+        XCTAssertEqual(external.icon?.type, "external")
+        XCTAssertEqual(external.icon?.external?.url, "https://example.com/icon.png")
+
+        let native = try await HunchAPI.shared.updatePage(pageId: page.id, icon: .set(.native(name: "pizza", color: "blue")))
+        print("  Native icon reads back as type: \(native.icon?.type ?? "nil")")
+        XCTAssertEqual(native.icon?.type, "icon")
+        XCTAssertEqual(native.icon?.native?.name, "pizza")
+        XCTAssertEqual(native.icon?.native?.color, "blue")
+
+        let removed = try await HunchAPI.shared.updatePage(pageId: page.id, icon: .remove)
+        XCTAssertNil(removed.icon, "Sending a null icon should remove it")
+
+        // Cleanup
+        let archived = try await HunchAPI.shared.updatePage(pageId: page.id, archived: true)
+        XCTAssertTrue(archived.archived)
+        print("  Test page archived")
+    }
+
     // MARK: - Comment Tests
 
     /// Test creating a comment on a page and fetching it back

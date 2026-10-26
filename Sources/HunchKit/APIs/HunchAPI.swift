@@ -120,8 +120,13 @@ public class HunchAPI {
 
     // MARK: - Update Page
 
-    public func updatePage(pageId: String, properties: JSONValue? = nil, archived: Bool? = nil) async throws -> Page {
-        let result = await notion.updatePage(pageId: pageId, properties: properties, archived: archived)
+    public func updatePage(
+        pageId: String,
+        properties: JSONValue? = nil,
+        archived: Bool? = nil,
+        icon: Icon.Update? = nil
+    ) async throws -> Page {
+        let result = await notion.updatePage(pageId: pageId, properties: properties, archived: archived, icon: icon)
         switch result {
         case .success(let page):
             return page
@@ -132,8 +137,13 @@ public class HunchAPI {
 
     // MARK: - Create Page
 
-    public func createPage(parentDatabaseId: String, properties: JSONValue, children: [JSONValue]? = nil) async throws -> Page {
-        let result = await notion.createPage(parentDatabaseId: parentDatabaseId, properties: properties, children: children)
+    public func createPage(
+        parentDatabaseId: String,
+        properties: JSONValue,
+        children: [JSONValue]? = nil,
+        icon: Icon? = nil
+    ) async throws -> Page {
+        let result = await notion.createPage(parentDatabaseId: parentDatabaseId, properties: properties, children: children, icon: icon)
         switch result {
         case .success(let page):
             return page

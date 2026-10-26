@@ -1168,6 +1168,63 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(icon.file?.url, "https://s3.amazonaws.com/icon.png")
     }
 
+    func testIconCustomEmojiDecode() throws {
+        let json = """
+        {
+            "type": "custom_emoji",
+            "custom_emoji": {"id": "45ce454c-d427-4f53-9489-e5d0f3d1db6b", "name": "bufo", "url": "https://example.com/bufo.png"}
+        }
+        """
+        let icon = try decoder.decode(Icon.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(icon.type, "custom_emoji")
+        XCTAssertNil(icon.emoji)
+        XCTAssertEqual(icon.customEmoji?.id, "45ce454c-d427-4f53-9489-e5d0f3d1db6b")
+        XCTAssertEqual(icon.customEmoji?.name, "bufo")
+        XCTAssertEqual(icon.customEmoji?.url, "https://example.com/bufo.png")
+
+        let encoded = try encoder.encode(icon)
+        let decoded = try decoder.decode(Icon.self, from: encoded)
+        XCTAssertEqual(decoded.customEmoji?.name, "bufo")
+    }
+
+    func testIconNativeDecode() throws {
+        let json = """
+        {"type": "icon", "icon": {"name": "pizza", "color": "blue"}}
+        """
+        let icon = try decoder.decode(Icon.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(icon.type, "icon")
+        XCTAssertNil(icon.emoji)
+        XCTAssertEqual(icon.native?.name, "pizza")
+        XCTAssertEqual(icon.native?.color, "blue")
+
+        let encoded = try encoder.encode(icon)
+        let decoded = try decoder.decode(Icon.self, from: encoded)
+        XCTAssertEqual(decoded.native?.name, "pizza")
+        XCTAssertEqual(decoded.native?.color, "blue")
+    }
+
+    /// Each icon encodes to the body that Notion's docs give for setting it
+    func testIconFactoriesEncodeTheWriteShape() throws {
+        func object(_ icon: Icon) throws -> NSDictionary {
+            return try JSONSerialization.jsonObject(with: encoder.encode(icon)) as! NSDictionary
+        }
+
+        XCTAssertEqual(try object(.emoji("🐞")), ["type": "emoji", "emoji": "🐞"] as NSDictionary)
+        XCTAssertEqual(
+            try object(.external(url: "https://example.com/icon.png")),
+            ["type": "external", "external": ["url": "https://example.com/icon.png"]] as NSDictionary
+        )
+        XCTAssertEqual(
+            try object(.customEmoji(id: "45ce454c-d427-4f53-9489-e5d0f3d1db6b")),
+            ["type": "custom_emoji", "custom_emoji": ["id": "45ce454c-d427-4f53-9489-e5d0f3d1db6b"]] as NSDictionary
+        )
+        XCTAssertEqual(
+            try object(.native(name: "pizza", color: "blue")),
+            ["type": "icon", "icon": ["name": "pizza", "color": "blue"]] as NSDictionary
+        )
+        XCTAssertEqual(try object(.native(name: "pizza")), ["type": "icon", "icon": ["name": "pizza"]] as NSDictionary)
+    }
+
     // MARK: - Color Enum Tests
 
     func testAllColorRawValues() throws {
