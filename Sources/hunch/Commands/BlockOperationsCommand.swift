@@ -146,12 +146,12 @@ func readJSONInput(
     return data
 }
 
-/// The parsed JSON, or an error that says where its syntax is wrong
-func parseJSON(_ data: Data) throws -> Any {
+/// The parsed JSON, or an error that says where its syntax is wrong. The error starts with `name`, like "--icon".
+func parseJSON(_ data: Data, name: String = "The input") throws -> Any {
     do {
         return try JSONSerialization.jsonObject(with: data)
     } catch {
         let reason = (error as NSError).userInfo[NSDebugDescriptionErrorKey] as? String ?? error.localizedDescription
-        throw ValidationError("The input is not valid JSON: \(reason)")
+        throw ValidationError("\(name) is not valid JSON: \(reason)")
     }
 }

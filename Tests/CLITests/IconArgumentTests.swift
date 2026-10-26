@@ -50,7 +50,7 @@ final class IconArgumentTests: XCTestCase {
         XCTAssertThrowsError(try IconArgument.icon(from: #"{"type":"#)) { error in
             // A syntax error says so, instead of claiming the JSON has the wrong shape
             let message = (error as? ValidationError)?.message ?? ""
-            XCTAssertTrue(message.hasPrefix("The input is not valid JSON"), message)
+            XCTAssertTrue(message.hasPrefix("--icon is not valid JSON"), message)
         }
     }
 

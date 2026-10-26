@@ -31,32 +31,31 @@ enum IconArgument {
 
     private static func icon(fromJSON data: Data) throws -> Icon {
         // A syntax error says so, instead of claiming the JSON has the wrong shape
-        _ = try parseJSON(data)
-        guard let icon = try? JSONDecoder().decode(Icon.self, from: data), let hasField = hasFieldForType(icon) else {
-            throw ValidationError(
-                #"--icon JSON must be an emoji, external, custom_emoji, or icon object, like {"type":"icon","icon":{"name":"pizza"}}"#
-            )
+        _ = try parseJSON(data, name: "--icon")
+        let notAnIcon = ValidationError(
+            #"--icon JSON must be an emoji, external, custom_emoji, or icon object, like {"type":"icon","icon":{"name":"pizza"}}"#
+        )
+        guard let icon = try? JSONDecoder().decode(Icon.self, from: data) else {
+            throw notAnIcon
+        }
+        // Notion refuses an icon without the field its type names. Icon drops the fields it doesn't know, so a type
+        // like file_upload would reach Notion without its field.
+        let hasField: Bool
+        switch icon.type {
+        case "emoji":
+            hasField = icon.emoji != nil
+        case "external":
+            hasField = icon.external != nil
+        case "custom_emoji":
+            hasField = icon.customEmoji != nil
+        case "icon":
+            hasField = icon.native != nil
+        default:
+            throw notAnIcon
         }
         guard hasField else {
             throw ValidationError("--icon JSON of type \"\(icon.type)\" needs the \"\(icon.type)\" field")
         }
         return icon
-    }
-
-    /// Whether the icon has the field its `type` names, which Notion needs to set it. Nil for a type that `--icon`
-    /// can't set, like `file_upload`, whose field Icon doesn't keep.
-    private static func hasFieldForType(_ icon: Icon) -> Bool? {
-        switch icon.type {
-        case "emoji":
-            return icon.emoji != nil
-        case "external":
-            return icon.external != nil
-        case "custom_emoji":
-            return icon.customEmoji != nil
-        case "icon":
-            return icon.native != nil
-        default:
-            return nil
-        }
     }
 }
