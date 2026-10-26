@@ -21,15 +21,42 @@ enum IconArgument {
             throw ValidationError("Give --icon an emoji, an image URL, or icon JSON")
         }
         if value.hasPrefix("{") {
-            do {
-                return try JSONDecoder().decode(Icon.self, from: Data(value.utf8))
-            } catch {
-                throw ValidationError(#"The --icon JSON must be an icon object, like {"type":"icon","icon":{"name":"pizza"}}"#)
-            }
+            return try icon(fromJSON: Data(value.utf8))
         }
         if value.hasPrefix("https://") || value.hasPrefix("http://") {
             return .external(url: value)
         }
         return .emoji(value)
+    }
+
+    private static func icon(fromJSON data: Data) throws -> Icon {
+        // A syntax error says so, instead of claiming the JSON has the wrong shape
+        _ = try parseJSON(data)
+        guard let icon = try? JSONDecoder().decode(Icon.self, from: data), let hasField = hasFieldForType(icon) else {
+            throw ValidationError(
+                #"--icon JSON must be an emoji, external, custom_emoji, or icon object, like {"type":"icon","icon":{"name":"pizza"}}"#
+            )
+        }
+        guard hasField else {
+            throw ValidationError("--icon JSON of type \"\(icon.type)\" needs the \"\(icon.type)\" field")
+        }
+        return icon
+    }
+
+    /// Whether the icon has the field its `type` names, which Notion needs to set it. Nil for a type that `--icon`
+    /// can't set, like `file_upload`, whose field Icon doesn't keep.
+    private static func hasFieldForType(_ icon: Icon) -> Bool? {
+        switch icon.type {
+        case "emoji":
+            return icon.emoji != nil
+        case "external":
+            return icon.external != nil
+        case "custom_emoji":
+            return icon.customEmoji != nil
+        case "icon":
+            return icon.native != nil
+        default:
+            return nil
+        }
     }
 }

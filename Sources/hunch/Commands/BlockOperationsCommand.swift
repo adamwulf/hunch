@@ -147,7 +147,7 @@ func readJSONInput(
 }
 
 /// The parsed JSON, or an error that says where its syntax is wrong
-private func parseJSON(_ data: Data) throws -> Any {
+func parseJSON(_ data: Data) throws -> Any {
     do {
         return try JSONSerialization.jsonObject(with: data)
     } catch {

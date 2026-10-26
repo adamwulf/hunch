@@ -37,9 +37,30 @@ final class IconArgumentTests: XCTestCase {
     func testJSONThatIsNotAnIconIsRejected() {
         XCTAssertThrowsError(try IconArgument.icon(from: #"{"name":"pizza"}"#)) { error in
             let message = (error as? ValidationError)?.message ?? ""
-            XCTAssertTrue(message.hasPrefix("The --icon JSON must be an icon object"), message)
+            XCTAssertTrue(message.hasPrefix("--icon JSON must be an emoji, external, custom_emoji, or icon object"), message)
         }
-        XCTAssertThrowsError(try IconArgument.icon(from: #"{"type":"#))
+        // Icon has no file_upload field, so the id would never reach Notion
+        XCTAssertThrowsError(try IconArgument.icon(from: #"{"type":"file_upload","file_upload":{"id":"x"}}"#)) { error in
+            let message = (error as? ValidationError)?.message ?? ""
+            XCTAssertTrue(message.hasPrefix("--icon JSON must be an emoji, external, custom_emoji, or icon object"), message)
+        }
+    }
+
+    func testInvalidJSONSaysSo() {
+        XCTAssertThrowsError(try IconArgument.icon(from: #"{"type":"#)) { error in
+            // A syntax error says so, instead of claiming the JSON has the wrong shape
+            let message = (error as? ValidationError)?.message ?? ""
+            XCTAssertTrue(message.hasPrefix("The input is not valid JSON"), message)
+        }
+    }
+
+    func testJSONWithoutTheFieldForItsTypeNamesTheField() {
+        XCTAssertThrowsError(try IconArgument.icon(from: #"{"type":"icon","name":"pizza"}"#)) { error in
+            XCTAssertEqual((error as? ValidationError)?.message, #"--icon JSON of type "icon" needs the "icon" field"#)
+        }
+        XCTAssertThrowsError(try IconArgument.icon(from: #"{"type":"emoji"}"#)) { error in
+            XCTAssertEqual((error as? ValidationError)?.message, #"--icon JSON of type "emoji" needs the "emoji" field"#)
+        }
     }
 
     func testEmptyIconIsRejected() {
